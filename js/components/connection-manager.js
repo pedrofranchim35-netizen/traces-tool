@@ -34,7 +34,7 @@ class ConnectionManager {
     const defaultConnections = [
       {
         id: 'conn-default',
-        name: 'Conexão Oracle (Customizada)',
+        name: 'Conexão Oracle',
         host: 'localhost',
         port: 1521,
         serviceName: 'ORCL',
@@ -50,11 +50,16 @@ class ConnectionManager {
     try {
       const stored = localStorage.getItem(this.storageKey);
       if (stored) {
-        const parsed = JSON.parse(stored);
+        let parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Remove any legacy hardcoded 10.100.10.39 entries
+          parsed = parsed.filter(c => c.host !== '10.100.10.39' && c.id !== 'rmprod-traces');
+          if (parsed.length > 0) {
+            return parsed;
+          }
         }
       }
+      localStorage.removeItem(this.storageKey);
     } catch (e) {
       console.warn('Could not read saved connections from localStorage', e);
     }

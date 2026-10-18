@@ -822,6 +822,15 @@
   <script src="js/components/code-quality.js?v=20261018b"></script>
   <script src="js/components/automation-designer.js?v=20261018b"></script>
   <script src="js/components/sql-optimizer.js?v=20261018b"></script>
+  <script>
+    // Self-healing: purge any stale legacy connection holding 10.100.10.39
+    try {
+      const s = localStorage.getItem('traces_oracle_saved_connections');
+      if (s && s.includes('10.100.10.39')) {
+        localStorage.removeItem('traces_oracle_saved_connections');
+      }
+    } catch (e) {}
+  </script>
   <script src="js/app.js?v=20261018b"></script>
 </body>
 </html>
