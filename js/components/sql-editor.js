@@ -264,10 +264,39 @@ END;`
     return escaped;
   }
 
+  getStatementAtCursor() {
+    if (!this.textarea) return '';
+    const fullText = this.textarea.value;
+    const cursorPos = this.textarea.selectionStart || 0;
+
+    // If selection exists, return selection
+    if (this.textarea.selectionStart !== this.textarea.selectionEnd) {
+      return fullText.substring(this.textarea.selectionStart, this.textarea.selectionEnd).trim();
+    }
+
+    // Split text by semicolon preserving positions
+    const statements = fullText.split(';');
+    let charCount = 0;
+    for (let stmt of statements) {
+      const stmtStart = charCount;
+      const stmtEnd = charCount + stmt.length + 1; // +1 for the semicolon
+      if (cursorPos >= stmtStart && cursorPos <= stmtEnd) {
+        return stmt.trim();
+      }
+      charCount = stmtEnd;
+    }
+
+    // Default to full text if nothing found
+    return fullText.trim();
+  }
+
   // Execution Handlers
   executeStatement() {
-    const text = this.textarea ? this.textarea.value : '';
+    let text = this.getStatementAtCursor();
     if (!text || !text.trim()) {
+      text = this.textarea ? this.textarea.value.trim() : '';
+    }
+    if (!text) {
       window.TracesApp.notify('Nenhum comando SQL na worksheet para executar.', 'warning');
       return;
     }
@@ -575,6 +604,103 @@ END;`
       </tr>
     `).join('');
   }
+
+  // ---------------------------------------------------------------------------
+  // TOAD CODE SNIPPETS LIBRARY
+  // ---------------------------------------------------------------------------
+  async openCodeSnippetsModal() {
+    const modal = document.getElementById('modal-code-snippets');
+    if (!modal) return;
+    modal.classList.add('open');
+
+    if (!this.snippetsData) {
+      try {
+        const resp = await fetch('assets/CodeSnippets.json');
+        this.snippetsData = await resp.json();
+      } catch (e) {
+        console.warn('Could not load CodeSnippets.json', e);
+      }
+    }
+
+    if (this.snippetsData && this.snippetsData.Categories) {
+      const catSelect = document.getElementById('snippets-category-select');
+      if (catSelect && catSelect.options.length === 0) {
+        catSelect.innerHTML = this.snippetsData.Categories.map((c, i) => `
+          <option value="${c.Category}" ${i === 0 ? 'selected' : ''}>${c.Category} (${c.Snippets ? c.Snippets.length : 0})</option>
+        `).join('');
+      }
+      this.activeSnippetCategory = catSelect ? catSelect.value : this.snippetsData.Categories[0].Category;
+      this.snippetSearchQuery = '';
+      this.renderSnippetsTable();
+    }
+  }
+
+  onSnippetCategoryChanged(category) {
+    this.activeSnippetCategory = category;
+    this.renderSnippetsTable();
+  }
+
+  onSnippetSearchChanged(query) {
+    this.snippetSearchQuery = query.toLowerCase().trim();
+    this.renderSnippetsTable();
+  }
+
+  renderSnippetsTable() {
+    const tbody = document.getElementById('snippets-table-body');
+    if (!tbody || !this.snippetsData) return;
+
+    const catObj = this.snippetsData.Categories.find(c => c.Category === this.activeSnippetCategory);
+    let snippets = catObj ? (catObj.Snippets || []) : [];
+
+    if (this.snippetSearchQuery) {
+      snippets = snippets.filter(s => 
+        (s.DisplayName && s.DisplayName.toLowerCase().includes(this.snippetSearchQuery)) ||
+        (s.Description && s.Description.toLowerCase().includes(this.snippetSearchQuery)) ||
+        (s.Text && s.Text.toLowerCase().includes(this.snippetSearchQuery))
+      );
+    }
+
+    if (snippets.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--text-muted);">Nenhum snippet encontrado para "${this.snippetSearchQuery || this.activeSnippetCategory}".</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = snippets.map((s, idx) => `
+      <tr style="cursor: pointer;" ondblclick="window.TracesApp.sqlEditor.insertSnippet('${encodeURIComponent(s.Text || s.DisplayName)}')">
+        <td style="font-family: var(--font-code); font-weight: 700; color: #0078d7;">${this.escapeHtml(s.DisplayName || s.Text)}</td>
+        <td style="font-size: 11px; color: var(--text-secondary);">${this.escapeHtml(s.Description || '-')}</td>
+        <td style="text-align: center;">
+          <button class="btn btn-primary" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.sqlEditor.insertSnippet('${encodeURIComponent(s.Text || s.DisplayName)}')">
+            Inserir
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  insertSnippet(encodedText) {
+    const text = decodeURIComponent(encodedText);
+    const modal = document.getElementById('modal-code-snippets');
+    if (modal) modal.classList.remove('open');
+
+    if (!this.textarea) return;
+
+    const start = this.textarea.selectionStart || 0;
+    const end = this.textarea.selectionEnd || 0;
+    const current = this.textarea.value;
+
+    const newText = current.substring(0, start) + text + current.substring(end);
+    this.textarea.value = newText;
+    this.textarea.selectionStart = this.textarea.selectionEnd = start + text.length;
+
+    this.saveActiveTabContent();
+    this.updateHighlighting();
+    this.updateGutter();
+    this.textarea.focus();
+
+    window.TracesApp.notify(`Snippet "${text.split('(')[0]}" inserido no editor.`, 'info');
+  }
 }
 
 window.SqlEditor = SqlEditor;
+

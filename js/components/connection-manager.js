@@ -678,6 +678,16 @@ class ConnectionManager {
         if (window.TracesApp.sessionMonitor && typeof window.TracesApp.sessionMonitor.loadRealSessions === 'function') {
           window.TracesApp.sessionMonitor.loadRealSessions();
         }
+
+        // Refresh Database Probe with real instance metrics
+        if (window.TracesApp.databaseProbe && typeof window.TracesApp.databaseProbe.loadRealProbe === 'function') {
+          window.TracesApp.databaseProbe.loadRealProbe();
+        }
+
+        // Refresh DBA Hub with real parameters
+        if (window.TracesApp.dbaTools && typeof window.TracesApp.dbaTools.loadRealData === 'function') {
+          window.TracesApp.dbaTools.loadRealData();
+        }
       } else {
         window.TracesApp.notify(`Falha na conexão: ${data.error}`, 'error');
       }

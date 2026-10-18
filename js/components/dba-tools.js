@@ -100,21 +100,36 @@ class DbaTools {
     });
   }
 
+  async loadRealData() {
+    try {
+      const resp = await fetch('/api/parameters');
+      const data = await resp.json();
+      if (data.parameters && data.parameters.length > 0) {
+        this.realParameters = data.parameters;
+        const pane = document.getElementById('dba-pane-browser');
+        if (pane) pane.innerHTML = this.renderDatabaseBrowser();
+      }
+    } catch (e) {
+      console.warn('Real parameters error', e);
+    }
+  }
+
   // 1. Database Browser
   renderDatabaseBrowser() {
-    const paramsHtml = window.TRACES_DB.parameters.map(p => `
+    const list = this.realParameters || (window.TRACES_DB ? window.TRACES_DB.parameters : []);
+    const paramsHtml = list.map(p => `
       <tr>
         <td><b>${p.name}</b></td>
         <td style="font-family: var(--toad-font-code); font-weight: 700; color: #0078d7;">${p.value}</td>
         <td>${p.isDynamic ? '<span style="color:#008000;">YES (In-Memory)</span>' : '<span style="color:#c00000;">NO (SPFILE Restart)</span>'}</td>
-        <td style="color: #666;">${p.description}</td>
+        <td style="color: #666; font-size: 11px;">${p.description || '-'}</td>
         <td>
-          <button class="btn" style="padding: 1px 6px;" onclick="window.TracesApp.dbaTools.editParameter('${p.name}', '${p.value}');">Alter Parameter</button>
+          <button class="btn" style="padding: 1px 6px;" onclick="window.TracesApp.dbaTools.editParameter('${p.name}', '${p.value}');">Alter</button>
         </td>
       </tr>
     `).join('');
 
-    const alertHtml = window.TRACES_DB.alertLog.map(a => `
+    const alertHtml = (window.TRACES_DB ? window.TRACES_DB.alertLog : []).map(a => `
       <div style="font-family: var(--toad-font-code); font-size: 11px; padding: 3px 0; border-bottom: 1px solid #f0f0f0;">
         <span style="color: #666;">[${a.timestamp}]</span>
         <span style="font-weight: 700; color: ${a.severity === 'WARNING' ? '#c00000' : '#0078d7'};">[${a.severity}]</span>
@@ -122,33 +137,63 @@ class DbaTools {
       </div>
     `).join('');
 
+    const connConfig = window.TracesApp?.realDatabaseConfig;
+    const dbTarget = connConfig ? `${connConfig.user}@${connConfig.host}:${connConfig.port}/${connConfig.serviceName}` : 'SALES_PROD';
+
     return `
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 700; font-size: 13px;">Oracle Instance Parameters (V$PARAMETER &amp; V$SPPARAMETER)</span>
-        <span class="toad-conn-badge-indicator" style="background:#e0f2fe; color:#0369a1;">SPFILE: +DATA/SALES_PROD/PARAMETERFILE/spfile.ora</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font-weight: 700; font-size: 13px;">Oracle Instance Parameters (V$PARAMETER &amp; V$SPPARAMETER)</span>
+          <span style="font-size: 11px; color: var(--text-muted);">(${list.length} parâmetros carregados)</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.dbaTools.loadRealData()">🔄 Atualizar Parâmetros</button>
+          <span class="toad-conn-badge-indicator" style="background:#e0f2fe; color:#0369a1;">Instância: ${dbTarget}</span>
+        </div>
       </div>
-      <div style="height: 240px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
+      <div style="height: 260px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
         <table class="meta-table" style="width: 100%;">
           <thead><tr><th>Parameter Name</th><th>Current Value</th><th>Dynamic?</th><th>Description</th><th>Action</th></tr></thead>
           <tbody>${paramsHtml}</tbody>
         </table>
       </div>
 
-      <div style="font-weight: 700; font-size: 12px; margin-top: 8px;">Database Alert Log (alert_SALES_PROD.log)</div>
-      <div style="height: 140px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf; padding: 6px;">
+      <div style="font-weight: 700; font-size: 12px; margin-top: 10px;">Database Alert Log (alert_${connConfig?.serviceName || 'ORCL'}.log)</div>
+      <div style="height: 120px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf; padding: 6px;">
         ${alertHtml}
       </div>
     `;
   }
 
-  editParameter(paramName, currentVal) {
+  async editParameter(paramName, currentVal) {
     const newVal = prompt(`Alter Oracle System Parameter (${paramName}):\nALTER SYSTEM SET ${paramName} = <new_val> SCOPE=BOTH;`, currentVal);
-    if (newVal) {
-      const p = window.TRACES_DB.parameters.find(item => item.name === paramName);
-      if (p) p.value = newVal;
-      this.switchSubtab('browser');
-      window.TracesApp.notify(`ALTER SYSTEM SET ${paramName}='${newVal}' SCOPE=BOTH executed.`, 'success');
+    if (!newVal) return;
+
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const sql = `ALTER SYSTEM SET ${paramName} = '${newVal}' SCOPE=BOTH;`;
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro ao alterar parâmetro: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`ALTER SYSTEM SET ${paramName}='${newVal}' SCOPE=BOTH executado com sucesso no Oracle.`, 'success');
+          await this.loadRealData();
+        }
+      } catch (e) {
+        window.TracesApp.notify(`Erro: ${e.message}`, 'error');
+      }
+      return;
     }
+
+    const p = window.TRACES_DB.parameters.find(item => item.name === paramName);
+    if (p) p.value = newVal;
+    this.switchSubtab('browser');
+    window.TracesApp.notify(`ALTER SYSTEM SET ${paramName}='${newVal}' SCOPE=BOTH executado (Modo Local).`, 'success');
   }
 
   // 2. Tablespace Map & HWM

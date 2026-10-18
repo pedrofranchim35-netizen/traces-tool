@@ -68,6 +68,20 @@ class TracesApp {
         const userEl = document.getElementById('status-db-user');
         if (dbVerEl && data.connection.banner) dbVerEl.textContent = data.connection.banner.split('\n')[0];
         if (userEl) userEl.textContent = `${cfg.user}@${cfg.service_name}`;
+
+        // Automatically sync live components with Oracle Database
+        if (this.schemaBrowser && typeof this.schemaBrowser.loadRealSchemas === 'function') {
+          this.schemaBrowser.loadRealSchemas();
+        }
+        if (this.sessionMonitor && typeof this.sessionMonitor.loadRealSessions === 'function') {
+          this.sessionMonitor.loadRealSessions();
+        }
+        if (this.databaseProbe && typeof this.databaseProbe.loadRealProbe === 'function') {
+          this.databaseProbe.loadRealProbe();
+        }
+        if (this.dbaTools && typeof this.dbaTools.loadRealData === 'function') {
+          this.dbaTools.loadRealData();
+        }
       } else {
         this.isRealDatabase = false;
         this.realDatabaseConfig = null;

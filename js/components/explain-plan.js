@@ -1,55 +1,67 @@
 /* ==========================================================================
-   EXPLAIN PLAN & SQL OPTIMIZER COMPONENT
+   EXPLAIN PLAN & SQL OPTIMIZER COMPONENT - TOAD FOR ORACLE 1:1
+   Uses PLAN_TABLE hierarchical tree matching ExplainPlancolumnDefs.xml
+   and DBMS_XPLAN.DISPLAY text output.
    ========================================================================== */
 
 class ExplainPlan {
   constructor() {
     this.selectedNodeId = 0;
+    this.planTree = null;
+    this.planText = '';
+    this.activeSubtab = 'tree'; // 'tree' | 'text'
+
+    this.initDefaultPlan();
+    this.initElements();
+    this.render();
+  }
+
+  initDefaultPlan() {
     this.planTree = {
       id: 0,
       operation: 'SELECT STATEMENT',
-      options: null,
-      objectOwner: null,
-      objectName: null,
+      options: '',
+      objectOwner: '',
+      objectName: '',
       cost: 24,
       cardinality: 107,
       bytes: 14231,
       cpuCost: 1280000,
       ioCost: 22,
       tempSpace: 0,
-      filterPredicates: null,
-      accessPredicates: null,
+      filterPredicates: '',
+      accessPredicates: '',
       bottleneck: false,
       children: [
         {
           id: 1,
           operation: 'SORT',
           options: 'ORDER BY',
-          objectOwner: null,
-          objectName: null,
+          objectOwner: '',
+          objectName: '',
           cost: 24,
           cardinality: 107,
           bytes: 14231,
           cpuCost: 1280000,
           ioCost: 22,
           tempSpace: 0,
-          filterPredicates: null,
-          accessPredicates: null,
+          filterPredicates: '',
+          accessPredicates: '',
           bottleneck: false,
           children: [
             {
               id: 2,
               operation: 'HASH JOIN',
-              options: null,
-              objectOwner: null,
-              objectName: null,
+              options: '',
+              objectOwner: '',
+              objectName: '',
               cost: 20,
               cardinality: 107,
               bytes: 14231,
               cpuCost: 890000,
               ioCost: 19,
               tempSpace: 0,
-              filterPredicates: null,
+              filterPredicates: '',
               accessPredicates: 'E.DEPARTMENT_ID = D.DEPARTMENT_ID',
               bottleneck: false,
               children: [
@@ -65,63 +77,28 @@ class ExplainPlan {
                   cpuCost: 35000,
                   ioCost: 3,
                   tempSpace: 0,
-                  filterPredicates: null,
-                  accessPredicates: null,
+                  filterPredicates: '',
+                  accessPredicates: '',
                   bottleneck: false,
                   children: []
                 },
                 {
                   id: 4,
-                  operation: 'HASH JOIN',
-                  options: null,
-                  objectOwner: null,
-                  objectName: null,
-                  cost: 16,
+                  operation: 'TABLE ACCESS',
+                  options: 'FULL',
+                  objectOwner: 'HR',
+                  objectName: 'EMPLOYEES',
+                  cost: 12,
                   cardinality: 107,
-                  bytes: 11936,
-                  cpuCost: 650000,
-                  ioCost: 16,
+                  bytes: 10758,
+                  cpuCost: 510000,
+                  ioCost: 12,
                   tempSpace: 0,
-                  filterPredicates: null,
-                  accessPredicates: 'E.JOB_ID = J.JOB_ID',
-                  bottleneck: false,
-                  children: [
-                    {
-                      id: 5,
-                      operation: 'TABLE ACCESS',
-                      options: 'FULL',
-                      objectOwner: 'HR',
-                      objectName: 'JOBS',
-                      cost: 3,
-                      cardinality: 19,
-                      bytes: 1178,
-                      cpuCost: 28000,
-                      ioCost: 3,
-                      tempSpace: 0,
-                      filterPredicates: null,
-                      accessPredicates: null,
-                      bottleneck: false,
-                      children: []
-                    },
-                    {
-                      id: 6,
-                      operation: 'TABLE ACCESS',
-                      options: 'FULL',
-                      objectOwner: 'HR',
-                      objectName: 'EMPLOYEES',
-                      cost: 12,
-                      cardinality: 107,
-                      bytes: 10758,
-                      cpuCost: 510000,
-                      ioCost: 12,
-                      tempSpace: 0,
-                      filterPredicates: 'E.SALARY >= 6000',
-                      accessPredicates: null,
-                      bottleneck: true,
-                      bottleneckReason: 'Full Table Scan: Unindexed filter condition on SALARY',
-                      children: []
-                    }
-                  ]
+                  filterPredicates: 'E.SALARY >= 6000',
+                  accessPredicates: '',
+                  bottleneck: true,
+                  bottleneckReason: 'Full Table Scan: Predicate filter on unindexed column SALARY',
+                  children: []
                 }
               ]
             }
@@ -129,9 +106,6 @@ class ExplainPlan {
         }
       ]
     };
-
-    this.initElements();
-    this.render();
   }
 
   initElements() {
@@ -143,15 +117,75 @@ class ExplainPlan {
     this.advisorPane = document.getElementById('optimizer-advisor-pane');
   }
 
-  generatePlan(sql) {
-    if (sql && sql.toLowerCase().includes('sales_transactions')) {
+  async generatePlan(sql) {
+    if (!sql || !sql.trim()) {
+      window.TracesApp.notify('Nenhuma query SQL para gerar o Explain Plan.', 'warning');
+      return;
+    }
+
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      window.TracesApp.notify('Gerando Execution Plan via DBMS_XPLAN e PLAN_TABLE...', 'info');
+      try {
+        const resp = await fetch('/api/explain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+          window.TracesApp.notify(`Erro no Explain Plan: ${data.error}`, 'error');
+          return;
+        }
+
+        this.planText = data.planText || '';
+
+        if (data.nodes && data.nodes.length > 0) {
+          this.planTree = this.buildTreeFromNodes(data.nodes);
+        }
+
+        this.render();
+        window.TracesApp.notify('Execution Plan gerado com sucesso no Oracle.', 'success');
+        return;
+      } catch (err) {
+        window.TracesApp.notify(`Falha ao comunicar com o banco: ${err.message}`, 'error');
+      }
+    }
+
+    // Local fallback
+    if (sql.toLowerCase().includes('sales_transactions')) {
       this.planTree.cost = 380;
       this.planTree.children[0].children[0].children[1].objectName = 'SALES_TRANSACTIONS';
       this.planTree.children[0].children[0].children[1].options = 'PARTITION RANGE ALL';
     } else {
-      this.planTree.cost = 24;
+      this.initDefaultPlan();
     }
     this.render();
+    window.TracesApp.notify('Explain Plan gerado (Modo Local).', 'info');
+  }
+
+  buildTreeFromNodes(flatNodes) {
+    const nodeMap = {};
+    flatNodes.forEach(n => {
+      nodeMap[n.id] = Object.assign({}, n, { children: [] });
+    });
+
+    let root = null;
+    flatNodes.forEach(n => {
+      const current = nodeMap[n.id];
+      if (n.parentId === null || n.parentId === undefined || n.id === 0) {
+        if (!root) root = current;
+      } else {
+        const parent = nodeMap[n.parentId];
+        if (parent) {
+          parent.children.push(current);
+        } else if (!root) {
+          root = current;
+        }
+      }
+    });
+
+    return root || flatNodes[0];
   }
 
   render() {
@@ -161,18 +195,39 @@ class ExplainPlan {
   }
 
   renderMetrics() {
-    if (this.metricTotalCost) this.metricTotalCost.textContent = this.planTree.cost;
-    if (this.metricCardinality) this.metricCardinality.textContent = this.planTree.cardinality.toLocaleString();
-    if (this.metricIoCost) this.metricIoCost.textContent = this.planTree.ioCost;
-    if (this.metricCpuCost) this.metricCpuCost.textContent = (this.planTree.cpuCost / 1000000).toFixed(2) + ' M';
+    if (!this.planTree) return;
+    if (this.metricTotalCost) this.metricTotalCost.textContent = this.planTree.cost || 0;
+    if (this.metricCardinality) this.metricCardinality.textContent = (this.planTree.cardinality || 0).toLocaleString();
+    if (this.metricIoCost) this.metricIoCost.textContent = this.planTree.ioCost || 0;
+    if (this.metricCpuCost) this.metricCpuCost.textContent = this.planTree.cpuCost ? (this.planTree.cpuCost / 1000000).toFixed(2) + ' M' : '0 M';
   }
 
   renderTree() {
+    if (!this.treeCanvas || !this.planTree) return;
+
     this.treeCanvas.innerHTML = `
-      <div class="plan-tree-wrapper">
-        ${this.renderNodeHtml(this.planTree)}
+      <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-default); padding-bottom: 6px;">
+        <button class="detail-tab ${this.activeSubtab === 'tree' ? 'active' : ''}" onclick="window.TracesApp.explainPlan.setSubtab('tree')">
+          🌳 Visual Plan Tree
+        </button>
+        <button class="detail-tab ${this.activeSubtab === 'text' ? 'active' : ''}" onclick="window.TracesApp.explainPlan.setSubtab('text')">
+          📄 DBMS_XPLAN Formatted Output
+        </button>
       </div>
+
+      ${this.activeSubtab === 'tree' ? `
+        <div class="plan-tree-wrapper">
+          ${this.renderNodeHtml(this.planTree)}
+        </div>
+      ` : `
+        <div style="background: #1e1e1e; color: #f8fafc; padding: 14px; font-family: var(--font-code); font-size: 11px; line-height: 1.45; overflow-x: auto; border-radius: 4px; border: 1px solid #334155; white-space: pre;">${this.escapeHtml(this.planText || '-- Run Explain Plan on connected Oracle Database to see DBMS_XPLAN')}</div>
+      `}
     `;
+  }
+
+  setSubtab(tab) {
+    this.activeSubtab = tab;
+    this.renderTree();
   }
 
   renderNodeHtml(node) {
@@ -200,19 +255,19 @@ class ExplainPlan {
           <div class="node-stats-row">
             <div class="stat-item">
               <span class="stat-lbl">Cost</span>
-              <span class="stat-val ${node.cost > 20 ? 'cost-high' : ''}">${node.cost}</span>
+              <span class="stat-val ${node.cost > 20 ? 'cost-high' : ''}">${node.cost || 0}</span>
             </div>
             <div class="stat-item">
               <span class="stat-lbl">Rows</span>
-              <span class="stat-val">${node.cardinality.toLocaleString()}</span>
+              <span class="stat-val">${(node.cardinality || 0).toLocaleString()}</span>
             </div>
             <div class="stat-item">
               <span class="stat-lbl">I/O Cost</span>
-              <span class="stat-val">${node.ioCost}</span>
+              <span class="stat-val">${node.ioCost || 0}</span>
             </div>
             <div class="stat-item">
               <span class="stat-lbl">Bytes</span>
-              <span class="stat-val">${node.bytes}</span>
+              <span class="stat-val">${node.bytes || 0}</span>
             </div>
           </div>
           ${node.filterPredicates ? `
@@ -242,6 +297,7 @@ class ExplainPlan {
   }
 
   renderAdvisor() {
+    if (!this.advisorPane) return;
     this.advisorPane.innerHTML = `
       <div class="advisor-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -260,8 +316,8 @@ class ExplainPlan {
         <div class="hint-code-box">
           CREATE INDEX hr.emp_salary_ix ON hr.employees (salary);
         </div>
-        <button class="btn btn-secondary" style="height: 26px; font-size: 11px; margin-top: 4px;" onclick="window.TracesApp.notify('Index recommendation copied.', 'info')">
-          Copy DDL Recommendation
+        <button class="btn btn-secondary" style="height: 26px; font-size: 11px; margin-top: 4px;" onclick="window.TracesApp.notify('Recomendação DDL copiada.', 'info')">
+          Copiar Recomendação DDL
         </button>
       </div>
 
@@ -274,7 +330,7 @@ class ExplainPlan {
           /*+ INDEX(e emp_salary_ix) */
         </div>
         <button class="btn btn-secondary" style="height: 26px; font-size: 11px;" onclick="window.TracesApp.applyOptimizerHint('/*+ INDEX(e emp_salary_ix) */')">
-          Apply to Worksheet
+          Aplicar na Worksheet
         </button>
       </div>
 
@@ -287,10 +343,15 @@ class ExplainPlan {
           /*+ LEADING(e d j) USE_NL(d j) */
         </div>
         <button class="btn btn-secondary" style="height: 26px; font-size: 11px;" onclick="window.TracesApp.applyOptimizerHint('/*+ LEADING(e d j) USE_NL(d j) */')">
-          Apply to Worksheet
+          Aplicar na Worksheet
         </button>
       </div>
     `;
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }
 

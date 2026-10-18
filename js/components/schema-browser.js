@@ -1,14 +1,17 @@
 /* ==========================================================================
-   SCHEMA BROWSER COMPONENT
+   SCHEMA BROWSER COMPONENT - TOAD FOR ORACLE PARITY (LIVE REAL DB)
    ========================================================================== */
 
 class SchemaBrowser {
   constructor() {
-    this.currentSchema = window.TRACES_DB.activeSchema;
+    this.currentSchema = window.TRACES_DB ? window.TRACES_DB.activeSchema : 'SYS';
     this.currentCategory = 'tables';
     this.selectedObject = null;
     this.currentDetailTab = 'columns';
     this.searchQuery = '';
+    this.realSchemas = [];
+    this.realObjects = null;
+    this.isLoadingDetails = false;
 
     this.initElements();
     this.bindEvents();
@@ -26,22 +29,26 @@ class SchemaBrowser {
   }
 
   bindEvents() {
-    this.schemaSelect.addEventListener('change', async (e) => {
-      this.currentSchema = e.target.value;
-      if (window.TRACES_DB) window.TRACES_DB.activeSchema = this.currentSchema;
-      this.selectedObject = null;
+    if (this.schemaSelect) {
+      this.schemaSelect.addEventListener('change', async (e) => {
+        this.currentSchema = e.target.value;
+        if (window.TRACES_DB) window.TRACES_DB.activeSchema = this.currentSchema;
+        this.selectedObject = null;
 
-      if (window.TracesApp && window.TracesApp.isRealDatabase) {
-        await this.loadRealObjects(this.currentSchema);
-      } else {
-        this.render();
-      }
-    });
+        if (window.TracesApp && window.TracesApp.isRealDatabase) {
+          await this.loadRealObjects(this.currentSchema);
+        } else {
+          this.render();
+        }
+      });
+    }
 
-    this.searchInput.addEventListener('input', (e) => {
-      this.searchQuery = e.target.value.toLowerCase().trim();
-      this.renderObjectList();
-    });
+    if (this.searchInput) {
+      this.searchInput.addEventListener('input', (e) => {
+        this.searchQuery = e.target.value.toLowerCase().trim();
+        this.renderObjectList();
+      });
+    }
 
     this.detailTabs.forEach(tab => {
       tab.addEventListener('click', (e) => {
@@ -58,43 +65,64 @@ class SchemaBrowser {
       if (data.schemas && data.schemas.length > 0) {
         this.realSchemas = data.schemas;
         const targetUser = (window.TracesApp.realDatabaseConfig?.user || 'SYS').toUpperCase();
-        this.schemaSelect.innerHTML = data.schemas.map(s => `
-          <option value="${s}" ${s.toUpperCase() === targetUser ? 'selected' : ''}>${s}</option>
-        `).join('');
+        
+        let foundSelected = false;
+        this.schemaSelect.innerHTML = data.schemas.map(s => {
+          const isSel = s.toUpperCase() === targetUser;
+          if (isSel) foundSelected = true;
+          return `<option value="${s}" ${isSel ? 'selected' : ''}>${s}</option>`;
+        }).join('');
+
+        if (!foundSelected && data.schemas.length > 0) {
+          this.schemaSelect.value = data.schemas[0];
+        }
+
         this.currentSchema = this.schemaSelect.value;
         await this.loadRealObjects(this.currentSchema);
       }
     } catch (e) {
-      console.warn('Real schemas error', e);
+      console.warn('Real schemas load error', e);
     }
   }
 
   async loadRealObjects(schema) {
+    if (!schema) return;
     try {
+      this.objectList.innerHTML = `
+        <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
+          <span class="toad-spinner" style="display:inline-block; margin-bottom:8px;">⏳</span><br>
+          Lendo catálogo de objetos de "${schema}"...
+        </div>
+      `;
+
       const resp = await fetch(`/api/objects?schema=${encodeURIComponent(schema)}`);
       const data = await resp.json();
       if (data.objects) {
         this.realObjects = {
           tables: data.objects.filter(o => o.type === 'TABLE'),
-          views: data.objects.filter(o => o.type === 'VIEW'),
-          packages: data.objects.filter(o => o.type === 'PACKAGE'),
+          views: data.objects.filter(o => o.type === 'VIEW' || o.type === 'MATERIALIZED VIEW'),
+          packages: data.objects.filter(o => o.type === 'PACKAGE' || o.type === 'PACKAGE BODY'),
           procedures: data.objects.filter(o => o.type === 'PROCEDURE'),
           functions: data.objects.filter(o => o.type === 'FUNCTION'),
           sequences: data.objects.filter(o => o.type === 'SEQUENCE'),
-          triggers: data.objects.filter(o => o.type === 'TRIGGER')
+          synonyms: data.objects.filter(o => o.type === 'SYNONYM'),
+          triggers: data.objects.filter(o => o.type === 'TRIGGER'),
+          types: data.objects.filter(o => o.type === 'TYPE' || o.type === 'TYPE BODY'),
+          indexes: data.objects.filter(o => o.type === 'INDEX')
         };
         this.renderCategoryPills();
         this.renderObjectList();
       }
     } catch (e) {
-      console.warn('Real objects error', e);
+      console.warn('Real objects load error', e);
+      this.objectList.innerHTML = `<div style="padding: 24px 16px; text-align: center; color: #c00000; font-size: 11px;">Erro ao carregar objetos: ${e.message}</div>`;
     }
   }
 
   onConnectionChanged(conn) {
     if (conn.user) {
-      this.currentSchema = conn.user;
-      this.schemaSelect.value = conn.user;
+      this.currentSchema = conn.user.toUpperCase();
+      if (this.schemaSelect) this.schemaSelect.value = this.currentSchema;
     }
     this.selectedObject = null;
     this.render();
@@ -121,7 +149,10 @@ class SchemaBrowser {
       { key: 'procedures', label: 'Procedures', count: data.procedures?.length || 0 },
       { key: 'functions', label: 'Functions', count: data.functions?.length || 0 },
       { key: 'sequences', label: 'Sequences', count: data.sequences?.length || 0 },
-      { key: 'triggers', label: 'Triggers', count: data.triggers?.length || 0 }
+      { key: 'synonyms', label: 'Synonyms', count: data.synonyms?.length || 0 },
+      { key: 'triggers', label: 'Triggers', count: data.triggers?.length || 0 },
+      { key: 'types', label: 'Types', count: data.types?.length || 0 },
+      { key: 'indexes', label: 'Indexes', count: data.indexes?.length || 0 }
     ];
 
     this.categoryScroller.innerHTML = categories.map(cat => `
@@ -138,6 +169,13 @@ class SchemaBrowser {
     this.selectedObject = null;
     this.renderCategoryPills();
     this.renderObjectList();
+
+    // Contextual tab switching
+    if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
+      this.switchDetailTab('source');
+    } else if (this.currentDetailTab === 'source') {
+      this.switchDetailTab('columns');
+    }
   }
 
   renderObjectList() {
@@ -151,7 +189,7 @@ class SchemaBrowser {
     if (filtered.length === 0) {
       this.objectList.innerHTML = `
         <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
-          No ${this.currentCategory} found matching "${this.searchQuery}"
+          Nenhum objeto "${this.currentCategory}" encontrado com "${this.searchQuery}"
         </div>
       `;
       return;
@@ -164,7 +202,7 @@ class SchemaBrowser {
           <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             ${this.getCategoryIcon(this.currentCategory)}
           </svg>
-          <span>${obj.name}</span>
+          <span style="font-weight: 600;">${obj.name}</span>
         </div>
         <span class="status-indicator ${obj.status ? obj.status.toLowerCase() : 'valid'}">
           ${obj.status || 'VALID'}
@@ -191,19 +229,23 @@ class SchemaBrowser {
         return '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>';
       case 'sequences':
         return '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>';
+      case 'synonyms':
+        return '<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9h6v6"/>';
       case 'triggers':
         return '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>';
+      case 'types':
+        return '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>';
+      case 'indexes':
+        return '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>';
       default:
         return '<circle cx="12" cy="12" r="10"/>';
     }
   }
 
-  selectObject(objectName) {
+  async selectObject(objectName) {
     const data = this.getSchemaData();
     const items = data[this.currentCategory] || [];
-    this.selectedObject = items.find(o => o.name === objectName);
-
-    if (!this.selectedObject) return;
+    this.selectedObject = items.find(o => o.name === objectName) || { name: objectName };
 
     // Update active highlight in list
     const allItems = this.objectList.querySelectorAll('.object-item');
@@ -215,7 +257,60 @@ class SchemaBrowser {
     this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
     this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
 
-    this.renderDetailContent();
+    // If connected to real Oracle DB, fetch complete live object details
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      await this.fetchRealObjectDetails(this.currentSchema, objectName, this.currentCategory);
+    } else {
+      this.renderDetailContent();
+    }
+  }
+
+  async fetchRealObjectDetails(schema, name, category) {
+    this.isLoadingDetails = true;
+    const catTypeMap = {
+      tables: 'TABLE',
+      views: 'VIEW',
+      packages: 'PACKAGE',
+      procedures: 'PROCEDURE',
+      functions: 'FUNCTION',
+      sequences: 'SEQUENCE',
+      synonyms: 'SYNONYM',
+      triggers: 'TRIGGER',
+      types: 'TYPE',
+      indexes: 'INDEX'
+    };
+    const objType = catTypeMap[category] || 'TABLE';
+
+    // Show loading state in detail area
+    const activePane = document.querySelector('.detail-tab-pane.active');
+    if (activePane) {
+      activePane.innerHTML = `
+        <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px;">
+          <span style="font-size: 18px; display: block; margin-bottom: 8px;">⚡</span>
+          Consultando metadados de <strong>${schema}.${name}</strong> no Oracle...
+        </div>
+      `;
+    }
+
+    try {
+      const resp = await fetch(`/api/object-details?schema=${encodeURIComponent(schema)}&name=${encodeURIComponent(name)}&type=${encodeURIComponent(objType)}`);
+      const details = await resp.json();
+
+      if (details.error) {
+        window.TracesApp.notify(`Erro ao obter detalhes de ${name}: ${details.error}`, 'error');
+        this.isLoadingDetails = false;
+        return;
+      }
+
+      // Merge into selectedObject
+      this.selectedObject = Object.assign(this.selectedObject, details);
+      this.isLoadingDetails = false;
+      this.renderDetailContent();
+    } catch (err) {
+      this.isLoadingDetails = false;
+      console.warn('Real object details fetch error:', err);
+      this.renderDetailContent();
+    }
   }
 
   switchDetailTab(tabKey) {
@@ -256,24 +351,24 @@ class SchemaBrowser {
             <tbody>
               ${obj.columns.map((col, idx) => `
                 <tr>
-                  <td style="color: var(--text-muted);">${idx + 1}</td>
-                  <td style="font-weight: 600; color: var(--text-primary);">${col.name}</td>
-                  <td style="color: var(--syntax-type);">${col.type}</td>
+                  <td style="color: var(--text-muted);">${col.id || (idx + 1)}</td>
+                  <td style="font-weight: 600; color: var(--text-primary); font-family: var(--font-code);">${col.name}</td>
+                  <td style="color: var(--syntax-type); font-family: var(--font-code);">${col.type}</td>
                   <td><span style="color: ${col.nullable === 'N' ? 'var(--traces-red)' : 'var(--text-muted)'}; font-weight: 600;">${col.nullable}</span></td>
-                  <td style="color: var(--syntax-string);">${col.defaultVal || '-'}</td>
+                  <td style="color: var(--syntax-string); font-family: var(--font-code);">${col.defaultVal || '-'}</td>
                   <td>
                     ${col.pk ? '<span class="pk-badge">PK</span> ' : ''}
                     ${col.fk ? '<span class="fk-badge">FK</span>' : ''}
                     ${!col.pk && !col.fk ? '-' : ''}
                   </td>
-                  <td style="color: var(--text-muted); font-size: 10px;">${col.comments || ''}</td>
+                  <td style="color: var(--text-muted); font-size: 11px;">${col.comments || ''}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         `;
       } else {
-        colPane.innerHTML = `<div style="padding: 24px; color: var(--text-muted);">No column declarations for this object.</div>`;
+        colPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma coluna declarada para ${obj.name}.</div>`;
       }
     }
 
@@ -296,22 +391,31 @@ class SchemaBrowser {
                   <tr>
                     <td class="row-num-cell">${idx + 1}</td>
                     ${cols.map(c => `
-                      <td>${row[c] !== null && row[c] !== undefined ? row[c] : '<span class="cell-null">(null)</span>'}</td>
+                      <td>${row[c] !== null && row[c] !== undefined ? this.escapeHtml(String(row[c])) : '<span class="cell-null">(null)</span>'}</td>
                     `).join('')}
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
-          <div style="padding: 6px 12px; background: var(--bg-surface); border-top: 1px solid var(--border-default); font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between;">
-            <span>Showing ${obj.data.length} rows (sampled from ${obj.numRows || obj.data.length} total)</span>
-            <button class="btn btn-secondary" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.openObjectInWorksheet('${obj.name}')">
-              Query in Worksheet (F9)
-            </button>
+          <div style="padding: 6px 12px; background: var(--bg-surface); border-top: 1px solid var(--border-default); font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
+            <span>Exibindo ${obj.data.length} registros (amostra ao vivo de ${this.currentSchema}.${obj.name})</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.openObjectInWorksheet('${obj.name}')">
+                Abrir na Worksheet (F9)
+              </button>
+            </div>
           </div>
         `;
       } else {
-        dataPane.innerHTML = `<div style="padding: 24px; color: var(--text-muted);">No tabular data preview available.</div>`;
+        dataPane.innerHTML = `
+          <div style="padding: 28px; color: var(--text-muted); text-align: center;">
+            Nenhum dado retornado para a tabela ${obj.name}.
+            <div style="margin-top: 8px;">
+              <button class="btn btn-primary" onclick="window.TracesApp.openObjectInWorksheet('${obj.name}')">Consultar SELECT * FROM ${this.currentSchema}.${obj.name}</button>
+            </div>
+          </div>
+        `;
       }
     }
 
@@ -326,25 +430,27 @@ class SchemaBrowser {
                 <th>Index Name</th>
                 <th>Uniqueness</th>
                 <th>Columns</th>
-                <th>Status</th>
+                <th>Tablespace</th>
                 <th>Clustering Factor</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               ${obj.indexes.map(ix => `
                 <tr>
-                  <td style="font-weight: 600; color: #38bdf8;">${ix.name}</td>
+                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${ix.name}</td>
                   <td>${ix.type}</td>
-                  <td style="color: var(--text-secondary);">${ix.columns}</td>
-                  <td><span class="status-indicator valid">${ix.status}</span></td>
+                  <td style="color: var(--text-primary); font-family: var(--font-code);">${ix.columns}</td>
+                  <td style="color: var(--text-muted);">${ix.tablespace || '-'}</td>
                   <td>${ix.clusteringFactor || '-'}</td>
+                  <td><span class="status-indicator valid">${ix.status || 'VALID'}</span></td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         `;
       } else {
-        idxPane.innerHTML = `<div style="padding: 24px; color: var(--text-muted);">No indexes configured.</div>`;
+        idxPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum índice definido para ${obj.name}.</div>`;
       }
     }
 
@@ -358,6 +464,7 @@ class SchemaBrowser {
               <tr>
                 <th>Constraint Name</th>
                 <th>Type</th>
+                <th>Columns</th>
                 <th>Details / Condition</th>
                 <th>Status</th>
               </tr>
@@ -365,59 +472,114 @@ class SchemaBrowser {
             <tbody>
               ${obj.constraints.map(cn => `
                 <tr>
-                  <td style="font-weight: 600;">${cn.name}</td>
-                  <td style="color: var(--syntax-keyword); font-weight: 600;">${cn.type}</td>
-                  <td style="color: var(--text-secondary);">${cn.details}</td>
-                  <td><span class="status-indicator valid">${cn.status}</span></td>
+                  <td style="font-weight: 600; font-family: var(--font-code);">${cn.name}</td>
+                  <td style="color: var(--syntax-keyword); font-weight: 700;">${cn.type}</td>
+                  <td style="color: var(--text-primary); font-family: var(--font-code);">${cn.columns || '-'}</td>
+                  <td style="color: var(--text-secondary); font-size: 11px;">${cn.details || '-'}</td>
+                  <td><span class="status-indicator valid">${cn.status || 'ENABLED'}</span></td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         `;
       } else {
-        constrPane.innerHTML = `<div style="padding: 24px; color: var(--text-muted);">No constraints defined.</div>`;
+        constrPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma constraint definida para ${obj.name}.</div>`;
       }
     }
 
     // 5. DDL Script Pane
     const ddlPane = document.getElementById('tab-pane-ddl');
     if (ddlPane) {
-      const ddlCode = obj.ddl || obj.specDdl || `-- DDL not generated for ${obj.name}`;
+      const ddlCode = obj.ddl || obj.specDdl || `-- DDL extraction for ${this.currentSchema}.${obj.name}`;
       ddlPane.innerHTML = `
-        <div style="display: flex; justify-content: flex-end; padding: 8px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-default);">
-          <button class="btn btn-secondary" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="navigator.clipboard.writeText(document.getElementById('ddl-code-block').textContent); window.TracesApp.notify('DDL copied to clipboard', 'info');">
-            Copy DDL
+        <div style="display: flex; justify-content: flex-end; padding: 6px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-default);">
+          <button class="btn btn-secondary" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="navigator.clipboard.writeText(document.getElementById('ddl-code-block').textContent); window.TracesApp.notify('DDL copiado para a área de transferência', 'info');">
+            Copiar DDL
           </button>
         </div>
-        <div id="ddl-code-block" class="ddl-script-container">${this.escapeHtml(ddlCode)}</div>
+        <div id="ddl-code-block" class="ddl-script-container" style="padding: 12px; font-family: var(--font-code); font-size: 11px; white-space: pre-wrap; line-height: 1.4; overflow: auto; height: calc(100% - 37px);">${this.escapeHtml(ddlCode)}</div>
       `;
     }
 
-    // 6. Statistics Pane
+    // 6. Source / Code Pane (Procedures, Functions, Packages, Triggers, Views)
+    const sourcePane = document.getElementById('tab-pane-source');
+    if (sourcePane) {
+      const src = obj.source || obj.ddl || '';
+      if (src) {
+        sourcePane.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-default);">
+            <span style="font-size: 11px; color: var(--text-muted);">PL/SQL Source Code (${src.split('\n').length} lines)</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="navigator.clipboard.writeText(document.getElementById('plsql-source-view').textContent); window.TracesApp.notify('Código fonte copiado', 'info');">
+                Copiar Código
+              </button>
+              <button class="btn btn-primary" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.schemaBrowser.recompileCurrentObject()">
+                Recompilar (F9)
+              </button>
+            </div>
+          </div>
+          <div id="plsql-source-view" class="ddl-script-container" style="padding: 12px; font-family: var(--font-code); font-size: 11px; white-space: pre-wrap; line-height: 1.4; overflow: auto; height: calc(100% - 37px);">${this.escapeHtml(src)}</div>
+        `;
+      } else {
+        sourcePane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Código fonte não aplicável para ${obj.name}.</div>`;
+      }
+    }
+
+    // 7. Grants Pane
+    const grantsPane = document.getElementById('tab-pane-grants');
+    if (grantsPane) {
+      if (obj.grants && obj.grants.length > 0) {
+        grantsPane.innerHTML = `
+          <table class="meta-table">
+            <thead>
+              <tr>
+                <th>Grantee</th>
+                <th>Privilege</th>
+                <th>Grantable</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${obj.grants.map(g => `
+                <tr>
+                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${g.grantee}</td>
+                  <td style="font-weight: 700;">${g.privilege}</td>
+                  <td>${g.grantable === 'YES' ? '<span style="color:#008000; font-weight:700;">YES</span>' : 'NO'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        grantsPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum privilégio específico concedido em ${obj.name}.</div>`;
+      }
+    }
+
+    // 8. Statistics Pane
     const statsPane = document.getElementById('tab-pane-stats');
     if (statsPane) {
+      const stats = obj.stats || {};
       statsPane.innerHTML = `
         <div style="padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
           <div class="advisor-card">
-            <div class="metric-label">Estimated Rows</div>
-            <div class="metric-value" style="font-size: 20px;">${(obj.numRows || 0).toLocaleString()}</div>
+            <div class="metric-label">Estimated Rows (NUM_ROWS)</div>
+            <div class="metric-value" style="font-size: 20px;">${(stats.numRows || obj.numRows || 0).toLocaleString()}</div>
           </div>
           <div class="advisor-card">
-            <div class="metric-label">Allocated Blocks</div>
-            <div class="metric-value" style="font-size: 20px;">${obj.blocks || '-'}</div>
+            <div class="metric-label">Allocated Blocks (BLOCKS)</div>
+            <div class="metric-value" style="font-size: 20px;">${stats.blocks || obj.blocks || '-'}</div>
           </div>
           <div class="advisor-card">
-            <div class="metric-label">Avg Row Length</div>
-            <div class="metric-value" style="font-size: 20px;">${obj.avgRowLen ? obj.avgRowLen + ' bytes' : '-'}</div>
+            <div class="metric-label">Avg Row Length (BYTES)</div>
+            <div class="metric-value" style="font-size: 20px;">${(stats.avgRowLen || obj.avgRowLen) ? (stats.avgRowLen || obj.avgRowLen) + ' bytes' : '-'}</div>
           </div>
           <div class="advisor-card">
             <div class="metric-label">Tablespace</div>
-            <div class="metric-value" style="font-size: 20px; color: var(--traces-red);">${obj.tablespace || 'USERS'}</div>
+            <div class="metric-value" style="font-size: 20px; color: var(--traces-red);">${stats.tablespace || obj.tablespace || 'USERS'}</div>
           </div>
           <div class="advisor-card" style="grid-column: 1 / -1;">
             <div class="metric-label">Last DBMS_STATS Gathered</div>
             <div style="font-family: var(--font-code); color: var(--text-primary); margin-top: 4px;">
-              ${obj.lastAnalyzed || 'Automatic Optimizer Job'}
+              ${stats.lastAnalyzed || obj.lastAnalyzed || 'Automatic Optimizer Job'}
             </div>
           </div>
         </div>
@@ -425,12 +587,34 @@ class SchemaBrowser {
     }
   }
 
-  recompileCurrentObject() {
+  async recompileCurrentObject() {
     if (!this.selectedObject) return;
-    window.TracesApp.notify(`ALTER ${this.currentCategory.slice(0, -1).toUpperCase()} "${this.currentSchema}"."${this.selectedObject.name}" COMPILE: SUCCESS`, 'success');
+    const cat = this.currentCategory.slice(0, -1).toUpperCase();
+    const sql = `ALTER ${cat} "${this.currentSchema}"."${this.selectedObject.name}" COMPILE;`;
+    
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro de compilação: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`ALTER ${cat} "${this.currentSchema}"."${this.selectedObject.name}" COMPILE: SUCESSO`, 'success');
+        }
+      } catch (e) {
+        window.TracesApp.notify(`Falha na compilação: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp.notify(`ALTER ${cat} "${this.currentSchema}"."${this.selectedObject.name}" COMPILE: SUCESSO (Modo Local)`, 'success');
+    }
   }
 
   escapeHtml(str) {
+    if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }

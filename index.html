@@ -210,6 +210,12 @@
           <span>Recall (F8)</span>
         </button>
 
+        <!-- Toad Code Snippets Library -->
+        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.openCodeSnippetsModal()" title="Toad Code Snippets Library">
+          <span class="toad-btn-icon" style="color: #0284c7;">💡</span>
+          <span>Snippets</span>
+        </button>
+
         <!-- Bind Variables -->
         <button class="toad-btn" id="btn-bind-variables" onclick="window.TracesApp.toadModals.openBindVariables()" title="Prompt for Bind Variables">
           <span style="color: #800080; font-weight: 700;">:bind</span>
@@ -410,6 +416,9 @@
                   <option value="SALES_ADMIN">SALES_ADMIN</option>
                   <option value="SYSTEM">SYSTEM</option>
                 </select>
+                <button class="btn" style="height: 22px; padding: 0 6px;" title="Refresh Schema Objects" onclick="if(window.TracesApp.isRealDatabase) { window.TracesApp.schemaBrowser.loadRealObjects(document.getElementById('browser-schema-select').value); } else { window.TracesApp.schemaBrowser.render(); }">
+                  🔄
+                </button>
               </div>
             </div>
 
@@ -449,6 +458,8 @@
               <button class="detail-tab" data-tab="indexes">Indexes</button>
               <button class="detail-tab" data-tab="constraints">Constraints</button>
               <button class="detail-tab" data-tab="ddl">Script (DDL)</button>
+              <button class="detail-tab" data-tab="source">Source (Code)</button>
+              <button class="detail-tab" data-tab="grants">Grants</button>
               <button class="detail-tab" data-tab="stats">Stats</button>
             </div>
 
@@ -459,6 +470,8 @@
               <div class="detail-tab-pane" id="tab-pane-indexes"></div>
               <div class="detail-tab-pane" id="tab-pane-constraints"></div>
               <div class="detail-tab-pane" id="tab-pane-ddl"></div>
+              <div class="detail-tab-pane" id="tab-pane-source"></div>
+              <div class="detail-tab-pane" id="tab-pane-grants"></div>
               <div class="detail-tab-pane" id="tab-pane-stats"></div>
             </div>
           </div>
@@ -554,13 +567,46 @@
             </div>
           </div>
 
-          <div class="session-toolbar">
-            <div class="session-filter-group">
-              <button class="btn active" id="filter-active-sessions">Active Sessions Only</button>
+          <div class="session-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: #f0f0f0; border-bottom: 1px solid #bfbfbf; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 700; font-size: 11px;">Filter:</span>
+              <select class="toad-conn-combobox" id="session-native-filter-select" style="height: 24px; min-width: 180px;" onchange="window.TracesApp.sessionMonitor.onFilterChanged(this.value)">
+                <option value="all">ALL SESSIONS</option>
+                <option value="filter9" selected>STATUS - ACTIVE</option>
+                <option value="filter10">STATUS - INACTIVE</option>
+                <option value="filter3">WAIT FOR LOCK</option>
+                <option value="filter4">LAST CALL > 10 MIN</option>
+                <option value="filter5">DUPLICATE USERNAMES</option>
+                <option value="filter6">DUPLICATE PROGRAMS</option>
+                <option value="filter7">HIGH IO</option>
+                <option value="filter1">TOAD SESSIONS</option>
+                <option value="filter2">SAME USER</option>
+                <option value="filter11">SERVER - DEDICATED</option>
+                <option value="filter12">SERVER - SHARED</option>
+              </select>
+
+              <span style="font-weight: 700; font-size: 11px; margin-left: 8px;">Auto-Refresh:</span>
+              <select class="toad-conn-combobox" id="session-autorefresh-select" style="height: 24px; width: 95px;" onchange="window.TracesApp.sessionMonitor.setAutoRefresh(this.value)">
+                <option value="0">Off</option>
+                <option value="3">3 sec</option>
+                <option value="5" selected>5 sec</option>
+                <option value="10">10 sec</option>
+                <option value="30">30 sec</option>
+              </select>
+
+              <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.sessionMonitor.refresh()" title="Refresh Sessions Now">
+                🔄 Refresh
+              </button>
             </div>
-            <span style="font-size: 11px; color: #c00000; font-weight: 700;">
-              ⚠ Lock Detected: Blocker SID 312 holding TX Row Contention
-            </span>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn btn-danger" style="height: 24px; padding: 0 10px; font-weight: 700;" onclick="window.TracesApp.sessionMonitor.killCurrentSession('IMMEDIATE')">
+                ⚡ Kill Session (IMMEDIATE)
+              </button>
+              <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.sessionMonitor.killCurrentSession('POST_TRANSACTION')">
+                Disconnect (Post-Tx)
+              </button>
+            </div>
           </div>
 
           <div class="session-body-split">
@@ -792,8 +838,40 @@
           </div>
           <div id="connection-profiles-list"></div>
         </div>
-        <div class="modal-footer">
-          <button class="btn" onclick="window.TracesApp.connectionManager.closeModal()">Cancel</button>
+    <!-- TOAD CODE SNIPPETS LIBRARY MODAL -->
+    <div class="toad-modal" id="modal-code-snippets">
+      <div class="toad-modal-dialog" style="max-width: 720px; width: 92%; max-height: 560px; display: flex; flex-direction: column;">
+        <div class="toad-modal-header" style="background: #0078d7; color: #fff;">
+          <span style="font-weight: 700; font-size: 13px;">💡 Toad for Oracle - Code Snippets Library</span>
+          <span class="toad-modal-close" onclick="document.getElementById('modal-code-snippets').classList.remove('open')">×</span>
+        </div>
+        <div class="modal-body" style="padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; flex: 1;">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <label style="font-weight: 700; font-size: 11px;">Categoria:</label>
+            <select class="toad-conn-combobox" id="snippets-category-select" style="flex: 1; height: 26px;" onchange="window.TracesApp.sqlEditor.onSnippetCategoryChanged(this.value)">
+              <!-- Populated dynamically from CodeSnippets.json -->
+            </select>
+            <input type="text" id="snippets-search-input" placeholder="Filtrar snippets..." style="width: 200px; padding: 4px 8px; border: 1px solid #bfbfbf; font-size: 11px;" oninput="window.TracesApp.sqlEditor.onSnippetSearchChanged(this.value)">
+          </div>
+
+          <div style="flex: 1; overflow-y: auto; border: 1px solid #bfbfbf; background: #fff;" id="snippets-table-container">
+            <table class="meta-table" style="width: 100%;">
+              <thead>
+                <tr>
+                  <th style="width: 220px;">Snippet / Função</th>
+                  <th>Descrição</th>
+                  <th style="width: 70px; text-align: center;">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="snippets-table-body">
+                <!-- Snippets rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 8px 12px; background: #f0f0f0; border-top: 1px solid #bfbfbf; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 11px; color: #666;">Clique duplo na linha ou no botão Inserir para colar na posição do cursor</span>
+          <button class="btn" onclick="document.getElementById('modal-code-snippets').classList.remove('open')">Fechar</button>
         </div>
       </div>
     </div>
@@ -803,25 +881,25 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="js/data/mock-db.js?v=20261018c"></script>
-  <script src="js/data/rule-universe-data.js?v=20261018c"></script>
-  <script src="js/components/connection-manager.js?v=20261018c"></script>
-  <script src="js/components/toad-modals.js?v=20261018c"></script>
-  <script src="js/components/toad-menus.js?v=20261018c"></script>
-  <script src="js/components/schema-browser.js?v=20261018c"></script>
-  <script src="js/components/data-grid.js?v=20261018c"></script>
-  <script src="js/components/sql-editor.js?v=20261018c"></script>
-  <script src="js/components/explain-plan.js?v=20261018c"></script>
-  <script src="js/components/session-monitor.js?v=20261018c"></script>
-  <script src="js/components/rule-auditor.js?v=20261018c"></script>
-  <script src="js/components/database-probe.js?v=20261018c"></script>
-  <script src="js/components/traces-copilot.js?v=20261018c"></script>
-  <script src="js/components/spotlight-oracle.js?v=20261018c"></script>
-  <script src="js/components/data-modeler.js?v=20261018c"></script>
-  <script src="js/components/dba-tools.js?v=20261018c"></script>
-  <script src="js/components/code-quality.js?v=20261018c"></script>
-  <script src="js/components/automation-designer.js?v=20261018c"></script>
-  <script src="js/components/sql-optimizer.js?v=20261018c"></script>
-  <script src="js/app.js?v=20261018c"></script>
+  <script src="js/data/mock-db.js?v=20261018toad_parity"></script>
+  <script src="js/data/rule-universe-data.js?v=20261018toad_parity"></script>
+  <script src="js/components/connection-manager.js?v=20261018toad_parity"></script>
+  <script src="js/components/toad-modals.js?v=20261018toad_parity"></script>
+  <script src="js/components/toad-menus.js?v=20261018toad_parity"></script>
+  <script src="js/components/schema-browser.js?v=20261018toad_parity"></script>
+  <script src="js/components/data-grid.js?v=20261018toad_parity"></script>
+  <script src="js/components/sql-editor.js?v=20261018toad_parity"></script>
+  <script src="js/components/explain-plan.js?v=20261018toad_parity"></script>
+  <script src="js/components/session-monitor.js?v=20261018toad_parity"></script>
+  <script src="js/components/rule-auditor.js?v=20261018toad_parity"></script>
+  <script src="js/components/database-probe.js?v=20261018toad_parity"></script>
+  <script src="js/components/traces-copilot.js?v=20261018toad_parity"></script>
+  <script src="js/components/spotlight-oracle.js?v=20261018toad_parity"></script>
+  <script src="js/components/data-modeler.js?v=20261018toad_parity"></script>
+  <script src="js/components/dba-tools.js?v=20261018toad_parity"></script>
+  <script src="js/components/code-quality.js?v=20261018toad_parity"></script>
+  <script src="js/components/automation-designer.js?v=20261018toad_parity"></script>
+  <script src="js/components/sql-optimizer.js?v=20261018toad_parity"></script>
+  <script src="js/app.js?v=20261018toad_parity"></script>
 </body>
 </html>
