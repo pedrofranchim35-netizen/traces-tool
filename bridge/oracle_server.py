@@ -32,6 +32,11 @@ import sys
 import time
 import socket
 import urllib.parse
+import urllib.request
+import subprocess
+import zipfile
+import tempfile
+import ssl
 from datetime import datetime, date
 
 # Try importing oracledb
@@ -55,6 +60,7 @@ PORT = 3033
 WEB_ROOT = os.path.dirname(os.path.abspath(__file__))
 if os.path.basename(WEB_ROOT) == "bridge":
     WEB_ROOT = os.path.dirname(WEB_ROOT)
+BASE_DIR = WEB_ROOT
 
 # Global active Oracle database connection state
 ACTIVE_CONNECTION = {
@@ -184,6 +190,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_wallet()
         elif parsed.path == "/api/dba/dbcompare":
             self.handle_get_dbcompare()
+        elif parsed.path == "/api/update/check":
+            self.handle_update_check()
         else:
             # Serve static files (HTML, CSS, JS, Assets)
             super().do_GET()
@@ -229,6 +237,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_post_datacompare(payload)
         elif parsed.path == "/api/datapump":
             self.handle_post_datapump(payload)
+        elif parsed.path == "/api/update/apply":
+            self.handle_update_apply(payload)
         else:
             self.send_api_response({"error": f"Endpoint not found: {parsed.path}"}, status=404)
 
@@ -2569,6 +2579,125 @@ TRAILING NULLCOLS
                 "logfile": logfile,
                 "message": f"Data Pump ({mode.upper()}) Job specification generated."
             })
+
+    def handle_update_check(self):
+        """Checks GitHub API for newest commit on main vs local version"""
+        local_sha = ""
+        # 1. Try git rev-parse HEAD
+        try:
+            res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=BASE_DIR, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
+            if res.returncode == 0:
+                local_sha = res.stdout.strip()
+        except Exception:
+            pass
+
+        # 2. Try .version file
+        ver_file = os.path.join(BASE_DIR, ".version")
+        if not local_sha and os.path.exists(ver_file):
+            try:
+                with open(ver_file, 'r', encoding='utf-8') as f:
+                    local_sha = f.read().strip()
+            except Exception:
+                pass
+
+        # 3. Check GitHub API or git ls-remote
+        remote_sha = ""
+        commit_msg = ""
+        commit_date = ""
+
+        # Create unverified SSL context to prevent issues on systems without CA certs
+        ssl_ctx = ssl._create_unverified_context()
+
+        try:
+            req = urllib.request.Request(
+                "https://api.github.com/repos/pedrofranchim35-netizen/traces-tool/commits/main",
+                headers={"User-Agent": "TracesToad-Updater"}
+            )
+            with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as response:
+                commit_data = json.loads(response.read().decode('utf-8'))
+                remote_sha = commit_data.get("sha", "")
+                commit_msg = commit_data.get("commit", {}).get("message", "").split("\n")[0]
+                commit_date = commit_data.get("commit", {}).get("author", {}).get("date", "")
+        except Exception as e:
+            # Fallback to git ls-remote if git is available
+            try:
+                res = subprocess.run(["git", "ls-remote", "origin", "refs/heads/main"], cwd=BASE_DIR, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=6)
+                if res.returncode == 0 and res.stdout.strip():
+                    remote_sha = res.stdout.strip().split()[0]
+                    commit_msg = "Última versão do branch main (GitHub)"
+            except Exception:
+                pass
+
+        if not remote_sha:
+            self.send_api_response({
+                "success": False,
+                "error": "Não foi possível consultar o repositório GitHub. Verifique sua conexão com a Internet.",
+                "currentCommit": local_sha[:10] if local_sha else "Local"
+            }, status=500)
+            return
+
+        update_available = bool(remote_sha and local_sha and remote_sha[:10] != local_sha[:10])
+
+        self.send_api_response({
+            "success": True,
+            "updateAvailable": update_available,
+            "currentCommit": local_sha[:10] if local_sha else "Local",
+            "latestCommit": remote_sha[:10] if remote_sha else "Desconhecido",
+            "commitMessage": commit_msg,
+            "commitDate": commit_date
+        })
+
+    def handle_update_apply(self, payload):
+        """Executes git pull or extracts latest repository zip"""
+        output_logs = []
+        success = False
+        try:
+            # 1. Check if git is available and .git exists
+            git_dir = os.path.join(BASE_DIR, ".git")
+            if os.path.exists(git_dir):
+                res = subprocess.run(["git", "pull", "origin", "main"], cwd=BASE_DIR, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+                output_logs.append(res.stdout)
+                if res.returncode == 0:
+                    success = True
+                    output_logs.append("Git pull concluído com sucesso.")
+                else:
+                    output_logs.append(f"Git pull stderr: {res.stderr}")
+
+            if not success:
+                # 2. Fallback: Download ZIP from GitHub and extract
+                zip_url = "https://codeload.github.com/pedrofranchim35-netizen/traces-tool/zip/refs/heads/main"
+                ssl_ctx = ssl._create_unverified_context()
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                    req = urllib.request.Request(zip_url, headers={"User-Agent": "TracesToad-Updater"})
+                    with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+                        tmp_zip.write(resp.read())
+                    tmp_zip.flush()
+
+                    with zipfile.ZipFile(tmp_zip.name, 'r') as zip_ref:
+                        for member in zip_ref.namelist():
+                            parts = member.split('/', 1)
+                            if len(parts) > 1 and parts[1]:
+                                target_path = os.path.join(BASE_DIR, parts[1])
+                                if member.endswith('/'):
+                                    os.makedirs(target_path, exist_ok=True)
+                                else:
+                                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                                    with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
+                                        dst.write(src.read())
+                    success = True
+                    output_logs.append("Download e extração do pacote ZIP concluídos com sucesso.")
+
+            self.send_api_response({
+                "success": success,
+                "message": "Aplicativo atualizado com sucesso!",
+                "logs": "\n".join(output_logs)
+            })
+        except Exception as e:
+            self.send_api_response({
+                "success": False,
+                "error": f"Erro durante a atualização: {str(e)}",
+                "logs": "\n".join(output_logs)
+            }, status=500)
 
 def run_server():
     socketserver.TCPServer.allow_reuse_address = True

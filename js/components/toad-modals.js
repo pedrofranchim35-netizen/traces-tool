@@ -1434,6 +1434,126 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
   openProjectManager() {
     window.TracesApp.notify('Project Manager: Workspace do projeto aberto com 3 conexões e 12 scripts SQL.', 'info');
   }
+
+  // 21. Check for Updates from GitHub
+  openUpdateDialog() {
+    const body = `
+      <div id="update-modal-body" style="font-size: 11.5px; display: flex; flex-direction: column; gap: 10px; padding: 4px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 26px;">🔄</span>
+          <div>
+            <div style="font-weight: 700; font-size: 13px; color: #0078d7;">Verificador de Atualizações (GitHub Auto-Updater)</div>
+            <div style="color: #666; font-size: 11px;">Repositório: <b>pedrofranchim35-netizen/traces-tool</b> (Branch: <b>main</b>)</div>
+          </div>
+        </div>
+
+        <div id="update-status-box" style="background: #f7f7f7; border: 1px solid #ccc; padding: 10px; border-radius: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="animated-pulse-dot" style="background: #0078d7; width: 8px; height: 8px; border-radius: 50%; display: inline-block;"></span>
+            <span>Verificando versão mais recente no GitHub...</span>
+          </div>
+        </div>
+
+        <div id="update-action-container" style="display: none; flex-direction: column; gap: 8px;">
+          <div id="update-details-box" style="font-size: 11px; background: #fff; border: 1px solid #bfbfbf; padding: 8px; border-radius: 3px; line-height: 1.5;">
+          </div>
+          <button id="btn-apply-update" class="btn btn-primary" style="height: 30px; font-weight: 700; background: #008000;" onclick="window.TracesApp.toadModals.applyUpdateNow();">
+            ⬇️ Baixar e Atualizar Aplicativo Agora
+          </button>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Fechar</button>
+    `;
+
+    this.show('Atualização do Aplicativo (GitHub)', body, footer, '520px');
+    this.checkForUpdates();
+  }
+
+  async checkForUpdates() {
+    try {
+      const resp = await fetch('/api/update/check');
+      const data = await resp.json();
+
+      const statusBox = document.getElementById('update-status-box');
+      const actionContainer = document.getElementById('update-action-container');
+      const detailsBox = document.getElementById('update-details-box');
+      const applyBtn = document.getElementById('btn-apply-update');
+
+      if (!data.success) {
+        if (statusBox) statusBox.innerHTML = `<span style="color:#c00000; font-weight:700;">⚠ ${data.error || 'Erro ao conectar ao GitHub'}</span>`;
+        return;
+      }
+
+      if (data.updateAvailable) {
+        if (statusBox) statusBox.innerHTML = `<span style="color:#b45309; font-weight:700; font-size:12px;">🎉 Nova versão disponível no GitHub!</span>`;
+        if (detailsBox) {
+          detailsBox.innerHTML = `
+            <div>Versão Atual Instalada: <b style="color:#666;">${data.currentCommit}</b></div>
+            <div>Versão Mais Recente (GitHub): <b style="color:#008000;">${data.latestCommit}</b></div>
+            <div style="margin-top: 4px; color:#333;">Commit: <i>"${data.commitMessage}"</i></div>
+            <div style="font-size:10px; color:#888;">Data: ${data.commitDate}</div>
+          `;
+        }
+        if (actionContainer) actionContainer.style.display = 'flex';
+      } else {
+        if (statusBox) statusBox.innerHTML = `<span style="color:#008000; font-weight:700; font-size:12px;">✔ O seu aplicativo já está atualizado na versão mais recente!</span>`;
+        if (detailsBox) {
+          detailsBox.innerHTML = `
+            <div>Versão Atual (Commit): <b style="color:#0078d7;">${data.currentCommit}</b></div>
+            <div style="margin-top: 4px; color:#555;">Último commit no GitHub: <i>"${data.commitMessage}"</i></div>
+          `;
+        }
+        if (applyBtn) {
+          applyBtn.textContent = '🔄 Forçar Re-sincronização do GitHub';
+          applyBtn.style.background = '#0078d7';
+        }
+        if (actionContainer) actionContainer.style.display = 'flex';
+      }
+    } catch (e) {
+      const statusBox = document.getElementById('update-status-box');
+      if (statusBox) statusBox.innerHTML = `<span style="color:#c00000;">Erro ao consultar servidor local: ${e.message}</span>`;
+    }
+  }
+
+  async applyUpdateNow() {
+    const btn = document.getElementById('btn-apply-update');
+    const statusBox = document.getElementById('update-status-box');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Baixando e aplicando atualização do Git...';
+    }
+    if (statusBox) {
+      statusBox.innerHTML = `<span style="color:#0078d7; font-weight:700;">Baixando e sincronizando arquivos atualizados do GitHub...</span>`;
+    }
+
+    try {
+      const resp = await fetch('/api/update/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const res = await resp.json();
+
+      if (res.success) {
+        if (statusBox) statusBox.innerHTML = `<span style="color:#008000; font-weight:700;">✔ Atualizado com sucesso! Recarregando a página...</span>`;
+        window.TracesApp.notify('Aplicativo atualizado com sucesso! Recarregando...', 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        if (statusBox) statusBox.innerHTML = `<span style="color:#c00000; font-weight:700;">Erro: ${res.error}</span>`;
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Tentar Novamente';
+        }
+      }
+    } catch (e) {
+      if (statusBox) statusBox.innerHTML = `<span style="color:#c00000;">Erro: ${e.message}</span>`;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Tentar Novamente';
+      }
+    }
+  }
 }
 
 window.ToadModals = ToadModals;

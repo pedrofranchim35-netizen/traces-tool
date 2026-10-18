@@ -233,6 +233,8 @@ class ToadMenus {
         { label: 'Toad for Oracle Help Topics', icon: '❓', shortcut: 'F1', action: () => window.TracesApp.toadModals.openHelpTopics() },
         { label: 'Keyboard Shortcuts Cheatsheet', icon: '⌨', shortcut: '', action: () => window.TracesApp.toadModals.openShortcutsCheatsheet() },
         { separator: true },
+        { label: 'Check for Updates from GitHub...', icon: '🔄', shortcut: '', action: () => window.TracesApp.toadModals.openUpdateDialog() },
+        { separator: true },
         { label: 'About Toad for Oracle', icon: 'ℹ', shortcut: '', action: () => window.TracesApp.toadModals.openAboutDialog() }
       ]
     };
