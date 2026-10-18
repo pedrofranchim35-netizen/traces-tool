@@ -1,0 +1,11 @@
+{
+  "appName": "TRACES Toad for Oracle",
+  "version": "2026.2.0",
+  "gitRepoUrl": "https://github.com/morluto/rea.git",
+  "gitBranch": "main",
+  "serverPort": 3033,
+  "installDirName": "TracesToad",
+  "autoUpdateOnLaunch": true,
+  "createDesktopShortcut": true,
+  "createStartMenuShortcut": true
+}

@@ -1,0 +1,302 @@
+/* ==========================================================================
+   TOAD CLASSIC SQL EDITOR & WORKSHEET STYLES
+   ========================================================================== */
+
+.editor-view-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+/* File Tab Bar inside Editor */
+.worksheet-tab-bar {
+  height: 24px;
+  background: #e8e8e8;
+  border-bottom: 1px solid #bfbfbf;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 4px;
+  gap: 2px;
+}
+
+.worksheet-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 21px;
+  padding: 0 8px;
+  background: #d4d4d4;
+  border: 1px solid #999;
+  border-bottom: none;
+  border-radius: 2px 2px 0 0;
+  font-size: 11px;
+  color: #333;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.worksheet-tab:hover {
+  background: #e4e4e4;
+  color: #000;
+}
+
+.worksheet-tab.active {
+  background: #ffffff;
+  border-color: #777;
+  border-bottom: 1px solid #ffffff;
+  color: #000;
+  font-weight: 600;
+  height: 22px;
+  z-index: 2;
+}
+
+.tab-close-btn {
+  font-size: 11px;
+  color: #888;
+  padding: 0 2px;
+}
+
+.tab-close-btn:hover {
+  color: #c00000;
+}
+
+.btn-new-tab {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  font-weight: 700;
+  font-size: 13px;
+  color: #555;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+.btn-new-tab:hover {
+  background: #fff;
+  border-color: #999;
+}
+
+/* Editor Split Container */
+.editor-split-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-upper-pane {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  position: relative;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.code-editor-wrapper {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  font-family: var(--toad-font-code);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Classic Gutter */
+.editor-gutter {
+  width: 44px;
+  background: #f0f0f0;
+  border-right: 1px solid #d4d4d4;
+  padding: 8px 0;
+  text-align: right;
+  color: #808080;
+  user-select: none;
+  font-size: 11px;
+}
+
+.gutter-line {
+  padding-right: 8px;
+  height: 18px;
+}
+
+.editor-textarea-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.sql-code-textarea {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  color: transparent;
+  caret-color: #000000;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+  z-index: 2;
+  tab-size: 2;
+}
+
+.sql-code-highlighted {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  pointer-events: none;
+  white-space: pre;
+  overflow: hidden;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  z-index: 1;
+  color: #000000;
+}
+
+/* Classic Toad Syntax Colors */
+.syn-kw { color: var(--toad-syn-keyword); font-weight: 700; }
+.syn-fn { color: var(--toad-syn-function); font-weight: 700; }
+.syn-str { color: var(--toad-syn-string); }
+.syn-num { color: var(--toad-syn-number); }
+.syn-com { color: var(--toad-syn-comment); font-style: italic; }
+.syn-var { color: var(--toad-syn-variable); font-weight: 600; }
+.syn-type { color: var(--toad-syn-type); font-weight: 600; }
+
+/* Classic Toad Splitter */
+.pane-splitter {
+  height: 6px;
+  background: #e4e4e4;
+  border-top: 1px solid #bfbfbf;
+  border-bottom: 1px solid #bfbfbf;
+  cursor: row-resize;
+  position: relative;
+}
+
+.pane-splitter::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 30px;
+  height: 2px;
+  border-top: 1px solid #999;
+  border-bottom: 1px solid #999;
+  transform: translateX(-50%);
+}
+
+.pane-splitter:hover {
+  background: #cce8ff;
+}
+
+/* Lower Output Pane & Tabs */
+.editor-lower-pane {
+  height: 270px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.output-tabs-bar {
+  height: 25px;
+  background: #e4e4e4;
+  border-bottom: 1px solid #bfbfbf;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 4px;
+  gap: 2px;
+}
+
+.output-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  background: #d8d8d8;
+  border: 1px solid #a6a6a6;
+  border-bottom: none;
+  border-radius: 2px 2px 0 0;
+  color: #333;
+  font-size: 11px;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.output-tab:hover {
+  background: #ebebeb;
+}
+
+.output-tab.active {
+  background: #ffffff;
+  border-color: #777;
+  border-bottom: 1px solid #ffffff;
+  color: #000;
+  font-weight: 600;
+  height: 23px;
+  z-index: 2;
+}
+
+.output-tab-count {
+  font-size: 10px;
+  color: #666;
+}
+
+.output-tab-content {
+  flex: 1;
+  display: none;
+  overflow: hidden;
+  position: relative;
+  background: #ffffff;
+}
+
+.output-tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+.console-output-view {
+  flex: 1;
+  padding: 8px 12px;
+  font-family: var(--toad-font-code);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #000;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+.console-line {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.console-timestamp {
+  color: #888;
+}
+
+.console-line.success { color: #008000; }
+.console-line.error { color: #c00000; }
+.console-line.info { color: #0000ff; }
+.console-line.dbms { color: #7f3f00; font-weight: 600; }

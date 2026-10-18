@@ -1,0 +1,246 @@
+/* ==========================================================================
+   SESSION BROWSER & INSTANCE MONITOR STYLES
+   ========================================================================== */
+
+.session-view-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+/* Instance Gauges Header */
+.instance-gauges-strip {
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.gauge-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.gauge-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+}
+
+.gauge-ring-svg {
+  width: 38px;
+  height: 38px;
+  transform: rotate(-90deg);
+}
+
+.gauge-ring-bg {
+  fill: none;
+  stroke: var(--border-default);
+  stroke-width: 3.5;
+}
+
+.gauge-ring-fill {
+  fill: none;
+  stroke: var(--status-success);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.gauge-ring-fill.warn { stroke: var(--status-warning); }
+.gauge-ring-fill.danger { stroke: var(--traces-red); }
+
+.gauge-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.gauge-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.gauge-value {
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Controls Toolbar */
+.session-toolbar {
+  height: 36px;
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.session-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.toggle-chip.active {
+  background: var(--bg-surface-active);
+  color: var(--text-primary);
+  border-color: var(--border-highlight);
+  font-weight: 500;
+}
+
+/* Session Split: Table + Inspector */
+.session-body-split {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-table-wrapper {
+  flex: 1;
+  overflow: auto;
+}
+
+.session-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-code);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.session-data-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--border-default);
+  z-index: 5;
+}
+
+.session-data-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.session-data-table tr:hover td {
+  background: var(--bg-surface-elevated);
+}
+
+.session-data-table tr.selected td {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.session-data-table tr.blocking td {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #fca5a5;
+  font-weight: 600;
+}
+
+.session-status-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.session-status-badge.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.session-status-badge.inactive {
+  background: rgba(100, 116, 139, 0.2);
+  color: var(--text-muted);
+}
+
+.session-status-badge.blocked {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+/* Lock Tree Section */
+.lock-tree-panel {
+  height: 220px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lock-tree-header {
+  padding: 8px 14px;
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.lock-tree-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.lock-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lock-node.root-blocker {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.lock-node.waiting-session {
+  color: #fbbf24;
+  padding-left: 24px;
+}

@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toad for Oracle - [Editor (SYSTEM@sales_prod)]</title>
+  <meta name="description" content="Toad for Oracle authentic desktop layout and features powered by Traces.">
+
+  <!-- Core Stylesheets -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/toad-menus.css">
+  <link rel="stylesheet" href="css/suite-tools.css">
+  <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/browser.css">
+  <link rel="stylesheet" href="css/grid.css">
+  <link rel="stylesheet" href="css/explain.css">
+</head>
+<body>
+  <div id="app-container">
+    
+    <!-- ====================================================================
+         TOAD CLASSIC WINDOW TITLEBAR (WITH TRACES LOGO)
+         ==================================================================== -->
+    <header class="toad-titlebar">
+      <div class="toad-titlebar-left">
+        <!-- Replaced Toad frog logo with TRACES official logo -->
+        <img src="assets/traces-logo.png" alt="TRACES" class="toad-traces-logo-img" title="TRACES Oracle Studio">
+        <span class="toad-title-text" id="toad-window-title">Toad for Oracle - [Editor (SYSTEM@sales_prod.db.corp)]</span>
+      </div>
+      <div class="toad-window-controls">
+        <button class="win-btn" title="Minimize">🗕</button>
+        <button class="win-btn" title="Maximize">🗖</button>
+        <button class="win-btn win-close" title="Close">✕</button>
+      </div>
+    </header>
+
+    <!-- Toad Connection Color Coding Band (Red for PROD, Green for DEV, Amber for UAT) -->
+    <div class="toad-conn-color-band" id="toad-color-band"></div>
+
+    <!-- Read-Only Mode Banner Indicator -->
+    <div class="read-only-banner" id="toad-read-only-banner">
+      🔒 READ-ONLY SAFETY MODE: DML and DDL commands are blocked by interface lock.
+    </div>
+
+    <!-- ====================================================================
+         TOAD CLASSIC MENU BAR
+         ==================================================================== -->
+    <nav class="toad-menubar" aria-label="Main Menu">
+      <div class="toad-menu-item" onclick="window.TracesApp.connectionManager.openModal()">File</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.sqlEditor.formatSql()">Edit</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.schemaBrowser.searchInput.focus()">Search</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('browser')">View</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('sessions')">Database</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('browser')">Schema</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('editor')">Editor</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('rules')">Debug</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('sessions')">Session</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('probe')">Tools</div>
+      <div class="toad-menu-item" onclick="window.TracesApp.tracesCopilot.toggleDrawer()">Window</div>
+      <div class="toad-menu-item" onclick="alert('Toad for Oracle 2026 R2 - Re-engineered with TRACES\nConnected to: Oracle Database 23ai RAC')">Help</div>
+    </nav>
+
+    <!-- ====================================================================
+         TOAD CLASSIC TOOLBARS (ROW 1: MAIN & ROW 2: EDITOR)
+         ==================================================================== -->
+    <div class="toad-toolbars-container">
+      <!-- Toolbar Row 1: Main Application Toolbar -->
+      <div class="toad-toolbar-row">
+        <div class="toolbar-grip"></div>
+        
+        <!-- Connection actions -->
+        <button class="toad-btn" onclick="window.TracesApp.connectionManager.openModal()" title="New Database Connection">
+          <span class="toad-btn-icon" style="color: #008000;">⚡</span>
+          <span>Connect</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.notify('Disconnected session.', 'info')" title="End Connection">
+          <span class="toad-btn-icon" style="color: #c00000;">🔌</span>
+          <span>Disconnect</span>
+        </button>
+
+        <!-- Connection Dropdown Selector -->
+        <select class="toad-conn-combobox" id="toad-conn-selector">
+          <option value="rmprod-traces" selected>SYS@10.100.10.39/RMPROD (SYSDBA)</option>
+        </select>
+
+        <div class="toad-separator"></div>
+
+        <!-- Commit & Rollback -->
+        <button class="toad-btn btn-commit" id="btn-commit" title="Commit Transaction (F11)">
+          <span class="toad-btn-icon">✓</span>
+          <span>Commit</span>
+        </button>
+        <button class="toad-btn btn-rollback" id="btn-rollback" title="Rollback Transaction (Shift+F11)">
+          <span class="toad-btn-icon">✕</span>
+          <span>Rollback</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- Toad Main Navigation Buttons -->
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('editor')" title="SQL Editor">
+          <span class="toad-btn-icon">📝</span>
+          <span>Editor</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('browser')" title="Schema Browser (Ctrl+B)">
+          <span class="toad-btn-icon">🗄</span>
+          <span>Schema Browser</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('sessions')" title="Session Browser & Instance Monitor">
+          <span class="toad-btn-icon">👥</span>
+          <span>Session Browser</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('probe')" title="Database Health Probe (70 Alerts)">
+          <span class="toad-btn-icon">🩺</span>
+          <span>Database Probe</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('rules')" title="Toad Rule Universe (5.435)">
+          <span class="toad-btn-icon">🛡</span>
+          <span>Rule Universe</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- Suite Modules Buttons -->
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('spotlight')" title="Spotlight on Oracle (NOC Architecture Topology)">
+          <span class="toad-btn-icon" style="color: #f59e0b;">💡</span>
+          <span>Spotlight</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('modeler')" title="Toad Data Modeler & Visual Query Builder">
+          <span class="toad-btn-icon" style="color: #0078d7;">📐</span>
+          <span>Modeler</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('dba')" title="DBA Administration Hub (Tablespace Map, LogMiner, Data Guard)">
+          <span class="toad-btn-icon" style="color: #8b5cf6;">🏛</span>
+          <span>DBA Hub</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('optimizer')" title="Quest SQL Optimizer (Rewrite & Plan Baselines)">
+          <span class="toad-btn-icon" style="color: #008000;">⚡</span>
+          <span>SQL Optimizer</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('automation')" title="Automation Designer (Workflow App Builder)">
+          <span class="toad-btn-icon" style="color: #0284c7;">⚙</span>
+          <span>Automation</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.switchDockView('profiler')" title="PL/SQL Profiler & Debugger">
+          <span class="toad-btn-icon" style="color: #dc2626;">⏱</span>
+          <span>Profiler</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- Traces AI Copilot -->
+        <button class="toad-btn" id="btn-toggle-copilot" title="Traces AI Copilot" style="font-weight: 600; color: var(--traces-red);">
+          <span class="toad-btn-icon" style="color: var(--traces-red);">▲</span>
+          <span>Traces Copilot</span>
+        </button>
+      </div>
+
+      <!-- Toolbar Row 2: Editor Execution Toolbar -->
+      <div class="toad-toolbar-row">
+        <div class="toolbar-grip"></div>
+
+        <!-- F9: Execute Statement -->
+        <button class="toad-btn btn-run-sql" id="btn-run-statement" title="Execute Statement (F9)">
+          <span class="toad-btn-icon" style="color: #008000; font-size: 14px;">▶</span>
+          <span>Execute (F9)</span>
+        </button>
+
+        <!-- F5: Execute as Script -->
+        <button class="toad-btn" id="btn-run-script" title="Execute as Script (F5)">
+          <span class="toad-btn-icon">📄▶</span>
+          <span>Script (F5)</span>
+        </button>
+
+        <!-- Execute current statement at cursor -->
+        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.executeStatement()" title="Execute statement at cursor (Ctrl+Enter)">
+          <span class="toad-btn-icon">▶|</span>
+        </button>
+
+        <!-- Cancel Execution -->
+        <button class="toad-btn" onclick="window.TracesApp.notify('Query execution halted.', 'warning')" title="Cancel / Abort Execution">
+          <span class="toad-btn-icon" style="color: #c00000; font-size: 13px;">⏹</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- Ctrl+E: Explain Plan -->
+        <button class="toad-btn" id="btn-explain-plan" title="Explain Plan (Ctrl+E)">
+          <span class="toad-btn-icon" style="color: #008000;">🌳</span>
+          <span>Explain Plan (Ctrl+E)</span>
+        </button>
+
+        <!-- Ctrl+Shift+F: Beautifier / Formatter -->
+        <button class="toad-btn" id="btn-format-sql" title="Format Code / Beautifier (Ctrl+Shift+F)">
+          <span class="toad-btn-icon">🧹</span>
+          <span>Format</span>
+        </button>
+
+        <!-- Clear -->
+        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.textarea.value=''; window.TracesApp.sqlEditor.saveActiveTabContent(); window.TracesApp.sqlEditor.updateHighlighting(); window.TracesApp.sqlEditor.updateGutter();" title="Clear Editor">
+          <span class="toad-btn-icon">🗑</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- F4: Describe Object -->
+        <button class="toad-btn" onclick="window.TracesApp.toadModals.openDescribe()" title="Toad Describe (F4)">
+          <span class="toad-btn-icon" style="color: #0078d7;">🔎</span>
+          <span>Describe (F4)</span>
+        </button>
+
+        <!-- F8: Recall SQL -->
+        <button class="toad-btn" onclick="window.TracesApp.toadModals.openSqlRecall()" title="SQL Recall (F8)">
+          <span class="toad-btn-icon" style="color: #b45309;">📜</span>
+          <span>Recall (F8)</span>
+        </button>
+
+        <!-- Bind Variables -->
+        <button class="toad-btn" id="btn-bind-variables" onclick="window.TracesApp.toadModals.openBindVariables()" title="Prompt for Bind Variables">
+          <span style="color: #800080; font-weight: 700;">:bind</span>
+        </button>
+
+        <!-- Substitution Variables -->
+        <button class="toad-btn" onclick="window.TracesApp.toadModals.openSubstitutionDialog()" title="Substitution Variables (&var / &&var)">
+          <span style="color: #2b78e4; font-weight: 700;">&amp;subst</span>
+        </button>
+
+        <!-- AutoCommit indicator -->
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11px; padding-right: 6px;">
+          <input type="checkbox" id="toad-chk-autocommit" disabled>
+          <label for="toad-chk-autocommit" style="color: #555;">AutoCommit</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         TOAD MDI WINDOW TABS (DIRECTLY UNDER TOOLBAR)
+         ==================================================================== -->
+    <div class="toad-window-tabs-bar" id="toad-mdi-tabs">
+      <div class="toad-window-tab active" data-view="editor" onclick="window.TracesApp.switchDockView('editor')">
+        <span>📝 Editor</span>
+      </div>
+      <div class="toad-window-tab" data-view="browser" onclick="window.TracesApp.switchDockView('browser')">
+        <span>🗄 Schema Browser</span>
+      </div>
+      <div class="toad-window-tab" data-view="explain" onclick="window.TracesApp.switchDockView('explain')">
+        <span>🌳 Explain Plan</span>
+      </div>
+      <div class="toad-window-tab" data-view="sessions" onclick="window.TracesApp.switchDockView('sessions')">
+        <span>👥 Session Browser</span>
+      </div>
+      <div class="toad-window-tab" data-view="probe" onclick="window.TracesApp.switchDockView('probe')">
+        <span>🩺 Database Probe</span>
+      </div>
+      <div class="toad-window-tab" data-view="rules" onclick="window.TracesApp.switchDockView('rules')">
+        <span>🛡 Rule Universe</span>
+      </div>
+      <div class="toad-window-tab" data-view="spotlight" onclick="window.TracesApp.switchDockView('spotlight')">
+        <span>💡 Spotlight</span>
+      </div>
+      <div class="toad-window-tab" data-view="modeler" onclick="window.TracesApp.switchDockView('modeler')">
+        <span>📐 Data Modeler</span>
+      </div>
+      <div class="toad-window-tab" data-view="dba" onclick="window.TracesApp.switchDockView('dba')">
+        <span>🏛 DBA Hub</span>
+      </div>
+      <div class="toad-window-tab" data-view="optimizer" onclick="window.TracesApp.switchDockView('optimizer')">
+        <span>⚡ SQL Optimizer</span>
+      </div>
+      <div class="toad-window-tab" data-view="automation" onclick="window.TracesApp.switchDockView('automation')">
+        <span>⚙ Automation</span>
+      </div>
+      <div class="toad-window-tab" data-view="profiler" onclick="window.TracesApp.switchDockView('profiler')">
+        <span>⏱ Profiler</span>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         MAIN TOAD CLIENT WORKSPACE AREA
+         ==================================================================== -->
+    <main class="toad-workspace">
+      
+      <!-- ==================================================================
+           VIEW 1: SQL EDITOR & WORKSHEET
+           ================================================================== -->
+      <section class="workspace-view active" id="view-editor">
+        <div class="editor-view-container">
+          <!-- File Tab Bar -->
+          <div class="worksheet-tab-bar" id="worksheet-tabs-bar">
+            <!-- Tabs injected dynamically -->
+          </div>
+
+          <!-- Split Workspace: Upper Code Area + Lower Notebook -->
+          <div class="editor-split-container">
+            <div class="editor-upper-pane" id="editor-upper-pane">
+              <div class="code-editor-wrapper">
+                <div class="editor-gutter" id="editor-gutter"></div>
+                <div class="editor-textarea-container">
+                  <textarea class="sql-code-textarea" id="sql-code-textarea" spellcheck="false"></textarea>
+                  <pre class="sql-code-highlighted" id="sql-code-highlighted"></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Classic Toad Splitter -->
+            <div class="pane-splitter" id="editor-pane-splitter" title="Drag to resize results panel"></div>
+
+            <!-- Lower Tabbed Notebook -->
+            <div class="editor-lower-pane" id="editor-lower-pane">
+              <div class="output-tabs-bar">
+                <button class="output-tab active" data-tab="grid">
+                  <span>Data Grid</span>
+                  <span class="output-tab-count" id="grid-rows-count">Record 1 of 14</span>
+                </button>
+                <button class="output-tab" data-tab="script">
+                  <span>Script Output</span>
+                </button>
+                <button class="output-tab" data-tab="dbms">
+                  <span>DBMS Output</span>
+                </button>
+                <button class="output-tab" data-tab="autotrace">
+                  <span>AutoTrace</span>
+                </button>
+              </div>
+
+              <!-- Output 1: Toad Data Grid -->
+              <div class="output-tab-content active" id="output-pane-grid">
+                <div class="data-grid-container">
+                  <div class="grid-controls-bar">
+                    <!-- Navigation buttons -->
+                    <div class="grid-nav-group">
+                      <button class="grid-nav-btn" id="grid-btn-first" title="First Record" onclick="window.TracesApp.dataGrid.page=1; window.TracesApp.dataGrid.selectRow(0);">|◀</button>
+                      <button class="grid-nav-btn" id="grid-btn-prev" title="Prior Record">◀</button>
+                      <button class="grid-nav-btn" id="grid-btn-next" title="Next Record">▶</button>
+                      <button class="grid-nav-btn" id="grid-btn-last" title="Last Record" onclick="window.TracesApp.dataGrid.selectRow(window.TracesApp.dataGrid.data.length - 1);">▶|</button>
+                      <button class="grid-nav-btn" id="grid-btn-add-row" title="Insert Record" style="color: #008000; font-weight: 700;">+</button>
+                      <button class="grid-nav-btn" id="grid-btn-delete-row" title="Delete Record" style="color: #c00000; font-weight: 700;">-</button>
+                      <button class="grid-nav-btn" title="Post Changes (Commit)" onclick="window.TracesApp.sqlEditor.commitTransaction();" style="color: #008000;">✓</button>
+                      <button class="grid-nav-btn" title="Cancel Changes (Rollback)" onclick="window.TracesApp.sqlEditor.rollbackTransaction();" style="color: #c00000;">✕</button>
+                    </div>
+
+                    <!-- Filter text box -->
+                    <div class="grid-filter-box">
+                      <span style="font-size: 11px; color: #0078d7;">🔍</span>
+                      <input type="text" id="grid-search-filter" placeholder="Filter rows in grid...">
+                    </div>
+
+                    <!-- Right actions -->
+                    <div class="grid-actions-right">
+                      <button class="btn" id="grid-btn-export" title="Export grid data">
+                        Export Dataset
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="grid-table-wrapper">
+                    <table class="oracle-data-table" id="oracle-data-table">
+                      <thead id="grid-thead"></thead>
+                      <tbody id="grid-tbody"></tbody>
+                    </table>
+                  </div>
+
+                  <div class="grid-pagination-bar">
+                    <span id="grid-page-indicator">Record 1 of 14</span>
+                    <span style="color: #666; font-size: 10px;">Double-click cell to edit | Grid populated via Oracle Net8</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Output 2: Script Output -->
+              <div class="output-tab-content" id="output-pane-script">
+                <div class="console-output-view" id="console-script-output">
+                  <div class="console-line info">Session script environment initialized. Ready.</div>
+                </div>
+              </div>
+
+              <!-- Output 3: DBMS Output -->
+              <div class="output-tab-content" id="output-pane-dbms">
+                <div class="console-output-view" id="console-dbms-output">
+                  <div class="console-line info">SET SERVEROUTPUT ON. Output buffer active.</div>
+                </div>
+              </div>
+
+              <!-- Output 4: AutoTrace -->
+              <div class="output-tab-content" id="output-pane-autotrace">
+                <div style="flex: 1; overflow: auto; padding: 8px;">
+                  <table class="meta-table" style="max-width: 520px;">
+                    <thead>
+                      <tr>
+                        <th>Oracle Execution Statistic</th>
+                        <th style="text-align: right;">Metric Value</th>
+                      </tr>
+                    </thead>
+                    <tbody id="autotrace-metrics-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           VIEW 2: SCHEMA BROWSER
+           ================================================================== -->
+      <section class="workspace-view" id="view-browser">
+        <div class="browser-view-container">
+          <!-- Left Object Hierarchy -->
+          <div class="browser-nav-pane">
+            <div class="browser-schema-selector-bar">
+              <div class="schema-select-row">
+                <span class="schema-badge">Schema:</span>
+                <select class="toad-conn-combobox" id="browser-schema-select" style="flex: 1; height: 22px; margin: 0;">
+                  <option value="HR" selected>HR</option>
+                  <option value="SALES_ADMIN">SALES_ADMIN</option>
+                  <option value="SYSTEM">SYSTEM</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Categories Scroller -->
+            <div class="category-tabs-scroller" id="browser-category-pills"></div>
+
+            <!-- Filter Box -->
+            <div class="object-search-bar">
+              <input type="text" class="object-search-input" id="browser-object-search" placeholder="Filter objects...">
+            </div>
+
+            <!-- Object List -->
+            <div class="object-list-view" id="browser-object-list"></div>
+          </div>
+
+          <!-- Right Multitab Inspector -->
+          <div class="browser-detail-pane">
+            <div class="detail-header-bar">
+              <div class="detail-object-meta">
+                <span class="detail-object-title" id="browser-detail-title">HR.EMPLOYEES</span>
+                <span class="detail-object-type-pill" id="browser-detail-type">TABLE</span>
+              </div>
+              <div class="detail-actions-group">
+                <button class="btn" onclick="window.TracesApp.schemaBrowser.recompileCurrentObject()">
+                  Recompile
+                </button>
+                <button class="btn btn-primary" onclick="window.TracesApp.openObjectInWorksheet(window.TracesApp.schemaBrowser.selectedObject.name)">
+                  Open in Editor
+                </button>
+              </div>
+            </div>
+
+            <!-- Inspector Tabs Bar -->
+            <div class="detail-tabs-bar">
+              <button class="detail-tab active" data-tab="columns">Columns</button>
+              <button class="detail-tab" data-tab="data">Data</button>
+              <button class="detail-tab" data-tab="indexes">Indexes</button>
+              <button class="detail-tab" data-tab="constraints">Constraints</button>
+              <button class="detail-tab" data-tab="ddl">Script (DDL)</button>
+              <button class="detail-tab" data-tab="stats">Stats</button>
+            </div>
+
+            <!-- Tab Panes -->
+            <div class="detail-content-area">
+              <div class="detail-tab-pane active" id="tab-pane-columns"></div>
+              <div class="detail-tab-pane" id="tab-pane-data"></div>
+              <div class="detail-tab-pane" id="tab-pane-indexes"></div>
+              <div class="detail-tab-pane" id="tab-pane-constraints"></div>
+              <div class="detail-tab-pane" id="tab-pane-ddl"></div>
+              <div class="detail-tab-pane" id="tab-pane-stats"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           VIEW 3: EXPLAIN PLAN & SQL OPTIMIZER
+           ================================================================== -->
+      <section class="workspace-view" id="view-explain">
+        <div class="explain-view-container">
+          <div class="plan-summary-strip">
+            <div class="metric-card-group">
+              <div class="plan-metric-card">
+                <span class="metric-label">Optimizer Cost</span>
+                <span class="metric-value" id="plan-metric-cost" style="color: #c00000;">24</span>
+              </div>
+              <div class="plan-metric-card">
+                <span class="metric-label">Est. Cardinality</span>
+                <span class="metric-value" id="plan-metric-cardinality">107</span>
+              </div>
+              <div class="plan-metric-card">
+                <span class="metric-label">I/O Cost</span>
+                <span class="metric-value" id="plan-metric-io">22</span>
+              </div>
+              <div class="plan-metric-card">
+                <span class="metric-label">CPU Cost</span>
+                <span class="metric-value" id="plan-metric-cpu">1.28 M</span>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-primary" onclick="window.TracesApp.explainPlan.generatePlan(window.TracesApp.sqlEditor.textarea.value)">
+                Generate Execution Plan (Ctrl+E)
+              </button>
+            </div>
+          </div>
+
+          <div class="plan-body-split">
+            <div class="plan-tree-canvas" id="plan-tree-canvas"></div>
+            <div class="optimizer-advisor-pane" id="optimizer-advisor-pane"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           VIEW 4: SESSION BROWSER
+           ================================================================== -->
+      <section class="workspace-view" id="view-sessions">
+        <div class="session-view-container">
+          <div class="instance-gauges-strip">
+            <div class="gauge-group">
+              <div class="gauge-card">
+                <svg class="gauge-ring-svg" viewBox="0 0 36 36">
+                  <path class="gauge-ring-bg" d="M18 3.5 a 14.5 14.5 0 0 1 0 29 a 14.5 14.5 0 0 1 0 -29"/>
+                  <path class="gauge-ring-fill" id="gauge-buf-fill" d="M18 3.5 a 14.5 14.5 0 0 1 0 29 a 14.5 14.5 0 0 1 0 -29"/>
+                </svg>
+                <div class="gauge-info">
+                  <span class="gauge-label">Buffer Cache Hit</span>
+                  <span class="gauge-value" id="gauge-buf-val">99.4%</span>
+                </div>
+              </div>
+
+              <div class="gauge-card">
+                <svg class="gauge-ring-svg" viewBox="0 0 36 36">
+                  <path class="gauge-ring-bg" d="M18 3.5 a 14.5 14.5 0 0 1 0 29 a 14.5 14.5 0 0 1 0 -29"/>
+                  <path class="gauge-ring-fill" id="gauge-lib-fill" d="M18 3.5 a 14.5 14.5 0 0 1 0 29 a 14.5 14.5 0 0 1 0 -29"/>
+                </svg>
+                <div class="gauge-info">
+                  <span class="gauge-label">Library Cache Hit</span>
+                  <span class="gauge-value" id="gauge-lib-val">98.9%</span>
+                </div>
+              </div>
+
+              <div class="gauge-card">
+                <div class="gauge-info">
+                  <span class="gauge-label">Active Sessions</span>
+                  <span class="gauge-value" id="gauge-act-val">5 / 48</span>
+                </div>
+              </div>
+
+              <div class="gauge-card">
+                <div class="gauge-info">
+                  <span class="gauge-label">Redo Log Switches</span>
+                  <span class="gauge-value" id="gauge-redo-val">3.2 / hr</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button class="btn btn-primary" onclick="window.TracesApp.sessionMonitor.refresh()">
+                Refresh Sessions
+              </button>
+            </div>
+          </div>
+
+          <div class="session-toolbar">
+            <div class="session-filter-group">
+              <button class="btn active" id="filter-active-sessions">Active Sessions Only</button>
+            </div>
+            <span style="font-size: 11px; color: #c00000; font-weight: 700;">
+              ⚠ Lock Detected: Blocker SID 312 holding TX Row Contention
+            </span>
+          </div>
+
+          <div class="session-body-split">
+            <div class="session-table-wrapper">
+              <table class="session-data-table">
+                <thead>
+                  <tr>
+                    <th>SID</th>
+                    <th>Serial#</th>
+                    <th>Status</th>
+                    <th>Username</th>
+                    <th>OS User</th>
+                    <th>Machine</th>
+                    <th>Program</th>
+                    <th>Wait Event</th>
+                    <th>Logon Time</th>
+                    <th style="text-align: right;">PGA Memory</th>
+                    <th>Locks / Contention</th>
+                  </tr>
+                </thead>
+                <tbody id="session-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="lock-tree-panel">
+              <div class="lock-tree-header">
+                <span>Instance Lock Tree Hierarchy (V$LOCK & V$SESSION)</span>
+                <span style="font-size: 10px; color: #666;">Root blockers highlighted in red</span>
+              </div>
+              <div class="lock-tree-content" id="lock-tree-content"></div>
+            </div>
+
+            <div id="session-detail-inspector"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           VIEW 5: DATABASE PROBE (70 ALERTS)
+           ================================================================== -->
+      <section class="workspace-view" id="view-probe">
+        <div class="probe-view-container">
+          <div class="probe-overview-grid">
+            <div class="probe-summary-card">
+              <div class="probe-card-title">
+                <span>Tablespace Storage Capacity</span>
+                <span style="font-size: 11px; color: #666;">Datafiles Monitor</span>
+              </div>
+              <div class="storage-bars-list" id="probe-storage-bars"></div>
+            </div>
+
+            <div class="probe-summary-card">
+              <div class="probe-card-title">
+                <span>Probe Diagnostics (DatabaseProbe.txt)</span>
+                <button class="btn btn-primary" id="btn-run-probe-check">
+                  Run Probe Check
+                </button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin-top: 4px;">
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px;">
+                  <span>Database Release:</span>
+                  <span style="font-weight: 600;">Oracle Database 23ai RAC 23.4.0.24.05</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px;">
+                  <span>Diagnostic Checks:</span>
+                  <span style="font-weight: 700;">70 Automated Alerts</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span>System Health Status:</span>
+                  <span style="font-weight: 700; color: #008000;">68 PASSED, 2 WARN</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="probe-alerts-section">
+            <div class="probe-section-header">
+              <span>Database Health Checklist (Toad Database Probe)</span>
+              <span style="font-size: 11px; color: #666;">I/O, DBWR slave processes, SGA buffers & Datafiles</span>
+            </div>
+            <div style="overflow-x: auto;">
+              <table class="alerts-table">
+                <thead>
+                  <tr>
+                    <th>Alert #</th>
+                    <th>Probe Name</th>
+                    <th>Diagnostic Description</th>
+                    <th>Current System Metric</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="probe-alerts-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           VIEW 6: TOAD RULE UNIVERSE (CODE QUALITY)
+           ================================================================== -->
+      <section class="workspace-view" id="view-rules">
+        <div class="rules-view-container">
+          <div class="rules-sidebar">
+            <div class="rules-header">
+              <div class="scorecard-banner">
+                <div>
+                  <div style="font-size: 10px; color: #666; font-weight: 600; text-transform: uppercase;">Code Quality Score</div>
+                  <div class="score-grade">Toad Rule Universe 5.435</div>
+                </div>
+                <div class="score-num">84 / 100</div>
+              </div>
+
+              <div class="severity-breakdown">
+                <div class="severity-badge-card severe">
+                  <span class="severity-count">3</span>
+                  <span>Severe</span>
+                </div>
+                <div class="severity-badge-card warning">
+                  <span class="severity-count">2</span>
+                  <span>Warning</span>
+                </div>
+                <div class="severity-badge-card info">
+                  <span class="severity-count">2</span>
+                  <span>Info</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="violations-list" id="rules-violations-list"></div>
+          </div>
+
+          <div class="rules-preview-pane">
+            <div class="rule-detail-header" id="rule-detail-title"></div>
+            <div style="padding: 10px;">
+              <div class="rule-tip-box" id="rule-tip-content"></div>
+            </div>
+            <div class="code-inspection-editor" id="rule-code-inspector"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           VIEW 7: SPOTLIGHT ON ORACLE (NOC TOPOLOGY MONITOR)
+           ================================================================== -->
+      <section class="workspace-view" id="view-spotlight"></section>
+
+      <!-- ==================================================================
+           VIEW 8: TOAD DATA MODELER & QUERY BUILDER
+           ================================================================== -->
+      <section class="workspace-view" id="view-modeler"></section>
+
+      <!-- ==================================================================
+           VIEW 9: DBA ADMINISTRATION HUB
+           ================================================================== -->
+      <section class="workspace-view" id="view-dba"></section>
+
+      <!-- ==================================================================
+           VIEW 10: QUEST SQL OPTIMIZER FOR ORACLE
+           ================================================================== -->
+      <section class="workspace-view" id="view-optimizer"></section>
+
+      <!-- ==================================================================
+           VIEW 11: AUTOMATION DESIGNER (WORKFLOW APP BUILDER)
+           ================================================================== -->
+      <section class="workspace-view" id="view-automation"></section>
+
+      <!-- ==================================================================
+           VIEW 12: PL/SQL PROFILER, DEBUGGER & TEAM CODING
+           ================================================================== -->
+      <section class="workspace-view" id="view-profiler"></section>
+
+    </main>
+
+    <!-- ====================================================================
+         TRACES AI COPILOT DRAWER
+         ==================================================================== -->
+    <aside class="copilot-drawer" id="copilot-drawer">
+      <div class="copilot-header">
+        <div class="copilot-title-wrapper">
+          <span style="color: var(--traces-red); font-weight: 700;">▲</span>
+          <span style="font-weight: 700; color: #000;">TRACES Copilot</span>
+          <span style="font-size: 10px; background: #e5f1fb; color: #0078d7; padding: 1px 6px; border-radius: 2px;">AI Assistant</span>
+        </div>
+        <button class="modal-close-btn" id="btn-close-copilot">✕</button>
+      </div>
+
+      <div class="copilot-messages-container" id="copilot-messages-container"></div>
+
+      <div class="copilot-prompt-chips">
+        <div class="prompt-chip">Find top paying jobs by department</div>
+        <div class="prompt-chip">Why is my query using a Full Table Scan?</div>
+        <div class="prompt-chip">Write PL/SQL package for billing</div>
+      </div>
+
+      <div class="copilot-input-bar">
+        <textarea class="copilot-textarea" id="copilot-input-textarea" placeholder="Ask Traces Copilot to compose SQL, optimize plans, or diagnose wait events..."></textarea>
+        <button class="copilot-send-btn" id="copilot-btn-send" title="Send (Enter)">➤</button>
+      </div>
+    </aside>
+
+    <!-- ====================================================================
+         TOAD CLASSIC STATUS BAR (WITH TRACES LOGO)
+         ==================================================================== -->
+    <footer class="toad-statusbar">
+      <div class="status-cell" style="width: 70px;">1 : 1</div>
+      <div class="status-cell" style="width: 80px;">Modified</div>
+      <div class="status-cell cell-tx" id="status-db-transaction" style="width: 140px;">[Transaction: Idle]</div>
+      <div class="status-cell" id="status-db-user" style="width: 220px;">SYSTEM@sales_prod (64-bit)</div>
+      <div class="status-cell cell-grow" id="status-db-version">Oracle Database 23ai Enterprise Edition Release 23.4.0.24.05</div>
+      <div class="status-cell" id="status-db-latency" style="width: 80px;">14 ms</div>
+      <div class="status-cell status-traces-badge" style="width: 120px;" title="Powered by Traces">
+        <img src="assets/traces-logo.png" alt="TRACES" style="height: 12px; width: auto;">
+      </div>
+    </footer>
+
+    <!-- ====================================================================
+         MODAL: CONNECTION PROFILES
+         ==================================================================== -->
+    <div class="modal-backdrop" id="connection-modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <span>Oracle Database Connection Manager</span>
+          <button class="modal-close-btn" onclick="window.TracesApp.connectionManager.closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="font-size: 11px; color: #555; margin-bottom: 10px;">
+            Select an Oracle database profile to switch your active session:
+          </div>
+          <div id="connection-profiles-list"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" onclick="window.TracesApp.connectionManager.closeModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+  </div>
+
+  <!-- Application Logic Scripts -->
+  <script src="js/data/mock-db.js"></script>
+  <script src="js/data/rule-universe-data.js"></script>
+  <script src="js/components/connection-manager.js"></script>
+  <script src="js/components/toad-modals.js"></script>
+  <script src="js/components/toad-menus.js"></script>
+  <script src="js/components/schema-browser.js"></script>
+  <script src="js/components/data-grid.js"></script>
+  <script src="js/components/sql-editor.js"></script>
+  <script src="js/components/explain-plan.js"></script>
+  <script src="js/components/session-monitor.js"></script>
+  <script src="js/components/rule-auditor.js"></script>
+  <script src="js/components/database-probe.js"></script>
+  <script src="js/components/traces-copilot.js"></script>
+  <script src="js/components/spotlight-oracle.js"></script>
+  <script src="js/components/data-modeler.js"></script>
+  <script src="js/components/dba-tools.js"></script>
+  <script src="js/components/code-quality.js"></script>
+  <script src="js/components/automation-designer.js"></script>
+  <script src="js/components/sql-optimizer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
