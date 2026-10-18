@@ -181,21 +181,45 @@ class ConnectionManager {
     this.updateRoutePreview();
   }
 
+  onBridgeTypeChange(type) {
+    if (this.editingConn) {
+      this.editingConn.bridgeType = type;
+      const portEl = document.getElementById('form-bridge-port');
+      const sshFields = document.getElementById('bridge-ssh-credentials');
+      if (type === 'cman') {
+        if (portEl && (portEl.value === '22' || !portEl.value)) {
+          portEl.value = '1521';
+          this.editingConn.bridgePort = 1521;
+        }
+        if (sshFields) sshFields.style.display = 'none';
+      } else {
+        if (portEl && (portEl.value === '1521' || !portEl.value)) {
+          portEl.value = '22';
+          this.editingConn.bridgePort = 22;
+        }
+        if (sshFields) sshFields.style.display = 'flex';
+      }
+    }
+    this.updateRoutePreview();
+  }
+
   updateRoutePreview() {
     const routeEl = document.getElementById('conn-route-summary');
     if (!routeEl) return;
     const c = this.editingConn || {};
     const useBridge = document.getElementById('form-use-bridge')?.checked ?? c.useBridge;
+    const bType = document.getElementById('form-bridge-type')?.value || c.bridgeType || 'ssh';
     const bHost = document.getElementById('form-bridge-host')?.value || c.bridgeHost;
-    const bPort = document.getElementById('form-bridge-port')?.value || c.bridgePort || 22;
+    const bPort = document.getElementById('form-bridge-port')?.value || c.bridgePort || (bType === 'cman' ? 1521 : 22);
     const dHost = document.getElementById('form-host')?.value || c.host || 'localhost';
     const dPort = document.getElementById('form-port')?.value || c.port || 1521;
     const dSvc = document.getElementById('form-service')?.value || c.serviceName || 'ORCL';
+    const bLabel = bType === 'cman' ? 'Ponte Oracle CMAN' : 'Ponte SSH';
 
     if (useBridge && bHost) {
       routeEl.innerHTML = `
         <span class="conn-route-badge badge-bridge-active">🌉 VIA PONTE ATIVA</span>
-        <span>Seu PC</span> ➔ <strong>Ponte SSH [${bHost}:${bPort}]</strong> ➔ <strong>Oracle Real [${dHost}:${dPort}/${dSvc}]</strong>
+        <span>Seu PC</span> ➔ <strong>${bLabel} [${bHost}:${bPort}]</strong> ➔ <strong>Oracle Real [${dHost}:${dPort}/${dSvc}]</strong>
       `;
     } else if (useBridge) {
       routeEl.innerHTML = `
@@ -357,25 +381,35 @@ class ConnectionManager {
               <!-- Bridge Form Fields Container -->
               <div id="bridge-fields-container" style="display: flex; flex-direction: column; gap: 8px; opacity: ${c.useBridge ? '1' : '0.45'}; pointer-events: ${c.useBridge ? 'auto' : 'none'}; transition: opacity 0.2s;">
                 <div style="display: flex; gap: 8px; align-items: center;">
+                  <label style="width: 140px; font-weight: 600;">Tipo de Ponte:</label>
+                  <select id="form-bridge-type" class="toad-conn-combobox" style="flex: 1; height: 26px;" onchange="window.TracesApp.connectionManager.onBridgeTypeChange(this.value);">
+                    <option value="ssh" ${c.bridgeType !== 'cman' ? 'selected' : ''}>🔐 Túnel SSH / Jump Host (Bastion - porta 22 padrão)</option>
+                    <option value="cman" ${c.bridgeType === 'cman' ? 'selected' : ''}>🔄 Oracle Connection Manager (CMAN / Net8 Hop - porta 1521)</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; gap: 8px; align-items: center;">
                   <label style="width: 140px; font-weight: 600;">Host da Ponte (IP/DNS):</label>
                   <input type="text" id="form-bridge-host" value="${c.bridgeHost || ''}" placeholder="e.g. 10.100.10.39 ou bastion.empresa.com" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);" oninput="window.TracesApp.connectionManager.updateRoutePreview();">
-                  <label style="font-weight: 600;">Porta SSH:</label>
-                  <input type="number" id="form-bridge-port" value="${c.bridgePort || 22}" style="width: 75px; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);" oninput="window.TracesApp.connectionManager.updateRoutePreview();">
+                  <label style="font-weight: 600;">Porta:</label>
+                  <input type="number" id="form-bridge-port" value="${c.bridgePort || (c.bridgeType === 'cman' ? 1521 : 22)}" style="width: 75px; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);" oninput="window.TracesApp.connectionManager.updateRoutePreview();">
                 </div>
 
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <label style="width: 140px; font-weight: 600;">Usuário da Ponte (SSH):</label>
-                  <input type="text" id="form-bridge-user" value="${c.bridgeUser || ''}" placeholder="e.g. root, ubuntu, oracle ou usuário corporativo" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
-                </div>
+                <div id="bridge-ssh-credentials" style="display: ${c.bridgeType === 'cman' ? 'none' : 'flex'}; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <label style="width: 140px; font-weight: 600;">Usuário da Ponte (SSH):</label>
+                    <input type="text" id="form-bridge-user" value="${c.bridgeUser || ''}" placeholder="e.g. root, ubuntu, oracle ou usuário corporativo" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+                  </div>
 
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <label style="width: 140px; font-weight: 600;">Senha da Ponte:</label>
-                  <input type="password" id="form-bridge-password" value="${c.bridgePassword || ''}" placeholder="Senha SSH da máquina intermediária" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc;">
-                </div>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <label style="width: 140px; font-weight: 600;">Senha da Ponte:</label>
+                    <input type="password" id="form-bridge-password" value="${c.bridgePassword || ''}" placeholder="Senha SSH da máquina intermediária" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc;">
+                  </div>
 
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <label style="width: 140px; font-weight: 600;">Chave Privada (Opcional):</label>
-                  <input type="text" id="form-bridge-key" value="${c.bridgeKeyPath || ''}" placeholder="Caminho do arquivo .pem, .ppk ou id_rsa (se não usar senha)" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <label style="width: 140px; font-weight: 600;">Chave Privada (Opcional):</label>
+                    <input type="text" id="form-bridge-key" value="${c.bridgeKeyPath || ''}" placeholder="Caminho do arquivo .pem, .ppk ou id_rsa (se não usar senha)" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+                  </div>
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
@@ -440,8 +474,9 @@ class ConnectionManager {
 
     // Bridge settings
     c.useBridge = document.getElementById('form-use-bridge')?.checked ?? c.useBridge;
+    c.bridgeType = document.getElementById('form-bridge-type')?.value ?? c.bridgeType ?? 'ssh';
     c.bridgeHost = document.getElementById('form-bridge-host')?.value ?? c.bridgeHost ?? '';
-    c.bridgePort = parseInt(document.getElementById('form-bridge-port')?.value || c.bridgePort || '22');
+    c.bridgePort = parseInt(document.getElementById('form-bridge-port')?.value || c.bridgePort || (c.bridgeType === 'cman' ? '1521' : '22'));
     c.bridgeUser = document.getElementById('form-bridge-user')?.value ?? c.bridgeUser ?? '';
     c.bridgePassword = document.getElementById('form-bridge-password')?.value ?? c.bridgePassword ?? '';
     c.bridgeKeyPath = document.getElementById('form-bridge-key')?.value ?? c.bridgeKeyPath ?? '';
@@ -481,8 +516,9 @@ class ConnectionManager {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bridge_type: c.bridgeType || 'ssh',
           bridge_host: c.bridgeHost,
-          bridge_port: c.bridgePort || 22,
+          bridge_port: c.bridgePort || (c.bridgeType === 'cman' ? 1521 : 22),
           bridge_user: c.bridgeUser,
           bridge_password: c.bridgePassword,
           bridge_key_path: c.bridgeKeyPath,
@@ -532,6 +568,7 @@ class ConnectionManager {
           role: c.role,
           password: c.password,
           use_bridge: Boolean(c.useBridge),
+          bridge_type: c.bridgeType || 'ssh',
           bridge_host: c.bridgeHost,
           bridge_port: c.bridgePort,
           bridge_user: c.bridgeUser,
@@ -580,6 +617,7 @@ class ConnectionManager {
           role: c.role,
           password: c.password,
           use_bridge: Boolean(c.useBridge),
+          bridge_type: c.bridgeType || 'ssh',
           bridge_host: c.bridgeHost,
           bridge_port: c.bridgePort,
           bridge_user: c.bridgeUser,

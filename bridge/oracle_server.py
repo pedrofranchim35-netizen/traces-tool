@@ -189,8 +189,40 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         target_host = payload.get("host") or payload.get("target_host", "localhost")
         target_port = int(payload.get("port") or payload.get("target_port", 1521))
 
+        bridge_type = payload.get("bridge_type", "ssh")
         if not bridge_host:
             self.send_api_response({"success": False, "error": "Informe o Host da Ponte (IP ou DNS)."}, status=400)
+            return
+
+        import socket
+        start_time = time.time()
+
+        if bridge_type == "cman":
+            try:
+                print(f"[Bridge-Test] Testando porta da ponte Oracle CMAN / Net8 {bridge_host}:{bridge_port}...")
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(6.0)
+                sock_result = sock.connect_ex((bridge_host, bridge_port))
+                sock.close()
+                elapsed_ms = round((time.time() - start_time) * 1000, 1)
+
+                if sock_result == 0:
+                    print(f"[Bridge-Test] Sucesso! Ponte Oracle CMAN {bridge_host}:{bridge_port} está respondendo.")
+                    self.send_api_response({
+                        "success": True,
+                        "message": f"Ponte Oracle CMAN / Net8 ({bridge_host}:{bridge_port}) conectou com sucesso! Roteamento para ({target_host}:{target_port}) ativo.",
+                        "latency_ms": elapsed_ms
+                    })
+                else:
+                    self.send_api_response({
+                        "success": False,
+                        "error": f"Ponte Oracle CMAN ({bridge_host}:{bridge_port}) não respondeu na porta {bridge_port} (porta fechada ou inacessível)."
+                    }, status=400)
+            except Exception as e:
+                self.send_api_response({
+                    "success": False,
+                    "error": f"Falha na ponte Oracle CMAN ({bridge_host}:{bridge_port}): {str(e)}"
+                }, status=400)
             return
 
         if not SSHTUNNEL_AVAILABLE:
@@ -200,8 +232,6 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             }, status=500)
             return
 
-        import socket
-        start_time = time.time()
         test_tunnel = None
         try:
             print(f"[Bridge-Test] Testando ponte SSH {bridge_host}:{bridge_port} -> destino {target_host}:{target_port}...")
@@ -258,7 +288,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             }, status=400)
 
     def handle_connect(self, payload):
-        """Connects to real Oracle Database via python-oracledb, optionally through an SSH Bridge / Jump Host"""
+        """Connects to real Oracle Database via python-oracledb, optionally through an SSH Bridge or Oracle CMAN"""
         if not ORACLEDB_AVAILABLE:
             self.send_api_response({
                 "success": False,
@@ -278,8 +308,9 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         use_thick = payload.get("use_thick", False)
 
         use_bridge = payload.get("use_bridge", False)
+        bridge_type = payload.get("bridge_type", "ssh") # 'ssh' | 'cman'
         bridge_host = payload.get("bridge_host")
-        bridge_port = int(payload.get("bridge_port", 22))
+        bridge_port = int(payload.get("bridge_port", 22 if bridge_type == "ssh" else 1521))
         bridge_user = payload.get("bridge_user", "")
         bridge_password = payload.get("bridge_password", "")
         bridge_key_path = payload.get("bridge_key_path", "")
@@ -287,53 +318,59 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         tunnel_instance = None
         effective_host = host
         effective_port = port
+        cman_dsn = None
 
-        # 1. Start SSH Tunnel if bridge is requested
+        # 1. Setup Bridge (SSH Tunnel or Oracle CMAN Source Route)
         if use_bridge and bridge_host:
-            if not SSHTUNNEL_AVAILABLE:
-                self.send_api_response({
-                    "success": False,
-                    "error": "Biblioteca 'sshtunnel' não encontrada. Instale com 'pip install sshtunnel paramiko'."
-                }, status=500)
-                return
+            if bridge_type == "cman":
+                print(f"[Bridge] Roteando conexão via Oracle CMAN / Net8: ({bridge_host}:{bridge_port}) -> ({host}:{port}/{service_name})")
+                cman_dsn = f"""(DESCRIPTION=(SOURCE_ROUTE=YES)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST={bridge_host})(PORT={bridge_port}))(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT={port})))(CONNECT_DATA=(SERVICE_NAME={service_name or 'XE'})))"""
+            else:
+                # SSH Tunnel Mode
+                if not SSHTUNNEL_AVAILABLE:
+                    self.send_api_response({
+                        "success": False,
+                        "error": "Biblioteca 'sshtunnel' não encontrada. Instale com 'pip install sshtunnel paramiko'."
+                    }, status=500)
+                    return
 
-            # Terminate existing tunnel if active
-            if ACTIVE_TUNNEL.get("server"):
+                # Terminate existing tunnel if active
+                if ACTIVE_TUNNEL.get("server"):
+                    try:
+                        ACTIVE_TUNNEL["server"].stop()
+                    except Exception:
+                        pass
+                    ACTIVE_TUNNEL["server"] = None
+
+                print(f"[Bridge] Conectando na Ponte SSH ({bridge_host}:{bridge_port}) para alcançar ({host}:{port})...")
                 try:
-                    ACTIVE_TUNNEL["server"].stop()
-                except Exception:
-                    pass
-                ACTIVE_TUNNEL["server"] = None
+                    tunnel_kwargs = {
+                        "ssh_address_or_host": (bridge_host, bridge_port),
+                        "remote_bind_address": (host, port),
+                        "local_bind_address": ("127.0.0.1", 0),
+                        "set_keepalive": 15.0,
+                        "allow_agent": True
+                    }
+                    if bridge_user:
+                        tunnel_kwargs["ssh_username"] = bridge_user
+                    if bridge_password:
+                        tunnel_kwargs["ssh_password"] = bridge_password
+                    if bridge_key_path and os.path.exists(bridge_key_path):
+                        tunnel_kwargs["ssh_pkey"] = bridge_key_path
 
-            print(f"[Bridge] Conectando na Ponte SSH ({bridge_host}:{bridge_port}) para alcançar ({host}:{port})...")
-            try:
-                tunnel_kwargs = {
-                    "ssh_address_or_host": (bridge_host, bridge_port),
-                    "remote_bind_address": (host, port),
-                    "local_bind_address": ("127.0.0.1", 0),
-                    "set_keepalive": 15.0,
-                    "allow_agent": True
-                }
-                if bridge_user:
-                    tunnel_kwargs["ssh_username"] = bridge_user
-                if bridge_password:
-                    tunnel_kwargs["ssh_password"] = bridge_password
-                if bridge_key_path and os.path.exists(bridge_key_path):
-                    tunnel_kwargs["ssh_pkey"] = bridge_key_path
+                    tunnel_instance = SSHTunnelForwarder(**tunnel_kwargs)
+                    tunnel_instance.start()
 
-                tunnel_instance = SSHTunnelForwarder(**tunnel_kwargs)
-                tunnel_instance.start()
-
-                effective_host = "127.0.0.1"
-                effective_port = tunnel_instance.local_bind_port
-                print(f"[Bridge] Túnel SSH ativo com sucesso! Porta local vinculada: {effective_port}")
-            except Exception as tunnel_err:
-                print(f"[Bridge] Falha ao iniciar túnel SSH: {tunnel_err}")
-                self.send_api_response({
-                    "success": False,
-                    "error": f"Falha ao conectar na Ponte SSH ({bridge_host}:{bridge_port}): {str(tunnel_err)}"
-                }, status=400)
-                return
+                    effective_host = "127.0.0.1"
+                    effective_port = tunnel_instance.local_bind_port
+                    print(f"[Bridge] Túnel SSH ativo com sucesso! Porta local vinculada: {effective_port}")
+                except Exception as tunnel_err:
+                    print(f"[Bridge] Falha ao iniciar túnel SSH: {tunnel_err}")
+                    self.send_api_response({
+                        "success": False,
+                        "error": f"Falha ao conectar na Ponte SSH ({bridge_host}:{bridge_port}): {str(tunnel_err)}"
+                    }, status=400)
+                    return
 
         try:
             # Enable thick mode if requested (needs Instant Client)
@@ -349,7 +386,9 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
             # Connect via DSN, TNS, or Host/Port/Service
             start_time = time.time()
-            if gateway_url:
+            if cman_dsn:
+                dsn_str = cman_dsn
+            elif gateway_url:
                 print(f"[Bridge] Connecting through Microsoft Gateway: {gateway_url}")
                 dsn_str = oracledb.makedsn(effective_host, effective_port, service_name=service_name)
             elif tns_entry:
