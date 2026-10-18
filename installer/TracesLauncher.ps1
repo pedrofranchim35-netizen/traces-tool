@@ -28,28 +28,22 @@ if (Test-Path $ConfigFile) {
     }
 }
 
-# 2. Diretório de Instalação no Computador do Usuário (%LOCALAPPDATA%\TracesToad)
-$InstallRoot = Join-Path $env:LOCALAPPDATA "TracesToad"
-$AppDir = Join-Path $InstallRoot "app"
-
-if (-not (Test-Path $InstallRoot)) {
-    New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
-}
-
-# 3. Sincronização e Atualização com o Git
-$HasGit = $null -ne (Get-Command "git" -ErrorAction SilentlyContinue)
-
-if (-not (Test-Path $AppDir)) {
-    Write-Host "[1/4] Primeira execução detectada: Instalando aplicativo..." -ForegroundColor Green
-    if ($HasGit) {
-        Write-Host "      Clonando repositório Git ($RepoUrl)..." -ForegroundColor Gray
-        git clone --branch $Branch $RepoUrl $AppDir
-    } else {
-        Write-Host "      Git não encontrado. Baixando pacote via Web..." -ForegroundColor Gray
-        # Se os arquivos estiverem locais no instalador, copia
-        $ParentDir = Split-Path -Parent $ScriptDir
-        if (Test-Path (Join-Path $ParentDir "index.html")) {
-            Copy-Item -Path $ParentDir -Destination $AppDir -Recurse -Force
+# 2. Diretório de Instalação e Execução
+$LocalParent = Split-Path -Parent $ScriptDir
+if (Test-Path (Join-Path $LocalParent "index.html")) {
+    $AppDir = $LocalParent
+    Write-Host "[1/4] Executando diretamente da pasta do aplicativo: $AppDir" -ForegroundColor Green
+} else {
+    $InstallRoot = Join-Path $env:LOCALAPPDATA "TracesToad"
+    $AppDir = Join-Path $InstallRoot "app"
+    if (-not (Test-Path $InstallRoot)) {
+        New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+    }
+    if (-not (Test-Path $AppDir)) {
+        Write-Host "[1/4] Primeira execução detectada: Instalando aplicativo..." -ForegroundColor Green
+        if ($HasGit) {
+            Write-Host "      Clonando repositório Git ($RepoUrl)..." -ForegroundColor Gray
+            git clone --branch $Branch $RepoUrl $AppDir
         }
     }
 } else {
@@ -111,7 +105,10 @@ if (-not $HasPython) {
 $HasOracleDb = python -c "import oracledb" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      Instalando driver oficial python-oracledb..." -ForegroundColor Yellow
-    pip install oracledb --quiet
+    python -m pip install oracledb --quiet 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        python -m pip install oracledb
+    }
 }
 
 # 6. Iniciar Servidor do Toad e Abrir Navegador

@@ -12,8 +12,11 @@ echo ==================================================================
 python -c "import oracledb" 2>nul
 if %errorlevel% neq 0 (
     echo [INFO] Instalando driver python-oracledb...
-    pip install oracledb
+    python -m pip install oracledb --quiet 2>nul || pip install oracledb
 )
+
+echo [INFO] Abrindo Toad no navegador...
+start http://localhost:3033/index.html
 
 echo [INFO] Servidor ativo em: http://localhost:3033/index.html
 echo ==================================================================
