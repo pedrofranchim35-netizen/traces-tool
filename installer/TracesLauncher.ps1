@@ -1,5 +1,6 @@
 # ==============================================================================
 # TRACES TOAD FOR ORACLE - AUTO-UPDATING LAUNCHER & INSTALLER
+# Instala o Python automaticamente se faltar, atualiza via Git e abre o app!
 # ==============================================================================
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -101,32 +102,115 @@ try {
     $Shortcut.Save()
 } catch {}
 
-# 5. Verificar Python e Instalar Driver Oficial (via python -m pip)
+# 5. Verificar Python e Instalar Automaticamente se faltar
 Write-Host "[2/3] Verificando ambiente Python e driver Oracle..." -ForegroundColor Cyan
 
-$HasPython = $null -ne (Get-Command "python" -ErrorAction SilentlyContinue)
-if (-not $HasPython) {
-    Write-Host "[ERRO] Python não encontrado. Instale o Python em https://python.org" -ForegroundColor Red
-    Pause
-    exit 1
-}
+$PyExe = "python"
+$HasRealPython = $false
 
-python -c "import oracledb" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "      Instalando driver oficial python-oracledb..." -ForegroundColor Yellow
-    python -m pip install oracledb --quiet 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        python -m ensurepip --default-pip 2>$null
-        python -m pip install oracledb
+# Testar se o comando python atual executa código de verdade
+try {
+    $TestOutput = & python -c "print('OK')" 2>$null
+    if ($TestOutput -eq "OK") {
+        $HasRealPython = $true
+    }
+} catch {}
+
+# Se não tiver Python no PATH, procurar nos locais padrões
+if (-not $HasRealPython) {
+    $CommonPaths = @(
+        "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
+        "C:\Program Files\Python311\python.exe",
+        "C:\Program Files\Python312\python.exe",
+        "C:\Python311\python.exe"
+    )
+    foreach ($cand in $CommonPaths) {
+        if (Test-Path $cand) {
+            $PyExe = $cand
+            $HasRealPython = $true
+            break
+        }
     }
 }
 
-# 6. Iniciar Servidor e Abrir Navegador
+# Se ainda não tiver Python, instalar automaticamente!
+if (-not $HasRealPython) {
+    Write-Host "      [PYTHON NÃO DETECTADO] Instalando Python 3 automaticamente..." -ForegroundColor Yellow
+    
+    $HasWinget = $null -ne (Get-Command "winget" -ErrorAction SilentlyContinue)
+    $InstalledOk = $false
+
+    if ($HasWinget) {
+        Write-Host "      Instalando via Windows Package Manager (winget)..." -ForegroundColor Gray
+        try {
+            winget install Python.Python.3.11 --silent --accept-package-agreements --accept-source-agreements
+            $InstalledOk = $true
+        } catch {}
+    }
+
+    if (-not $InstalledOk) {
+        Write-Host "      Baixando instalador oficial do Python (python.org)..." -ForegroundColor Gray
+        $PyInstallerUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+        $PyTempFile = Join-Path $env:TEMP "python-installer.exe"
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $PyInstallerUrl -OutFile $PyTempFile -UseBasicParsing
+            Write-Host "      Executando instalação silenciosa do Python..." -ForegroundColor Gray
+            Start-Process -FilePath $PyTempFile -ArgumentList "/passive InstallAllUsers=0 PrependPath=1 Include_pip=1" -Wait
+            Remove-Item $PyTempFile -Force -ErrorAction SilentlyContinue
+            $InstalledOk = $true
+        } catch {
+            Write-Host "      [ERRO] Falha ao baixar instalador do Python: $_" -ForegroundColor Red
+        }
+    }
+
+    # Atualizar PATH na sessão atual
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
+
+    # Localizar o executável recém-instalado
+    $CommonPaths = @(
+        "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+        "C:\Program Files\Python311\python.exe"
+    )
+    foreach ($cand in $CommonPaths) {
+        if (Test-Path $cand) {
+            $PyExe = $cand
+            $HasRealPython = $true
+            break
+        }
+    }
+    Write-Host "      ✔ Python instalado com sucesso: $PyExe" -ForegroundColor Green
+}
+
+# 6. Instalar driver oficial python-oracledb
+Write-Host "      Verificando driver python-oracledb..." -ForegroundColor Gray
+& $PyExe -c "import oracledb" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "      Instalando driver python-oracledb..." -ForegroundColor Yellow
+    & $PyExe -m pip install oracledb --quiet 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        & $PyExe -m ensurepip --default-pip 2>$null
+        & $PyExe -m pip install oracledb
+    }
+}
+Write-Host "      ✔ Driver Oracle pronto!" -ForegroundColor Green
+
+# 7. Iniciar Servidor do Toad
 Write-Host "[3/3] Iniciando Traces Toad for Oracle na porta $Port..." -ForegroundColor Green
 $ServerScript = Join-Path $AppDir "bridge\oracle_server.py"
 
-Start-Process -FilePath "python" -ArgumentList "`"$ServerScript`"" -WorkingDirectory $AppDir -WindowStyle Hidden
-Start-Sleep -Seconds 1
+Start-Process -FilePath $PyExe -ArgumentList "`"$ServerScript`"" -WorkingDirectory $AppDir -WindowStyle Hidden
+Start-Sleep -Seconds 2
+
+# Testar se o servidor subiu
+$ServerAlive = $false
+try {
+    $resp = Invoke-WebRequest -Uri "http://localhost:$Port/api/status" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+    if ($resp.StatusCode -eq 200) { $ServerAlive = $true }
+} catch {}
 
 $AppUrl = "http://localhost:$Port/index.html"
 Write-Host ""
@@ -134,7 +218,7 @@ Write-Host "==================================================================" 
 Write-Host "  SISTEMA PRONTO! Abrindo Toad for Oracle em: $AppUrl" -ForegroundColor White
 Write-Host "==================================================================" -ForegroundColor Green
 
-# Abrir janela limpa com Edge, Chrome ou navegador padrão
+# Abrir janela com Edge, Chrome ou navegador padrão
 $EdgePath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 
