@@ -554,7 +554,7 @@ class SchemaBrowser {
       }
     }
 
-    // 8. Statistics Pane
+      // 8. Statistics Pane
     const statsPane = document.getElementById('tab-pane-stats');
     if (statsPane) {
       const stats = obj.stats || {};
@@ -584,6 +584,72 @@ class SchemaBrowser {
           </div>
         </div>
       `;
+    }
+
+    // 9. Partitions Pane
+    const partPane = document.getElementById('tab-pane-partitions');
+    if (partPane) {
+      if (obj.partitions && obj.partitions.length > 0) {
+        partPane.innerHTML = `
+          <table class="meta-table">
+            <thead>
+              <tr>
+                <th>Partition Name</th>
+                <th>Tablespace</th>
+                <th>Rows</th>
+                <th>Blocks</th>
+                <th>High Value Expression</th>
+                <th>Compression</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${obj.partitions.map(p => `
+                <tr>
+                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${p.name}</td>
+                  <td>${p.tablespace}</td>
+                  <td style="text-align: right;">${(p.numRows || 0).toLocaleString()}</td>
+                  <td style="text-align: right;">${(p.blocks || 0).toLocaleString()}</td>
+                  <td style="font-family: var(--font-code); color: #800080; font-size: 11px;">${p.highValue || '-'}</td>
+                  <td>${p.compression}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        partPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Tabela ${obj.name} não possui particionamento (Non-partitioned).</div>`;
+      }
+    }
+
+    // 10. Dependencies Pane
+    const depPane = document.getElementById('tab-pane-dependencies');
+    if (depPane) {
+      if (obj.dependencies && obj.dependencies.length > 0) {
+        depPane.innerHTML = `
+          <table class="meta-table">
+            <thead>
+              <tr>
+                <th>Referenced Owner</th>
+                <th>Referenced Object</th>
+                <th>Object Type</th>
+                <th>DB Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${obj.dependencies.map(d => `
+                <tr>
+                  <td style="font-weight: 600; color: #0078d7;">${d.referencedOwner}</td>
+                  <td style="font-weight: 600; font-family: var(--font-code);">${d.referencedName}</td>
+                  <td style="color: var(--syntax-keyword);">${d.referencedType}</td>
+                  <td style="color: var(--text-muted);">${d.link || '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        depPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma dependência encontrada para ${obj.name}.</div>`;
+      }
     }
   }
 

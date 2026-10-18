@@ -296,56 +296,83 @@ class ExplainPlan {
     this.renderTree();
   }
 
+  collectPlanNodes(node, list = []) {
+    if (!node) return list;
+    list.push(node);
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(c => this.collectPlanNodes(c, list));
+    }
+    return list;
+  }
+
   renderAdvisor() {
     if (!this.advisorPane) return;
+    const allNodes = this.collectPlanNodes(this.planTree);
+    const fullScans = allNodes.filter(n => (n.operation === 'TABLE ACCESS' && /FULL/i.test(n.options || '')) || /FULL/i.test(n.operation || ''));
+    const hashJoins = allNodes.filter(n => /HASH JOIN/i.test(n.operation || ''));
+    const highCostNodes = allNodes.filter(n => (n.cost || 0) > 20);
+
+    let cardsHtml = '';
+
+    if (fullScans.length > 0) {
+      fullScans.forEach(fn => {
+        const obj = (fn.objectOwner ? fn.objectOwner + '.' : '') + (fn.objectName || 'TABLE');
+        const ddl = `CREATE INDEX ${fn.objectOwner || 'HR'}.IDX_${(fn.objectName || 'TAB').toUpperCase()}_OPT ON ${obj} (/* filter columns */);`;
+        const hint = `/*+ INDEX(${fn.objectName ? fn.objectName.toLowerCase() : 't'}) */`;
+        cardsHtml += `
+          <div class="advisor-card alert">
+            <div class="advisor-card-title" style="color: var(--traces-red, #ef4444); font-weight: 700;">
+              Bottleneck: Full Table Scan on ${obj} (Cost: ${fn.cost || 0})
+            </div>
+            <div class="advisor-card-desc" style="font-size: 11px; margin: 4px 0;">
+              O Oracle Optimizer selecionou acesso TABLE ACCESS FULL. Avalie a criação de índice B-Tree para permitir Index Range Scan e reduzir Consistent Gets.
+            </div>
+            <div class="hint-code-box" style="font-family: var(--toad-font-code); font-size: 10.5px; background: #fff; border: 1px solid #ccc; padding: 6px; margin: 4px 0;">
+              ${ddl}
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 4px;">
+              <button class="btn" style="height: 24px; font-size: 11px;" onclick="window.TracesApp.applyOptimizerHint('${hint}')">
+                Aplicar Hint ${hint}
+              </button>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    if (hashJoins.length > 0) {
+      cardsHtml += `
+        <div class="advisor-card">
+          <div class="advisor-card-title" style="font-weight: 700;">Join Method Advisor: Hash Join Detected</div>
+          <div class="advisor-card-desc" style="font-size: 11px; margin: 4px 0;">
+            Se o conjunto filtrado de linhas for pequeno (OLTP), considere forçar Nested Loops para início mais rápido do fetch:
+          </div>
+          <div class="hint-code-box" style="font-family: var(--toad-font-code); font-size: 10.5px; background: #fff; border: 1px solid #ccc; padding: 6px; margin: 4px 0;">
+            /*+ USE_NL(d) */
+          </div>
+          <button class="btn" style="height: 24px; font-size: 11px;" onclick="window.TracesApp.applyOptimizerHint('/*+ USE_NL(d) */')">
+            Aplicar Hint no Editor
+          </button>
+        </div>
+      `;
+    }
+
+    if (!cardsHtml) {
+      cardsHtml = `
+        <div class="advisor-card" style="border-left: 3px solid #008000;">
+          <div class="advisor-card-title" style="color: #008000; font-weight: 700;">Plano de Execução Otimizado</div>
+          <div class="advisor-card-desc" style="font-size: 11px; margin-top: 4px;">
+            Nenhum gargalo severo detectado pelo analisador de plano do Toad. A consulta está utilizando caminhos eficientes de acesso via índices.
+          </div>
+        </div>
+      `;
+    }
+
     this.advisorPane.innerHTML = `
-      <div class="advisor-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
-        </svg>
+      <div class="advisor-title" style="font-weight: 700; font-size: 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
         <span>Oracle SQL Optimizer Advisor</span>
       </div>
-
-      <div class="advisor-card alert">
-        <div class="advisor-card-title" style="color: var(--traces-red);">
-          Bottleneck: Full Table Scan on HR.EMPLOYEES
-        </div>
-        <div class="advisor-card-desc">
-          Predicate <code>salary >= 6000</code> forces a full table scan across 24 blocks. Creating a B-tree index on SALARY will allow index range scanning and reduce query cost from 24 to 4.
-        </div>
-        <div class="hint-code-box">
-          CREATE INDEX hr.emp_salary_ix ON hr.employees (salary);
-        </div>
-        <button class="btn btn-secondary" style="height: 26px; font-size: 11px; margin-top: 4px;" onclick="window.TracesApp.notify('Recomendação DDL copiada.', 'info')">
-          Copiar Recomendação DDL
-        </button>
-      </div>
-
-      <div class="advisor-card">
-        <div class="advisor-card-title">Optimizer Hint Suggestion: Index Scan</div>
-        <div class="advisor-card-desc">
-          Enforce B-tree index access path over EMPLOYEES:
-        </div>
-        <div class="hint-code-box">
-          /*+ INDEX(e emp_salary_ix) */
-        </div>
-        <button class="btn btn-secondary" style="height: 26px; font-size: 11px;" onclick="window.TracesApp.applyOptimizerHint('/*+ INDEX(e emp_salary_ix) */')">
-          Aplicar na Worksheet
-        </button>
-      </div>
-
-      <div class="advisor-card">
-        <div class="advisor-card-title">Optimizer Hint Suggestion: Join Order</div>
-        <div class="advisor-card-desc">
-          Enforce driving table order and Nested Loops join:
-        </div>
-        <div class="hint-code-box">
-          /*+ LEADING(e d j) USE_NL(d j) */
-        </div>
-        <button class="btn btn-secondary" style="height: 26px; font-size: 11px;" onclick="window.TracesApp.applyOptimizerHint('/*+ LEADING(e d j) USE_NL(d j) */')">
-          Aplicar na Worksheet
-        </button>
-      </div>
+      ${cardsHtml}
     `;
   }
 

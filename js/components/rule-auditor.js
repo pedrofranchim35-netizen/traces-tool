@@ -1,10 +1,13 @@
 /* ==========================================================================
    TOAD RULE UNIVERSE (CODE QUALITY AUDITOR) COMPONENT
+   Analyzes live SQL/PLSQL code from SQL Editor or sample unit against
+   Toad CodeXpert / Quest Code Analysis rules, provides line highlighting,
+   auto-fixes, and metrics.
    ========================================================================== */
 
 class RuleAuditor {
   constructor() {
-    this.rules = window.TRACES_RULES.rules;
+    this.rules = window.TRACES_RULES ? window.TRACES_RULES.rules : [];
     this.selectedRuleId = 'RULE-2006';
     this.currentCode = `CREATE OR REPLACE PROCEDURE process_customer_ledger (
     p_customer_id IN NUMBER,
@@ -32,14 +35,20 @@ BEGIN
         WHERE customer_id = p_customer_id;
     END LOOP;
 
+    -- Violation 4: RULE-2088 (COUNT(*) instead of EXISTS)
+    IF (SELECT count(*) FROM sales_transactions WHERE customer_id = p_customer_id) > 0 THEN
+        NULL;
+    END IF;
+
 EXCEPTION
-    -- Violation 4: RULE-2045 (WHEN OTHERS without re-raising exception)
+    -- Violation 5: RULE-2045 (WHEN OTHERS without re-raising exception)
     WHEN OTHERS THEN
         DBMS_OUTPUT.PUT_LINE('Error processing customer: ' || SQLERRM);
 END process_customer_ledger;`;
 
+    this.activeViolations = [];
     this.initElements();
-    this.render();
+    this.analyzeCode();
   }
 
   initElements() {
@@ -49,33 +58,149 @@ END process_customer_ledger;`;
     this.codeView = document.getElementById('rule-code-inspector');
   }
 
+  loadCodeFromEditor() {
+    if (window.TracesApp?.sqlEditor) {
+      const q = window.TracesApp.sqlEditor.getQuery().trim();
+      if (q) {
+        this.currentCode = q;
+        this.analyzeCode();
+        window.TracesApp.notify('Código carregado do Editor SQL e analisado.', 'success');
+        return;
+      }
+    }
+    window.TracesApp.notify('Editor SQL está vazio. Usando procedimento modelo.', 'info');
+    this.analyzeCode();
+  }
+
+  analyzeCode() {
+    const code = this.currentCode;
+    const lines = code.split('\n');
+    const detected = [];
+
+    lines.forEach((line, idx) => {
+      const lineNum = idx + 1;
+      // RULE-2006: dbms_sql
+      if (/dbms_sql\./i.test(line)) {
+        detected.push({
+          id: 'RULE-2006',
+          title: 'Avoid DBMS_SQL, use Native Dynamic SQL (EXECUTE IMMEDIATE)',
+          category: 'Maintainability',
+          severity: 1,
+          severityName: 'Warning',
+          line: lineNum,
+          lineContent: line.trim(),
+          fix: line.replace(/dbms_sql\.parse\(.*customer_id\s*=\s*'\s*\|\|\s*p_customer_id.*/i, "EXECUTE IMMEDIATE 'DELETE FROM staging_ledger WHERE customer_id = :id' USING p_customer_id;")
+        });
+      }
+      // RULE-2012: BULK COLLECT without LIMIT
+      if (/BULK\s+COLLECT\s+INTO/i.test(line)) {
+        const nextLines = lines.slice(idx, idx + 5).join(' ');
+        if (!/LIMIT/i.test(nextLines)) {
+          detected.push({
+            id: 'RULE-2012',
+            title: 'BULK COLLECT clause must be accompanied by LIMIT clause',
+            category: 'Performance',
+            severity: 0,
+            severityName: 'High',
+            line: lineNum,
+            lineContent: line.trim(),
+            fix: line + ' LIMIT 500'
+          });
+        }
+      }
+      // RULE-2185: SQL inside LOOP
+      if (/(UPDATE|INSERT|DELETE)\s+/i.test(line)) {
+        // check if inside loop
+        const prev = lines.slice(Math.max(0, idx - 8), idx).join('\n');
+        if (/FOR\s+.*\s+LOOP/i.test(prev)) {
+          detected.push({
+            id: 'RULE-2185',
+            title: 'DML statement executed inside loop; convert to FORALL batch',
+            category: 'Performance',
+            severity: 0,
+            severityName: 'Critical',
+            line: lineNum,
+            lineContent: line.trim(),
+            fix: 'FORALL i IN 1..l_transactions.COUNT ' + line.trim()
+          });
+        }
+      }
+      // RULE-2045: WHEN OTHERS without RAISE
+      if (/WHEN\s+OTHERS\s+THEN/i.test(line)) {
+        const following = lines.slice(idx, idx + 6).join('\n');
+        if (!/RAISE/i.test(following)) {
+          detected.push({
+            id: 'RULE-2045',
+            title: 'WHEN OTHERS exception handler does not re-raise or log',
+            category: 'Security & Integrity',
+            severity: 0,
+            severityName: 'Critical',
+            line: lineNum,
+            lineContent: line.trim(),
+            fix: line + '\n        RAISE;'
+          });
+        }
+      }
+      // RULE-2001: SELECT *
+      if (/SELECT\s+\*\s+FROM/i.test(line)) {
+        detected.push({
+          id: 'RULE-2001',
+          title: 'Avoid SELECT * in production code, declare column list',
+          category: 'Efficiency',
+          severity: 2,
+          severityName: 'Info',
+          line: lineNum,
+          lineContent: line.trim(),
+          fix: line.replace('SELECT *', 'SELECT id, created_at, status')
+        });
+      }
+    });
+
+    this.activeViolations = detected;
+    if (this.activeViolations.length > 0 && !this.activeViolations.some(v => v.id === this.selectedRuleId)) {
+      this.selectedRuleId = this.activeViolations[0].id;
+    }
+    this.render();
+  }
+
   render() {
+    this.initElements();
+    if (!this.violationsList) return;
     this.renderViolationsList();
     this.renderDetail();
     this.renderCodeView();
   }
 
   renderViolationsList() {
-    this.violationsList.innerHTML = this.rules.map(rule => {
-      const isSelected = this.selectedRuleId === rule.id;
-      return `
-        <div class="violation-card sev-${rule.severity} ${isSelected ? 'active' : ''}"
-             onclick="window.TracesApp.ruleAuditor.selectRule('${rule.id}')">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <span class="violation-rule-id">${rule.id}</span>
-            <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: ${this.getSeverityColor(rule.severity)};">
-              ${rule.severityName}
-            </span>
-          </div>
-          <div class="violation-title">${rule.title}</div>
-          <div class="violation-location">${rule.category}</div>
-        </div>
-      `;
-    }).join('');
+    const list = this.activeViolations.length > 0 ? this.activeViolations : this.rules;
+    this.violationsList.innerHTML = `
+      <div style="padding: 6px 8px; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
+        <span style="font-weight: 700; font-size: 11px;">${list.length} Violações Detectadas</span>
+        <button class="btn" style="padding: 1px 6px;" onclick="window.TracesApp.ruleAuditor.loadCodeFromEditor();">Auditar Editor SQL</button>
+      </div>
+      <div style="overflow-y: auto; flex: 1;">
+        ${list.map(rule => {
+          const isSelected = this.selectedRuleId === rule.id;
+          return `
+            <div class="violation-card sev-${rule.severity} ${isSelected ? 'active' : ''}"
+                 onclick="window.TracesApp.ruleAuditor.selectRule('${rule.id}')">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="violation-rule-id">${rule.id}</span>
+                <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: ${this.getSeverityColor(rule.severity)};">
+                  ${rule.severityName}
+                </span>
+              </div>
+              <div class="violation-title">${rule.title}</div>
+              <div class="violation-location">${rule.category} ${rule.line ? `(Linha ${rule.line})` : ''}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
   }
 
   getSeverityColor(sev) {
-    if (sev === 0) return 'var(--traces-red)';
+    if (sev === 0) return 'var(--traces-red, #ef4444)';
     if (sev === 1) return '#f59e0b';
     return '#38bdf8';
   }
@@ -86,97 +211,92 @@ END process_customer_ledger;`;
   }
 
   renderDetail() {
-    const rule = this.rules.find(r => r.id === this.selectedRuleId);
-    if (!rule) return;
+    const rule = this.activeViolations.find(r => r.id === this.selectedRuleId) ||
+                 this.rules.find(r => r.id === this.selectedRuleId);
+    if (!rule || !this.detailTitle) return;
 
     this.detailTitle.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <span>${rule.id}: ${rule.title}</span>
-        <span style="font-size: 11px; font-weight: 700; background: ${this.getSeverityColor(rule.severity)}22; color: ${this.getSeverityColor(rule.severity)}; padding: 2px 8px; border-radius: var(--radius-full);">
+        <span style="font-size: 11px; font-weight: 700; background: ${this.getSeverityColor(rule.severity)}22; color: ${this.getSeverityColor(rule.severity)}; padding: 2px 8px; border-radius: 12px;">
           ${rule.severityName}
         </span>
       </div>
-      <div style="font-size: 11px; color: var(--text-muted); font-weight: 400; margin-top: 4px;">
-        Toad Rule Category: ${rule.category} | XPath Query: <code>${rule.xpath}</code>
+      <div style="font-size: 11px; color: #666; font-weight: 400; margin-top: 4px;">
+        Toad Rule Category: ${rule.category} ${rule.line ? `| Local: Linha ${rule.line}` : ''}
       </div>
     `;
 
-    this.tipBox.innerHTML = `
-      <p style="margin-bottom: 8px;"><strong>Rule Explanation:</strong> ${rule.description}</p>
-      <p style="margin-bottom: 8px; color: var(--text-secondary);"><strong>Toad Remediation Tip:</strong> ${rule.tipText}</p>
-      <div style="margin-top: 8px;">
-        <span style="font-size: 11px; font-weight: 600; color: #34d399;">Recommended Autofix Pattern:</span>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 8px; margin-top: 4px; font-family: var(--font-code); font-size: 11px; color: #fbbf24;">${rule.fixSuggestion}</pre>
-      </div>
-      <div style="margin-top: 12px; display: flex; gap: 8px;">
-        <button class="btn btn-primary" onclick="window.TracesApp.ruleAuditor.applyFix('${rule.id}')">
-          Apply Autofix to Code
-        </button>
-        <button class="btn btn-secondary" onclick="window.TracesApp.ruleAuditor.sendToWorksheet()">
-          Send to SQL Worksheet (F9)
-        </button>
-      </div>
-    `;
+    if (this.tipBox) {
+      this.tipBox.innerHTML = `
+        <div style="font-size: 11.5px; line-height: 1.5; color: #333;">
+          <div style="font-weight: 700; margin-bottom: 4px; color: #0078d7;">Toad CodeXpert Guidance:</div>
+          <div>${rule.title}. Violations of this rule in Oracle Database often degrade buffer cache efficiency, cause PGA exhaustion, or introduce transaction rollback locks.</div>
+          <div style="margin-top: 8px; display: flex; gap: 8px;">
+            <button class="btn btn-primary" onclick="window.TracesApp.ruleAuditor.applyFix('${rule.id}');">Apply Auto-Fix</button>
+            <button class="btn" onclick="window.TracesApp.ruleAuditor.sendCodeToEditor();">Send to SQL Editor</button>
+          </div>
+        </div>
+      `;
+    }
   }
 
   renderCodeView() {
+    if (!this.codeView) return;
     const lines = this.currentCode.split('\n');
-    this.codeView.innerHTML = lines.map((line, idx) => {
-      const lineNum = idx + 1;
-      let isViolation = false;
+    const activeRule = this.activeViolations.find(v => v.id === this.selectedRuleId);
 
-      if (this.selectedRuleId === 'RULE-2006' && (lineNum === 10 || lineNum === 11 || lineNum === 12)) {
-        isViolation = true;
-      } else if (this.selectedRuleId === 'RULE-2012' && lineNum === 16) {
-        isViolation = true;
-      } else if (this.selectedRuleId === 'RULE-2185' && (lineNum >= 22 && lineNum <= 25)) {
-        isViolation = true;
-      } else if (this.selectedRuleId === 'RULE-2045' && (lineNum === 30 || lineNum === 31)) {
-        isViolation = true;
-      }
-
-      return `
-        <div style="display: flex; line-height: 20px;" class="${isViolation ? 'code-line-violation' : ''}">
-          <span style="width: 36px; color: var(--text-disabled); user-select: none; text-align: right; margin-right: 14px;">${lineNum}</span>
-          <span style="white-space: pre;">${this.escapeHtml(line)}</span>
-        </div>
-      `;
+    const formatted = lines.map((l, i) => {
+      const lineNum = i + 1;
+      const isTarget = activeRule && activeRule.line === lineNum;
+      return `<div style="${isTarget ? 'background: #fef08a; font-weight: 700; color: #111;' : ''}"><span style="display:inline-block; width:35px; color:#888; text-align:right; margin-right:12px; user-select:none;">${lineNum}</span>${this.escapeHtml(l)}</div>`;
     }).join('');
+
+    this.codeView.innerHTML = formatted;
+  }
+
+  escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   applyFix(ruleId) {
+    const v = this.activeViolations.find(item => item.id === ruleId);
+    if (!v) {
+      window.TracesApp.notify('Nenhuma correção automática aplicável.', 'info');
+      return;
+    }
+
     if (ruleId === 'RULE-2006') {
       this.currentCode = this.currentCode.replace(
-        /v_cursor := dbms_sql\.open_cursor;[\s\S]*?dbms_sql\.close_cursor\(v_cursor\);/,
-        "EXECUTE IMMEDIATE 'DELETE FROM staging_ledger WHERE customer_id = :1' USING p_customer_id;"
+        /v_cursor\s*:=\s*dbms_sql\.open_cursor;[\s\S]*?dbms_sql\.close_cursor\(v_cursor\);/m,
+        "EXECUTE IMMEDIATE 'DELETE FROM staging_ledger WHERE customer_id = :id' USING p_customer_id;"
       );
     } else if (ruleId === 'RULE-2012') {
+      this.currentCode = this.currentCode.replace(/BULK COLLECT INTO l_transactions/g, 'BULK COLLECT INTO l_transactions LIMIT p_batch_size');
+    } else if (ruleId === 'RULE-2185') {
       this.currentCode = this.currentCode.replace(
-        "BULK COLLECT INTO l_transactions",
-        "BULK COLLECT INTO l_transactions LIMIT p_batch_size"
+        /FOR i IN 1\.\.l_transactions\.COUNT LOOP[\s\S]*?END LOOP;/m,
+        "FORALL i IN 1..l_transactions.COUNT\n        UPDATE customer_stats SET total_revenue = total_revenue + l_transactions(i).amount WHERE customer_id = p_customer_id;"
       );
     } else if (ruleId === 'RULE-2045') {
       this.currentCode = this.currentCode.replace(
-        "WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE('Error processing customer: ' || SQLERRM);",
-        "WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);\n        RAISE;"
+        /DBMS_OUTPUT\.PUT_LINE\('Error processing customer: ' \|\| SQLERRM\);/g,
+        "DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);\n        RAISE;"
       );
+    } else if (ruleId === 'RULE-2001') {
+      this.currentCode = this.currentCode.replace(/SELECT\s+\*\s+FROM/g, 'SELECT transaction_id, amount, tx_date FROM');
     }
 
-    this.render();
-    window.TracesApp.notify(`Applied fix for ${ruleId}. Code Quality Score recalculated to 92/100!`, 'success');
+    this.analyzeCode();
+    window.TracesApp.notify(`Correção automática aplicada para ${ruleId}.`, 'success');
   }
 
-  sendToWorksheet() {
-    window.TracesApp.switchDockView('editor');
-    window.TracesApp.sqlEditor.textarea.value = this.currentCode;
-    window.TracesApp.sqlEditor.saveActiveTabContent();
-    window.TracesApp.sqlEditor.updateHighlighting();
-    window.TracesApp.sqlEditor.updateGutter();
-    window.TracesApp.notify('Code loaded into active SQL Worksheet.', 'info');
-  }
-
-  escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  sendCodeToEditor() {
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(this.currentCode);
+      window.TracesApp.notify('Código auditado enviado para o Editor SQL.', 'success');
+    }
   }
 }
 

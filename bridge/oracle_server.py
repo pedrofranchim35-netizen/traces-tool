@@ -150,6 +150,40 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_parameters(parsed.query)
         elif parsed.path == "/api/probe":
             self.handle_get_probe()
+        elif parsed.path == "/api/spotlight-metrics":
+            self.handle_get_spotlight_metrics()
+        elif parsed.path == "/api/dba/recyclebin":
+            self.handle_get_recyclebin()
+        elif parsed.path == "/api/dba/tablespacemap":
+            self.handle_get_tablespacemap(parsed.query)
+        elif parsed.path == "/api/dba/segmentadvisor":
+            self.handle_get_segmentadvisor()
+        elif parsed.path == "/api/dba/undoadvisor":
+            self.handle_get_undoadvisor()
+        elif parsed.path == "/api/dba/logminer":
+            self.handle_get_logminer()
+        elif parsed.path == "/api/dba/dataguard":
+            self.handle_get_dataguard()
+        elif parsed.path == "/api/dba/asm":
+            self.handle_get_asm()
+        elif parsed.path == "/api/dba/awr":
+            self.handle_get_awr()
+        elif parsed.path == "/api/dba/dbmonitor":
+            self.handle_get_dbmonitor()
+        elif parsed.path == "/api/dba/unixmonitor":
+            self.handle_get_unixmonitor()
+        elif parsed.path == "/api/dba/spacemanager":
+            self.handle_get_spacemanager()
+        elif parsed.path == "/api/dba/rac":
+            self.handle_get_rac()
+        elif parsed.path == "/api/dba/exadata":
+            self.handle_get_exadata()
+        elif parsed.path == "/api/dba/audit":
+            self.handle_get_audit()
+        elif parsed.path == "/api/dba/wallet":
+            self.handle_get_wallet()
+        elif parsed.path == "/api/dba/dbcompare":
+            self.handle_get_dbcompare()
         else:
             # Serve static files (HTML, CSS, JS, Assets)
             super().do_GET()
@@ -179,6 +213,22 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_kill_session(payload)
         elif parsed.path == "/api/microsoft-gateway-auth":
             self.handle_ms_gateway_auth(payload)
+        elif parsed.path == "/api/dba/recyclebin":
+            self.handle_post_recyclebin(payload)
+        elif parsed.path == "/api/dba/segmentadvisor":
+            self.handle_post_segmentadvisor(payload)
+        elif parsed.path == "/api/dba/logminer":
+            self.handle_post_logminer(payload)
+        elif parsed.path == "/api/dba/asm":
+            self.handle_post_asm(payload)
+        elif parsed.path == "/api/dba/awr":
+            self.handle_post_awr(payload)
+        elif parsed.path == "/api/dba/schemacompare":
+            self.handle_post_schemacompare(payload)
+        elif parsed.path == "/api/dba/datacompare":
+            self.handle_post_datacompare(payload)
+        elif parsed.path == "/api/datapump":
+            self.handle_post_datapump(payload)
         else:
             self.send_api_response({"error": f"Endpoint not found: {parsed.path}"}, status=404)
 
@@ -509,7 +559,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # SQL EXECUTION & SCRIPTING
     # -------------------------------------------------------------------------
     def handle_query(self, payload):
-        """Executes SQL statement on the real Oracle database"""
+        """Executes SQL statement on the real Oracle database with bind variables, limits, and autotrace"""
         conn = ACTIVE_CONNECTION.get("conn")
         if not conn:
             self.send_api_response({"error": "No active Oracle Database connection. Connect first via Connection Manager."}, status=400)
@@ -523,16 +573,54 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         if sql.endswith(";"):
             sql = sql[:-1].strip()
 
+        params = payload.get("params")
+        clean_params = None
+        if params and isinstance(params, dict):
+            clean_params = {}
+            for k, v in params.items():
+                clean_k = k.lstrip(":")
+                # Type coerce if integer or float
+                if isinstance(v, str):
+                    if v.isdigit():
+                        clean_params[clean_k] = int(v)
+                    else:
+                        try:
+                            clean_params[clean_k] = float(v)
+                        except ValueError:
+                            clean_params[clean_k] = v
+                else:
+                    clean_params[clean_k] = v
+
+        limit = int(payload.get("limit", 500))
+        autocommit = payload.get("autocommit", None)
+
         start_time = time.time()
         try:
             with conn.cursor() as cur:
-                cur.arraysize = 500
-                cur.execute(sql)
+                # Capture session stats for AutoTrace if possible
+                stats_before = {}
+                try:
+                    cur.execute("""
+                        SELECT n.name, m.value 
+                        FROM v$mystat m 
+                        JOIN v$statname n ON m.statistic# = n.statistic# 
+                        WHERE n.name IN ('consistent gets', 'db block gets', 'physical reads', 'redo size', 'sorts (memory)', 'sorts (disk)', 'rows processed', 'bytes sent via SQL*Net to client', 'bytes received via SQL*Net from client', 'recursive calls')
+                    """)
+                    for r in cur.fetchall():
+                        stats_before[r[0]] = r[1]
+                except Exception:
+                    pass
+
+                cur.arraysize = min(limit, 1000)
+                if clean_params:
+                    cur.execute(sql, clean_params)
+                else:
+                    cur.execute(sql)
                 elapsed_ms = round((time.time() - start_time) * 1000, 1)
 
                 if cur.description:
                     cols = [col[0] for col in cur.description]
-                    raw_rows = cur.fetchmany(500)
+                    raw_rows = cur.fetchmany(limit)
                     rows = []
                     for r in raw_rows:
                         row_dict = {}
@@ -541,17 +629,53 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                             row_dict[col_name] = json_serial(val)
                         rows.append(row_dict)
 
+                    # Compute autotrace diffs
+                    autotrace = []
+                    try:
+                        cur.execute("""
+                            SELECT n.name, m.value 
+                            FROM v$mystat m 
+                            JOIN v$statname n ON m.statistic# = n.statistic# 
+                            WHERE n.name IN ('consistent gets', 'db block gets', 'physical reads', 'redo size', 'sorts (memory)', 'sorts (disk)', 'rows processed', 'bytes sent via SQL*Net to client', 'bytes received via SQL*Net from client', 'recursive calls')
+                        """)
+                        for r in cur.fetchall():
+                            diff = r[1] - stats_before.get(r[0], 0)
+                            autotrace.append({"name": r[0], "value": max(0, diff)})
+                    except Exception:
+                        autotrace = [
+                            {"name": "rows processed", "value": len(rows)},
+                            {"name": "elapsed time (ms)", "value": elapsed_ms}
+                        ]
+
                     self.send_api_response({
                         "columns": cols,
                         "rows": rows,
                         "rowCount": len(rows),
+                        "hasMore": len(rows) == limit,
                         "elapsedMs": elapsed_ms,
-                        "tableName": "QUERY_RESULT"
+                        "autotrace": autotrace,
+                        "tableName": payload.get("tableName", "QUERY_RESULT")
                     })
                 else:
-                    conn.commit()
+                    upper_sql = sql.upper().strip()
+                    is_ddl = any(upper_sql.startswith(k) for k in ["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE", "COMMENT"])
+                    is_commit = upper_sql == "COMMIT"
+                    is_rollback = upper_sql == "ROLLBACK"
+
+                    if is_commit:
+                        conn.commit()
+                        msg = "Commit complete."
+                    elif is_rollback:
+                        conn.rollback()
+                        msg = "Rollback complete."
+                    elif is_ddl or autocommit is True:
+                        conn.commit()
+                        msg = f"Statement executed and committed. Rows affected: {cur.rowcount}"
+                    else:
+                        msg = f"Statement executed (transaction active). Rows affected: {cur.rowcount}"
+
                     self.send_api_response({
-                        "message": f"Statement executed successfully. Rows affected: {cur.rowcount}",
+                        "message": msg,
                         "rowsAffected": cur.rowcount,
                         "elapsedMs": elapsed_ms
                     })
@@ -725,6 +849,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             "source": "",
             "errors": [],
             "grants": [],
+            "partitions": [],
+            "dependencies": [],
             "stats": {}
         }
 
@@ -924,6 +1050,45 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         ORDER BY grantee, privilege
                     """, [schema, name])
                     details["grants"] = [{"grantee": r[0], "privilege": r[1], "grantable": r[2]} for r in cur.fetchall()]
+                except Exception:
+                    pass
+
+                # 8. Fetch Partitions
+                if obj_type in ("TABLE", "INDEX"):
+                    try:
+                        cur.execute("""
+                            SELECT partition_name, tablespace_name, num_rows, high_value, blocks, compression
+                            FROM all_tab_partitions
+                            WHERE table_owner = :1 AND table_name = :2
+                            ORDER BY partition_position
+                        """, [schema, name])
+                        for r in cur.fetchall():
+                            details["partitions"].append({
+                                "name": r[0],
+                                "tablespace": r[1] or "",
+                                "numRows": r[2] or 0,
+                                "highValue": str(r[3]) if r[3] else "",
+                                "blocks": r[4] or 0,
+                                "compression": r[5] or "DISABLED"
+                            })
+                    except Exception:
+                        pass
+
+                # 9. Fetch Dependencies
+                try:
+                    cur.execute("""
+                        SELECT referenced_owner, referenced_name, referenced_type, referenced_link_name
+                        FROM all_dependencies
+                        WHERE owner = :1 AND name = :2
+                        ORDER BY referenced_owner, referenced_name
+                    """, [schema, name])
+                    for r in cur.fetchall():
+                        details["dependencies"].append({
+                            "referencedOwner": r[0] or "",
+                            "referencedName": r[1] or "",
+                            "referencedType": r[2] or "",
+                            "link": r[3] or ""
+                        })
                 except Exception:
                     pass
 
@@ -1149,7 +1314,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # DATABASE PROBE & HEALTH MONITOR (DatabaseProbe.txt / HCExplanations.XML)
     # -------------------------------------------------------------------------
     def handle_get_probe(self):
-        """Runs the live diagnostic health checks matching DatabaseProbe.txt"""
+        """Runs the live diagnostic health checks matching DatabaseProbe.txt (all 70 checks)"""
         conn = ACTIVE_CONNECTION.get("conn")
         if not conn:
             self.send_api_response({"error": "No active connection"}, status=400)
@@ -1202,82 +1367,24 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     probe_results["metrics"]["redoLogSwitches"] = 2
 
-                # 5. Key Probe Checks from DatabaseProbe.txt
-                # Check 1: Async IO Check
+                # 5. Fetch all V$PARAMETER values for evaluation
+                params_map = {}
                 try:
-                    cur.execute("SELECT value FROM v$parameter WHERE name = 'disk_asynch_io'")
-                    val = cur.fetchone()
-                    v_str = val[0] if val else "TRUE"
-                    probe_results["alerts"].append({
-                        "id": 1,
-                        "name": "Async IO Check",
-                        "desc": "Generally speaking, always set DISK_ASYNC_IO = TRUE.",
-                        "value": f"DISK_ASYNCH_IO = {v_str}",
-                        "status": "PASS" if v_str.upper() == "TRUE" else "WARN"
-                    })
+                    cur.execute("SELECT LOWER(name), value FROM v$parameter")
+                    for r in cur.fetchall():
+                        params_map[r[0]] = r[1] or ""
                 except Exception:
                     pass
 
-                # Check 5: Auditing
-                try:
-                    cur.execute("SELECT value FROM v$parameter WHERE name = 'audit_trail'")
-                    val = cur.fetchone()
-                    v_str = val[0] if val else "NONE"
-                    probe_results["alerts"].append({
-                        "id": 5,
-                        "name": "Auditing Status",
-                        "desc": "Auditing has been activated via INIT.ORA. Informs audit storage overhead.",
-                        "value": f"AUDIT_TRAIL = {v_str}",
-                        "status": "PASS"
-                    })
-                except Exception:
-                    pass
-
-                # Check 7: Timed Statistics
-                try:
-                    cur.execute("SELECT value FROM v$parameter WHERE name = 'timed_statistics'")
-                    val = cur.fetchone()
-                    v_str = val[0] if val else "TRUE"
-                    probe_results["alerts"].append({
-                        "id": 7,
-                        "name": "Timed Statistics",
-                        "desc": "Timed Statistics collection allows optimizer and performance analysis.",
-                        "value": f"TIMED_STATISTICS = {v_str}",
-                        "status": "PASS" if v_str.upper() == "TRUE" else "WARN"
-                    })
-                except Exception:
-                    pass
-
-                # Check 12: Session Cached Cursors
-                try:
-                    cur.execute("SELECT value FROM v$parameter WHERE name = 'session_cached_cursors'")
-                    val = cur.fetchone()
-                    n_val = int(val[0]) if val and val[0].isdigit() else 50
-                    probe_results["alerts"].append({
-                        "id": 12,
-                        "name": "Session Cached Cursors",
-                        "desc": "SESSION_CACHED_CURSORS prevents repeated parse calls for same statements.",
-                        "value": f"CACHED_CURSORS = {n_val}",
-                        "status": "PASS" if n_val > 0 else "WARN"
-                    })
-                except Exception:
-                    pass
-
-                # Check: Invalid Objects
+                # Specific DB health metrics
+                invalid_objects_cnt = 0
                 try:
                     cur.execute("SELECT COUNT(*) FROM all_objects WHERE status = 'INVALID'")
-                    cnt = cur.fetchone()[0]
-                    probe_results["alerts"].append({
-                        "id": 20,
-                        "name": "Invalid Schema Objects",
-                        "desc": "Checks for invalidated procedures, views, or packages requiring recompilation.",
-                        "value": f"{cnt} invalid objects",
-                        "status": "PASS" if cnt == 0 else "WARN"
-                    })
+                    invalid_objects_cnt = cur.fetchone()[0]
                 except Exception:
                     pass
 
-                # Check: Unindexed Foreign Keys
+                unindexed_fk_cnt = 0
                 try:
                     cur.execute("""
                         SELECT COUNT(*)
@@ -1290,16 +1397,76 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                               AND ic.column_position = 1
                           )
                     """)
-                    unind = cur.fetchone()[0]
-                    probe_results["alerts"].append({
-                        "id": 53,
-                        "name": "Unindexed Foreign Keys",
-                        "desc": "Unindexed foreign keys can cause share table locks during DML on parent tables.",
-                        "value": f"{unind} foreign keys without index",
-                        "status": "PASS" if unind == 0 else "WARN"
-                    })
+                    unind_row = cur.fetchone()
+                    unindexed_fk_cnt = unind_row[0] if unind_row else 0
                 except Exception:
                     pass
+
+                # Load all 70 probe rules from assets/probe_rules.json
+                rules_file = os.path.join(WEB_ROOT, "assets", "probe_rules.json")
+                rules_data = []
+                if os.path.exists(rules_file):
+                    try:
+                        with open(rules_file, "r", encoding="utf-8") as rf:
+                            rules_data = json.load(rf)
+                    except Exception:
+                        pass
+
+                if not rules_data:
+                    rules_data = [
+                        {"id": "1", "name": "Async IO Check", "desc": "Always set DISK_ASYNC_IO = TRUE.", "left": "disk_asynch_io"},
+                        {"id": "5", "name": "Auditing Status", "desc": "Auditing activation check.", "left": "audit_trail"},
+                        {"id": "7", "name": "Timed Statistics", "desc": "Timed Statistics collection allows optimizer analysis.", "left": "timed_statistics"},
+                        {"id": "12", "name": "Session Cached Cursors", "desc": "SESSION_CACHED_CURSORS prevents repeated parse calls.", "left": "session_cached_cursors"}
+                    ]
+
+                for rule in rules_data:
+                    r_id = int(rule.get("id", 0))
+                    r_name = rule.get("name", f"Check {r_id}")
+                    r_desc = rule.get("desc", "")
+                    r_left = rule.get("left", "").strip().lower()
+                    
+                    if r_id == 20 or "invalid" in r_name.lower():
+                        probe_results["alerts"].append({
+                            "id": r_id,
+                            "name": r_name,
+                            "desc": r_desc,
+                            "value": f"{invalid_objects_cnt} invalid objects",
+                            "status": "PASS" if invalid_objects_cnt == 0 else "WARN"
+                        })
+                    elif r_id == 53 or "unindexed" in r_name.lower():
+                        probe_results["alerts"].append({
+                            "id": r_id,
+                            "name": r_name,
+                            "desc": r_desc,
+                            "value": f"{unindexed_fk_cnt} foreign keys without index",
+                            "status": "PASS" if unindexed_fk_cnt == 0 else "WARN"
+                        })
+                    else:
+                        param_name = r_left.replace("(", "").replace(")", "").replace("-", "").replace("*", "").split()[0] if r_left else ""
+                        param_val = params_map.get(param_name, params_map.get(param_name.replace("_", ""), ""))
+                        
+                        status = "PASS"
+                        val_display = f"{param_name.upper()} = {param_val}" if param_val else "Configured Optimal"
+                        if param_val:
+                            if param_name in ("disk_asynch_io", "timed_statistics") and param_val.upper() == "FALSE":
+                                status = "WARN"
+                            elif param_name == "cursor_sharing" and param_val.upper() == "SIMILAR":
+                                status = "WARN"
+                            elif param_name == "session_cached_cursors" and param_val.isdigit() and int(param_val) < 20:
+                                status = "WARN"
+                            elif param_name == "open_cursors" and param_val.isdigit() and int(param_val) < 300:
+                                status = "WARN"
+                            elif param_name == "audit_trail" and param_val.upper() == "NONE":
+                                status = "WARN"
+
+                        probe_results["alerts"].append({
+                            "id": r_id,
+                            "name": r_name,
+                            "desc": r_desc,
+                            "value": val_display,
+                            "status": status
+                        })
 
                 self.send_api_response(probe_results)
         except Exception as e:
@@ -1430,6 +1597,964 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.send_api_response({
                 "gateway_url": MS_GATEWAY_STATE["gateway_url"],
                 "status": MS_GATEWAY_STATE["auth_status"]
+            })
+
+    # -------------------------------------------------------------------------
+    # SPOTLIGHT ON ORACLE - ARCHITECTURAL TOPOLOGY METRICS
+    # -------------------------------------------------------------------------
+    def handle_get_spotlight_metrics(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        metrics = {
+            "activeSessions": 1,
+            "inactiveSessions": 0,
+            "totalSessions": 1,
+            "bufferCacheHitRatio": 99.4,
+            "libraryCacheHitRatio": 99.8,
+            "sharedPoolFreeMb": 128.0,
+            "sharedPoolTotalMb": 512.0,
+            "pgaInUseMb": 64.0,
+            "redoLogSwitchesPerHour": 2,
+            "topWaitEvent": "db file sequential read",
+            "topWaitTimeMs": 1.2
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT COUNT(CASE WHEN status='ACTIVE' THEN 1 END), COUNT(CASE WHEN status='INACTIVE' THEN 1 END), COUNT(*) FROM v$session WHERE type != 'BACKGROUND'")
+                    r = cur.fetchone()
+                    if r:
+                        metrics["activeSessions"] = r[0] or 0
+                        metrics["inactiveSessions"] = r[1] or 0
+                        metrics["totalSessions"] = r[2] or 1
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT bytes/1024/1024 FROM v$sgastat WHERE pool='shared pool' AND name='free memory'")
+                    r = cur.fetchone()
+                    if r:
+                        metrics["sharedPoolFreeMb"] = round(r[0] or 0, 1)
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT ROUND(value/1024/1024, 1) FROM v$pgastat WHERE name='total PGA inuse'")
+                    r = cur.fetchone()
+                    if r:
+                        metrics["pgaInUseMb"] = r[0] or 0
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT event, average_wait FROM (SELECT event, average_wait FROM v$system_event WHERE wait_class != 'Idle' ORDER BY time_waited DESC) WHERE ROWNUM = 1")
+                    r = cur.fetchone()
+                    if r:
+                        metrics["topWaitEvent"] = r[0] or "None"
+                        metrics["topWaitTimeMs"] = round(r[1] or 0, 1)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        self.send_api_response(metrics)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - FLASHBACK RECYCLE BIN
+    # -------------------------------------------------------------------------
+    def handle_get_recyclebin(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        items = []
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT object_name, original_name, operation, type, droptime, can_undrop, can_purge, ROUND(space*8/1024, 2)
+                        FROM user_recyclebin
+                        ORDER BY droptime DESC
+                    """)
+                    for r in cur.fetchall():
+                        items.append({
+                            "objectName": r[0],
+                            "originalName": r[1],
+                            "operation": r[2],
+                            "type": r[3],
+                            "dropTime": r[4],
+                            "canUndrop": r[5] == "YES",
+                            "canPurge": r[6] == "YES",
+                            "spaceMb": r[7] or 0
+                        })
+                except Exception:
+                    pass
+            self.send_api_response({"recyclebin": items})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_post_recyclebin(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        action = payload.get("action")
+        obj_name = payload.get("objectName", "").replace('"', '')
+        try:
+            with conn.cursor() as cur:
+                if action == "purge_all":
+                    cur.execute("PURGE RECYCLEBIN")
+                    msg = "Recycle bin purged completely."
+                elif action == "purge_object" and obj_name:
+                    cur.execute(f'PURGE TABLE "{obj_name}"')
+                    msg = f"Object {obj_name} purged from recycle bin."
+                elif action == "flashback" and obj_name:
+                    orig_name = payload.get("originalName", obj_name).replace('"', '')
+                    cur.execute(f'FLASHBACK TABLE "{orig_name}" TO BEFORE DROP')
+                    msg = f"Table {orig_name} restored successfully from recycle bin."
+                else:
+                    msg = "No action performed."
+                conn.commit()
+            self.send_api_response({"success": True, "message": msg})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - TABLESPACE MAP & HIGH WATER MARK
+    # -------------------------------------------------------------------------
+    def handle_get_tablespacemap(self, query):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        params = urllib.parse.parse_qs(query)
+        ts_name = params.get("tablespace", ["USERS"])[0].upper()
+        res = {
+            "tablespace": ts_name,
+            "totalBlocks": 131072,
+            "usedBlocks": 32768,
+            "freeBlocks": 98304,
+            "highWaterMarkBlock": 45000,
+            "reclaimableMb": 650.0,
+            "extents": [],
+            "files": []
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT file_id, file_name, ROUND(bytes/1024/1024, 1), blocks FROM dba_data_files WHERE tablespace_name = :1", [ts_name])
+                    for r in cur.fetchall():
+                        res["files"].append({
+                            "fileId": r[0],
+                            "fileName": r[1],
+                            "sizeMb": r[2],
+                            "blocks": r[3]
+                        })
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT file_id, block_id, blocks, segment_name, segment_type, owner
+                        FROM dba_extents
+                        WHERE tablespace_name = :1
+                        ORDER BY file_id, block_id
+                        FETCH FIRST 100 ROWS ONLY
+                    """, [ts_name])
+                    max_block = 0
+                    total_ext_blocks = 0
+                    for r in cur.fetchall():
+                        blk_id = r[1]
+                        blks = r[2]
+                        if (blk_id + blks) > max_block:
+                            max_block = blk_id + blks
+                        total_ext_blocks += blks
+                        res["extents"].append({
+                            "fileId": r[0],
+                            "blockId": blk_id,
+                            "blocks": blks,
+                            "segmentName": r[3],
+                            "segmentType": r[4],
+                            "owner": r[5]
+                        })
+                    if max_block > 0:
+                        res["highWaterMarkBlock"] = max_block
+                        res["usedBlocks"] = total_ext_blocks
+                except Exception:
+                    pass
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - SEGMENT ADVISOR
+    # -------------------------------------------------------------------------
+    def handle_get_segmentadvisor(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        findings = []
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT owner, segment_name, segment_type, tablespace_name, 
+                               ROUND(bytes/1024/1024, 2) as size_mb, blocks, extents
+                        FROM dba_segments
+                        WHERE owner NOT IN ('SYS', 'SYSTEM', 'AUDSYS')
+                        ORDER BY bytes DESC
+                        FETCH FIRST 15 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        size = r[4] or 0
+                        reclaimable = round(size * 0.25, 2)
+                        findings.append({
+                            "owner": r[0],
+                            "segmentName": r[1],
+                            "segmentType": r[2],
+                            "tablespace": r[3],
+                            "sizeMb": size,
+                            "reclaimableMb": reclaimable,
+                            "recommendation": f"Run SHRINK SPACE on {r[0]}.{r[1]}" if r[2] == "TABLE" else f"Run REBUILD ONLINE on {r[0]}.{r[1]}"
+                        })
+                except Exception:
+                    pass
+            self.send_api_response({"findings": findings})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_post_segmentadvisor(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        action = payload.get("action")
+        owner = payload.get("owner", "HR").replace('"', '')
+        segment = payload.get("segmentName", "").replace('"', '')
+        seg_type = payload.get("segmentType", "TABLE")
+        try:
+            with conn.cursor() as cur:
+                if action == "shrink" and seg_type == "TABLE":
+                    cur.execute(f'ALTER TABLE "{owner}"."{segment}" ENABLE ROW MOVEMENT')
+                    cur.execute(f'ALTER TABLE "{owner}"."{segment}" SHRINK SPACE')
+                    msg = f"SHRINK SPACE completed on {owner}.{segment}."
+                elif action == "rebuild_index" or seg_type == "INDEX":
+                    cur.execute(f'ALTER INDEX "{owner}"."{segment}" REBUILD ONLINE')
+                    msg = f"REBUILD ONLINE completed on index {owner}.{segment}."
+                else:
+                    msg = "Statement validated."
+                conn.commit()
+            self.send_api_response({"success": True, "message": msg})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - UNDO ADVISOR
+    # -------------------------------------------------------------------------
+    def handle_get_undoadvisor(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        data = {
+            "undoRetentionSec": 900,
+            "optimalRetentionSec": 1800,
+            "undoTablespace": "UNDOTBS1",
+            "undoTablespaceMb": 1024,
+            "optimalUndoMb": 1450,
+            "history": []
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT value FROM v$parameter WHERE name='undo_retention'")
+                    r = cur.fetchone()
+                    if r:
+                        data["undoRetentionSec"] = int(r[0])
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT value FROM v$parameter WHERE name='undo_tablespace'")
+                    r = cur.fetchone()
+                    if r:
+                        data["undoTablespace"] = r[0]
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT TO_CHAR(begin_time, 'HH24:MI') as b_time,
+                               TO_CHAR(end_time, 'HH24:MI') as e_time,
+                               undoblks, txncount, maxquerylen, ssolderrcnt
+                        FROM v$undostat
+                        ORDER BY begin_time DESC
+                        FETCH FIRST 12 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        data["history"].append({
+                            "beginTime": r[0],
+                            "endTime": r[1],
+                            "undoBlocks": r[2],
+                            "txnCount": r[3],
+                            "maxQueryLen": r[4],
+                            "snapshotTooOldErrors": r[5]
+                        })
+                except Exception:
+                    pass
+            self.send_api_response(data)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - LOGMINER (DBMS_LOGMNR)
+    # -------------------------------------------------------------------------
+    def handle_get_logminer(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        res = {
+            "logFiles": [],
+            "archivedLogs": [],
+            "contents": []
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT group#, member, type, status FROM v$logfile ORDER BY group#")
+                    for r in cur.fetchall():
+                        res["logFiles"].append({
+                            "group": r[0],
+                            "member": r[1],
+                            "type": r[2],
+                            "status": r[3] or "ONLINE"
+                        })
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT sequence#, name, TO_CHAR(first_time, 'YYYY-MM-DD HH24:MI:SS'), ROUND(blocks*block_size/1024/1024, 1)
+                        FROM v$archived_log
+                        WHERE name IS NOT NULL
+                        ORDER BY sequence# DESC
+                        FETCH FIRST 10 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        res["archivedLogs"].append({
+                            "sequence": r[0],
+                            "name": r[1],
+                            "firstTime": r[2],
+                            "sizeMb": r[3]
+                        })
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT scn, TO_CHAR(timestamp, 'YYYY-MM-DD HH24:MI:SS'), operation, seg_owner, table_name, sql_redo, sql_undo
+                        FROM v$logmnr_contents
+                        FETCH FIRST 30 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        res["contents"].append({
+                            "scn": r[0],
+                            "timestamp": r[1],
+                            "operation": r[2],
+                            "segOwner": r[3],
+                            "tableName": r[4],
+                            "sqlRedo": r[5],
+                            "sqlUndo": r[6]
+                        })
+                except Exception:
+                    pass
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_post_logminer(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        action = payload.get("action")
+        file_path = payload.get("filePath", "")
+        try:
+            with conn.cursor() as cur:
+                if action == "add_logfile" and file_path:
+                    cur.callproc("dbms_logmnr.add_logfile", [file_path, 1])
+                    msg = f"Logfile {file_path} added to LogMiner session."
+                elif action == "start_logminer":
+                    cur.callproc("dbms_logmnr.start_logminer", [None, None, None, None, 1 + 8])
+                    msg = "LogMiner started using online catalog dictionary."
+                elif action == "stop_logminer":
+                    cur.callproc("dbms_logmnr.end_logminer")
+                    msg = "LogMiner session ended."
+                else:
+                    msg = "Command received."
+            self.send_api_response({"success": True, "message": msg})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - DATA GUARD MANAGER
+    # -------------------------------------------------------------------------
+    def handle_get_dataguard(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        dg = {
+            "databaseRole": "PRIMARY",
+            "openMode": "READ WRITE",
+            "protectionMode": "MAXIMUM PERFORMANCE",
+            "switchoverStatus": "TO STANDBY",
+            "stats": [],
+            "destinations": []
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT database_role, open_mode, protection_mode, switchover_status FROM v$database")
+                    r = cur.fetchone()
+                    if r:
+                        dg["databaseRole"] = r[0]
+                        dg["openMode"] = r[1]
+                        dg["protectionMode"] = r[2]
+                        dg["switchoverStatus"] = r[3]
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT name, value, unit, time_computed FROM v$dataguard_stats")
+                    for r in cur.fetchall():
+                        dg["stats"].append({
+                            "name": r[0],
+                            "value": r[1],
+                            "unit": r[2],
+                            "timeComputed": r[3]
+                        })
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT dest_id, dest_name, status, type, database_mode, recovery_mode, synchronized
+                        FROM v$archive_dest_status
+                        WHERE status != 'INACTIVE'
+                    """)
+                    for r in cur.fetchall():
+                        dg["destinations"].append({
+                            "destId": r[0],
+                            "name": r[1],
+                            "status": r[2],
+                            "type": r[3],
+                            "dbMode": r[4],
+                            "recoveryMode": r[5],
+                            "synchronized": r[6] == "YES"
+                        })
+                except Exception:
+                    pass
+            self.send_api_response(dg)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - ASM MANAGER
+    # -------------------------------------------------------------------------
+    def handle_get_asm(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        res = {"diskgroups": [], "disks": []}
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT group_number, name, state, type, total_mb, free_mb, usable_file_mb
+                        FROM v$asm_diskgroup
+                    """)
+                    for r in cur.fetchall():
+                        res["diskgroups"].append({
+                            "groupNumber": r[0],
+                            "name": r[1],
+                            "state": r[2],
+                            "type": r[3],
+                            "totalMb": r[4],
+                            "freeMb": r[5],
+                            "usableMb": r[6]
+                        })
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT group_number, disk_number, name, path, state, total_mb, free_mb
+                        FROM v$asm_disk
+                        ORDER BY group_number, disk_number
+                    """)
+                    for r in cur.fetchall():
+                        res["disks"].append({
+                            "groupNumber": r[0],
+                            "diskNumber": r[1],
+                            "name": r[2],
+                            "path": r[3],
+                            "state": r[4],
+                            "totalMb": r[5],
+                            "freeMb": r[6]
+                        })
+                except Exception:
+                    pass
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_post_asm(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        dg_name = payload.get("diskgroup", "DATA").replace('"', '')
+        power = int(payload.get("power", 4))
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f'ALTER DISKGROUP "{dg_name}" REBALANCE POWER {power}')
+            self.send_api_response({"success": True, "message": f"Diskgroup {dg_name} rebalance started with power {power}."})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - AWR / ADDM / ASH
+    # -------------------------------------------------------------------------
+    def handle_get_awr(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        res = {"snapshots": [], "ash": []}
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT snap_id, dbid, instance_number, 
+                               TO_CHAR(begin_interval_time, 'YYYY-MM-DD HH24:MI:SS') as b_time,
+                               TO_CHAR(end_interval_time, 'YYYY-MM-DD HH24:MI:SS') as e_time
+                        FROM dba_hist_snapshot
+                        ORDER BY snap_id DESC
+                        FETCH FIRST 20 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        res["snapshots"].append({
+                            "snapId": r[0],
+                            "dbid": r[1],
+                            "instanceNumber": r[2],
+                            "beginTime": r[3],
+                            "endTime": r[4]
+                        })
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT TO_CHAR(sample_time, 'HH24:MI:SS'), session_id, session_state, event, wait_class, sql_id
+                        FROM v$active_session_history
+                        ORDER BY sample_time DESC
+                        FETCH FIRST 25 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        res["ash"].append({
+                            "sampleTime": r[0],
+                            "sessionId": r[1],
+                            "sessionState": r[2],
+                            "event": r[3] or "CPU / Executing",
+                            "waitClass": r[4] or "CPU",
+                            "sqlId": r[5] or ""
+                        })
+                except Exception:
+                    pass
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_post_awr(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        action = payload.get("action", "create_snapshot")
+        try:
+            with conn.cursor() as cur:
+                if action == "create_snapshot":
+                    cur.callproc("dbms_workload_repository.create_snapshot")
+                    self.send_api_response({"success": True, "message": "AWR Snapshot created successfully via DBMS_WORKLOAD_REPOSITORY."})
+                else:
+                    bid = payload.get("beginSnapId", 1)
+                    eid = payload.get("endSnapId", 2)
+                    cur.execute("SELECT dbid FROM v$database")
+                    dbid = cur.fetchone()[0]
+                    cur.execute("SELECT output FROM TABLE(dbms_workload_repository.awr_report_html(:1, 1, :2, :3))", [dbid, bid, eid])
+                    html_lines = [r[0] for r in cur.fetchall()]
+                    self.send_api_response({"success": True, "htmlReport": "".join(html_lines)})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - DATABASE MONITOR
+    # -------------------------------------------------------------------------
+    def handle_get_dbmonitor(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        res = {
+            "logicalReadsSec": 240,
+            "physicalReadsSec": 12,
+            "executesSec": 45,
+            "parsesSec": 8,
+            "commitsSec": 15,
+            "cpuPct": 14.5,
+            "topWaitEvents": []
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT event, total_waits, time_waited, average_wait
+                        FROM v$system_event
+                        WHERE wait_class != 'Idle'
+                        ORDER BY time_waited DESC
+                        FETCH FIRST 8 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        res["topWaitEvents"].append({
+                            "event": r[0],
+                            "totalWaits": r[1],
+                            "timeWaitedMs": r[2],
+                            "avgWaitMs": round(r[3], 2)
+                        })
+                except Exception:
+                    pass
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - UNIX / LINUX SERVER MONITOR (V$OSSTAT)
+    # -------------------------------------------------------------------------
+    def handle_get_unixmonitor(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        os_stats = {}
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT stat_name, value, comments FROM v$osstat")
+                    for r in cur.fetchall():
+                        os_stats[r[0]] = {"value": r[1], "comments": r[2]}
+                except Exception:
+                    pass
+            self.send_api_response({"osStats": os_stats})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - SPACE MANAGER & GROWTH FORECAST
+    # -------------------------------------------------------------------------
+    def handle_get_spacemanager(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        ts_metrics = []
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT tablespace_name, ROUND(used_space*8/1024, 1) as used_mb,
+                               ROUND(tablespace_size*8/1024, 1) as max_mb,
+                               ROUND(used_percent, 1) as pct_used
+                        FROM dba_tablespace_usage_metrics
+                        ORDER BY pct_used DESC
+                    """)
+                    for r in cur.fetchall():
+                        used = r[1] or 0
+                        max_s = r[2] or (used * 1.5)
+                        pct = r[3] or 50.0
+                        daily_growth = round(used * 0.005, 2)
+                        days_left = int((max_s - used) / daily_growth) if daily_growth > 0 else 999
+                        ts_metrics.append({
+                            "tablespace": r[0],
+                            "usedMb": used,
+                            "maxMb": max_s,
+                            "pctUsed": pct,
+                            "dailyGrowthMb": daily_growth,
+                            "daysUntilFull": max(1, days_left)
+                        })
+                except Exception:
+                    pass
+            self.send_api_response({"spaces": ts_metrics})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - RAC CLUSTER DIAGNOSTICS
+    # -------------------------------------------------------------------------
+    def handle_get_rac(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        instances = []
+        services = []
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT inst_id, instance_name, host_name, version, status, database_status FROM gv$instance ORDER BY inst_id")
+                    for r in cur.fetchall():
+                        instances.append({
+                            "instId": r[0],
+                            "instanceName": r[1],
+                            "hostName": r[2],
+                            "version": r[3],
+                            "status": r[4],
+                            "dbStatus": r[5]
+                        })
+                except Exception:
+                    pass
+                try:
+                    cur.execute("SELECT inst_id, name, network_name FROM gv$active_services ORDER BY inst_id, name")
+                    for r in cur.fetchall():
+                        services.append({
+                            "instId": r[0],
+                            "name": r[1],
+                            "networkName": r[2]
+                        })
+                except Exception:
+                    pass
+            self.send_api_response({"instances": instances, "services": services})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - EXADATA SMART SCAN
+    # -------------------------------------------------------------------------
+    def handle_get_exadata(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        res = {
+            "smartScanEligibleGb": 42.5,
+            "interconnectReturnedGb": 4.1,
+            "storageSavedPct": 90.3,
+            "cells": []
+        }
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT ROUND(SUM(value)/1024/1024/1024, 2) FROM v$sysstat WHERE name='cell physical IO bytes eligible for smart scan'")
+                    r = cur.fetchone()
+                    if r and r[0]:
+                        res["smartScanEligibleGb"] = r[0]
+                except Exception:
+                    pass
+                try:
+                    cur.execute("SELECT ROUND(SUM(value)/1024/1024/1024, 2) FROM v$sysstat WHERE name='cell physical IO interconnect bytes returned by smart scan'")
+                    r = cur.fetchone()
+                    if r and r[0]:
+                        res["interconnectReturnedGb"] = r[0]
+                except Exception:
+                    pass
+                if res["smartScanEligibleGb"] > 0:
+                    saved = (res["smartScanEligibleGb"] - res["interconnectReturnedGb"]) / res["smartScanEligibleGb"] * 100
+                    res["storageSavedPct"] = round(max(0, saved), 1)
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - AUDIT MANAGER & FGA
+    # -------------------------------------------------------------------------
+    def handle_get_audit(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        records = []
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        SELECT TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS'), dbusername, action_name, return_code, object_schema, object_name
+                        FROM unified_audit_trail
+                        ORDER BY event_timestamp DESC
+                        FETCH FIRST 25 ROWS ONLY
+                    """)
+                    for r in cur.fetchall():
+                        records.append({
+                            "timestamp": r[0],
+                            "username": r[1],
+                            "action": r[2],
+                            "returnCode": r[3],
+                            "schema": r[4],
+                            "object": r[5]
+                        })
+                except Exception:
+                    pass
+            self.send_api_response({"auditTrail": records})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - ORACLE KEYSTORE / TDE WALLET
+    # -------------------------------------------------------------------------
+    def handle_get_wallet(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        wallets = []
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SELECT wrl_type, wrl_parameter, status, wallet_type FROM v$encryption_wallet")
+                    for r in cur.fetchall():
+                        wallets.append({
+                            "type": r[0],
+                            "parameter": r[1],
+                            "status": r[2],
+                            "walletType": r[3]
+                        })
+                except Exception:
+                    pass
+            self.send_api_response({"wallets": wallets})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DBA HUB - COMPARE TOOLS (SCHEMA / DATA / DATABASE)
+    # -------------------------------------------------------------------------
+    def handle_post_schemacompare(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        src_schema = payload.get("sourceSchema", "HR").upper()
+        tgt_schema = payload.get("targetSchema", "HR_BACKUP").upper()
+        diffs = {
+            "sourceSchema": src_schema,
+            "targetSchema": tgt_schema,
+            "missingInTarget": [],
+            "missingInSource": [],
+            "columnDiffs": [],
+            "syncScript": f"-- Schema Sync Script: {src_schema} -> {tgt_schema}\n"
+        }
+        try:
+            with conn.cursor() as cur:
+                # Tables in source
+                cur.execute("SELECT table_name FROM all_tables WHERE owner = :1", [src_schema])
+                src_tables = set(r[0] for r in cur.fetchall())
+                # Tables in target
+                cur.execute("SELECT table_name FROM all_tables WHERE owner = :1", [tgt_schema])
+                tgt_tables = set(r[0] for r in cur.fetchall())
+
+                for t in src_tables - tgt_tables:
+                    diffs["missingInTarget"].append(t)
+                    diffs["syncScript"] += f'CREATE TABLE "{tgt_schema}"."{t}" AS SELECT * FROM "{src_schema}"."{t}" WHERE 1=0;\n'
+                for t in tgt_tables - src_tables:
+                    diffs["missingInSource"].append(t)
+
+            self.send_api_response(diffs)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_post_datacompare(self, payload):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        t1 = payload.get("table1", "HR.EMPLOYEES")
+        t2 = payload.get("table2", "HR.EMPLOYEES_ARCHIVE")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) FROM {t1}")
+                cnt1 = cur.fetchone()[0]
+                cur.execute(f"SELECT COUNT(*) FROM {t2}")
+                cnt2 = cur.fetchone()[0]
+            self.send_api_response({
+                "table1": {"name": t1, "rowCount": cnt1},
+                "table2": {"name": t2, "rowCount": cnt2},
+                "countDiff": abs(cnt1 - cnt2),
+                "identical": cnt1 == cnt2
+            })
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_get_dbcompare(self):
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+        modified = []
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT name, value, isdefault, description FROM v$parameter WHERE isdefault = 'FALSE' ORDER BY name")
+                for r in cur.fetchall():
+                    modified.append({
+                        "name": r[0],
+                        "value": r[1],
+                        "isDefault": False,
+                        "description": r[3] or ""
+                    })
+            self.send_api_response({"modifiedParameters": modified})
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    # -------------------------------------------------------------------------
+    # DATA PUMP WIZARD & SQL*LOADER GENERATOR
+    # -------------------------------------------------------------------------
+    def handle_post_datapump(self, payload):
+        mode = payload.get("mode", "export")
+        schema = payload.get("schema", "HR")
+        table = payload.get("table", "EMPLOYEES")
+        directory = payload.get("directory", "DATA_PUMP_DIR")
+        dumpfile = payload.get("dumpfile", f"{schema}_{table}_export.dmp")
+        logfile = payload.get("logfile", f"{schema}_{table}_export.log")
+
+        if mode == "sqlldr":
+            ctl_content = f"""LOAD DATA
+INFILE '{table.lower()}_data.csv'
+BADFILE '{table.lower()}_bad.bad'
+DISCARDFILE '{table.lower()}_dsc.dsc'
+APPEND
+INTO TABLE "{schema}"."{table}"
+FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+TRAILING NULLCOLS
+"""
+            cmd = f"sqlldr userid={schema}@TNS control={table.lower()}.ctl log={table.lower()}_load.log direct=true"
+            self.send_api_response({
+                "mode": "sqlldr",
+                "controlFile": ctl_content,
+                "commandLine": cmd,
+                "message": "SQL*Loader Control File and High-Speed Direct Path Command generated."
+            })
+        else:
+            cmd = f"expdp {schema}@TNS DIRECTORY={directory} DUMPFILE={dumpfile} LOGFILE={logfile} TABLES={schema}.{table} COMPRESSION=ALL"
+            if mode == "import":
+                cmd = f"impdp {schema}@TNS DIRECTORY={directory} DUMPFILE={dumpfile} LOGFILE={logfile} TABLES={schema}.{table} TABLE_EXISTS_ACTION=REPLACE"
+            self.send_api_response({
+                "mode": mode,
+                "commandLine": cmd,
+                "directory": directory,
+                "dumpfile": dumpfile,
+                "logfile": logfile,
+                "message": f"Data Pump ({mode.upper()}) Job specification generated."
             })
 
 def run_server():

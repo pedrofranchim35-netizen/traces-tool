@@ -301,6 +301,36 @@ END;`
       return;
     }
 
+    // 1. Check for substitution variables (&var or &&var)
+    const substMatches = text.match(/&{1,2}[a-zA-Z0-9_]+/g);
+    if (substMatches && substMatches.length > 0 && !window.__executingWithSubst) {
+      let substitutedText = text;
+      const uniqueSubsts = Array.from(new Set(substMatches));
+      for (const sVar of uniqueSubsts) {
+        const varName = sVar.replace(/^&&?/, '');
+        let val = window.TracesApp.toadModals.sessionSubstitutionVars[varName];
+        if (val === undefined || !sVar.startsWith('&&')) {
+          val = prompt(`Oracle Substitution Variable Input\nEnter value for ${sVar}:`, '10');
+          if (val === null) return;
+          if (sVar.startsWith('&&')) {
+            window.TracesApp.toadModals.sessionSubstitutionVars[varName] = val;
+          }
+        }
+        const reg = new RegExp(sVar.replace(/&/g, '\\&'), 'g');
+        substitutedText = substitutedText.replace(reg, val);
+      }
+      text = substitutedText;
+    }
+
+    // 2. Check for bind variables (:var)
+    const bindMatches = text.match(/:[a-zA-Z0-9_]+/g);
+    if (bindMatches && bindMatches.length > 0 && !window.__executingWithBinds) {
+      const uniqueBinds = Array.from(new Set(bindMatches));
+      this.currentPendingSql = text;
+      window.TracesApp.toadModals.openBindVariables(uniqueBinds);
+      return;
+    }
+
     // Route to real database if connected
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
       this.executeRealStatement(text);
@@ -308,23 +338,6 @@ END;`
     }
 
     const startTime = performance.now();
-
-    // Check for bind variables (:var)
-    const bindMatches = text.match(/:[a-zA-Z0-9_]+/g);
-    if (bindMatches && bindMatches.length > 0 && !window.__executingWithBinds) {
-      const uniqueBinds = Array.from(new Set(bindMatches));
-      window.TracesApp.toadModals.openBindVariables(uniqueBinds);
-      return;
-    }
-
-    // Check for substitution variables (&var or &&var)
-    const substMatches = text.match(/&{1,2}[a-zA-Z0-9_]+/g);
-    if (substMatches && substMatches.length > 0 && !window.__executingWithSubst) {
-      const firstVar = substMatches[0];
-      const val = prompt(`Oracle Substitution Variable Input\nEnter value for ${firstVar}:`, '90');
-      if (val === null) return;
-    }
-
     const elapsedMs = ((performance.now() - startTime) + Math.random() * 30 + 15).toFixed(1);
 
     this.transactionActive = true;
@@ -361,14 +374,29 @@ END;`
     this.updateAutotrace();
   }
 
-  async executeRealStatement(sql) {
+  executeWithBinds(params) {
+    const sql = this.currentPendingSql || this.getStatementAtCursor();
+    this.currentPendingSql = null;
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      this.executeRealStatement(sql, params);
+    } else {
+      window.__executingWithBinds = true;
+      this.executeStatement();
+      window.__executingWithBinds = false;
+    }
+  }
+
+  async executeRealStatement(sql, params = null) {
     const startTime = performance.now();
     try {
       window.TracesApp.notify('Executing statement on Real Oracle Database via Bridge Gateway...', 'info');
+      const payload = { sql };
+      if (params) payload.params = params;
+
       const resp = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql })
+        body: JSON.stringify(payload)
       });
       const data = await resp.json();
       const elapsedMs = (performance.now() - startTime).toFixed(1);
@@ -396,9 +424,14 @@ END;`
         this.switchOutputTab('grid');
       }
 
-      this.logScriptOutput(`[${new Date().toLocaleTimeString()}] Real Oracle execution completed in ${data.elapsedMs || elapsedMs} ms. Rows returned: ${data.rows ? data.rows.length : 0}`);
-      window.TracesApp.notify(`Real query executed in ${data.elapsedMs || elapsedMs} ms (${data.rows ? data.rows.length : 0} rows).`, 'success');
-      this.updateAutotrace();
+      this.logScriptOutput(`[${new Date().toLocaleTimeString()}] Real Oracle execution completed in ${data.elapsedMs || elapsedMs} ms. Rows returned: ${data.rows ? data.rows.length : (data.rowsAffected || 0)}`);
+      window.TracesApp.notify(`Real query executed in ${data.elapsedMs || elapsedMs} ms (${data.rows ? data.rows.length : (data.rowsAffected || 0)} rows).`, 'success');
+      
+      if (data.autotrace) {
+        this.updateAutotrace(data.autotrace);
+      } else {
+        this.updateAutotrace();
+      }
     } catch (err) {
       window.TracesApp.notify(`Connection Bridge Error: ${err.message}`, 'error');
       this.logScriptOutput(`[${new Date().toLocaleTimeString()}] Bridge Communication Error: ${err.message}`);
@@ -502,20 +535,62 @@ END;`
   }
 
   formatSql() {
-    let sql = this.textarea.value;
-    const keywords = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'GROUP BY', 'ORDER BY', 'HAVING'];
-    keywords.forEach(kw => {
-      const reg = new RegExp(`\\b${kw}\\b`, 'gi');
+    let sql = this.textarea.value.trim();
+    if (!sql) return;
+
+    // Toad FmtPlus SQL Beautifier
+    const majorKeywords = [
+      'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY',
+      'INNER JOIN', 'LEFT OUTER JOIN', 'RIGHT OUTER JOIN', 'FULL OUTER JOIN', 'JOIN',
+      'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'MERGE INTO',
+      'CREATE OR REPLACE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE',
+      'DECLARE', 'BEGIN', 'EXCEPTION', 'END', 'COMMIT', 'ROLLBACK',
+      'UNION ALL', 'UNION', 'MINUS', 'INTERSECT'
+    ];
+
+    const inlineKeywords = [
+      'AND', 'OR', 'ON', 'AS', 'IN', 'IS NULL', 'IS NOT NULL', 'BETWEEN',
+      'LIKE', 'EXISTS', 'NOT EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE',
+      'DISTINCT', 'ALL', 'ASC', 'DESC', 'NULLS FIRST', 'NULLS LAST',
+      'PARTITION BY', 'OVER', 'ROWNUM', 'SYSDATE', 'SYSTIMESTAMP',
+      'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NVL', 'NVL2', 'DECODE',
+      'TO_CHAR', 'TO_DATE', 'TO_NUMBER', 'COALESCE', 'SUBSTR', 'INSTR', 'UPPER', 'LOWER'
+    ];
+
+    // Uppercase keywords
+    majorKeywords.concat(inlineKeywords).forEach(kw => {
+      const reg = new RegExp(`\\b${kw.replace(/\s+/g, '\\s+')}\\b`, 'gi');
       sql = sql.replace(reg, kw);
     });
+
+    // Formatting clauses onto new lines with indentation
+    sql = sql
+      .replace(/\s+/g, ' ')
+      .replace(/\bSELECT\b/g, '\nSELECT\n  ')
+      .replace(/,\s*/g, ',\n  ')
+      .replace(/\bFROM\b/g, '\nFROM\n  ')
+      .replace(/\b(INNER JOIN|LEFT OUTER JOIN|RIGHT OUTER JOIN|FULL OUTER JOIN|JOIN)\b/g, '\n$1 ')
+      .replace(/\bON\b/g, '\n  ON ')
+      .replace(/\bWHERE\b/g, '\nWHERE\n  ')
+      .replace(/\bAND\b/g, '\n  AND ')
+      .replace(/\bOR\b/g, '\n  OR ')
+      .replace(/\bGROUP BY\b/g, '\nGROUP BY\n  ')
+      .replace(/\bHAVING\b/g, '\nHAVING\n  ')
+      .replace(/\bORDER BY\b/g, '\nORDER BY\n  ')
+      .replace(/\bUNION ALL\b/g, '\n\nUNION ALL\n\n')
+      .replace(/\bUNION\b/g, '\n\nUNION\n\n')
+      .trim();
+
     this.textarea.value = sql;
     this.saveActiveTabContent();
     this.updateHighlighting();
-    window.TracesApp.notify('SQL Beautifier: Formatted keywords and clauses.', 'info');
+    window.TracesApp.notify('Toad FmtPlus: SQL formatted with standard clause indentation.', 'info');
   }
 
   async commitTransaction() {
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+    if (window.TracesApp && window.TracesApp.dataGrid) {
+      await window.TracesApp.dataGrid.commitPendingChanges();
+    } else if (window.TracesApp && window.TracesApp.isRealDatabase) {
       try {
         await fetch('/api/query', {
           method: 'POST',
@@ -533,7 +608,9 @@ END;`
   }
 
   async rollbackTransaction() {
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+    if (window.TracesApp && window.TracesApp.dataGrid) {
+      window.TracesApp.dataGrid.rollbackPendingChanges();
+    } else if (window.TracesApp && window.TracesApp.isRealDatabase) {
       try {
         await fetch('/api/query', {
           method: 'POST',
@@ -581,9 +658,9 @@ END;`
     this.consoleScript.scrollTop = this.consoleScript.scrollHeight;
   }
 
-  updateAutotrace() {
+  updateAutotrace(metrics = null) {
     if (!this.autotraceTable) return;
-    const metrics = [
+    const list = metrics || [
       { name: 'recursive calls', value: 3 },
       { name: 'db block gets', value: 0 },
       { name: 'consistent gets', value: 18 },
@@ -597,10 +674,10 @@ END;`
       { name: 'rows processed', value: 14 }
     ];
 
-    this.autotraceTable.innerHTML = metrics.map(m => `
+    this.autotraceTable.innerHTML = list.map(m => `
       <tr>
         <td style="color: var(--text-secondary);">${m.name}</td>
-        <td style="font-family: var(--font-code); font-weight: 600; text-align: right; color: var(--text-primary);">${m.value.toLocaleString()}</td>
+        <td style="font-family: var(--font-code); font-weight: 600; text-align: right; color: var(--text-primary);">${typeof m.value === 'number' ? m.value.toLocaleString() : m.value}</td>
       </tr>
     `).join('');
   }

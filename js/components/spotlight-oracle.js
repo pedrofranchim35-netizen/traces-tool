@@ -2,13 +2,76 @@
    SPOTLIGHT ON ORACLE - NOC TOPOLOGY & ARCHITECTURAL MONITOR
    Provides full-screen animated NOC architectural topology:
    Clients -> Net8 -> Oracle SGA/PGA & Background Processes -> Disk I/O
+   Includes real-time polling to /api/spotlight-metrics when connected.
    ========================================================================== */
 
 class SpotlightOracle {
   constructor() {
     this.container = document.getElementById('view-spotlight');
-    this.refreshInterval = null;
+    this.pollInterval = null;
     this.render();
+    this.startLiveMonitoring();
+  }
+
+  startLiveMonitoring() {
+    if (this.pollInterval) clearInterval(this.pollInterval);
+    this.pollInterval = setInterval(() => {
+      const isVisible = this.container?.classList.contains('active');
+      if (isVisible && window.TracesApp && window.TracesApp.isRealDatabase) {
+        this.fetchLiveMetrics();
+      }
+    }, 2000);
+  }
+
+  async fetchLiveMetrics() {
+    try {
+      const resp = await fetch('/api/spotlight-metrics');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      this.updateWithLiveData(data);
+    } catch (e) {
+      // offline or disconnected
+    }
+  }
+
+  updateWithLiveData(data) {
+    // 1. Sessions
+    const act = document.getElementById('spotlight-active-sess');
+    if (act) {
+      act.textContent = `${data.activeSessions || 1} Sessions`;
+      act.style.color = (data.activeSessions > 20) ? '#ef4444' : '#34d399';
+    }
+    const inact = document.getElementById('spotlight-idle-sess');
+    if (inact) inact.textContent = `${Math.max(0, (data.totalSessions || 10) - (data.activeSessions || 1))} Sessions`;
+    const hwm = document.getElementById('spotlight-hwm-sess');
+    if (hwm) hwm.textContent = `${data.totalSessions || 12} Sessions`;
+
+    // 2. PGA
+    const pgaAlloc = document.getElementById('spotlight-pga-alloc');
+    if (pgaAlloc) pgaAlloc.textContent = `${data.pgaAllocatedMb || 120} MB`;
+
+    // 3. SGA
+    const bufRatio = document.getElementById('spot-buf-ratio');
+    if (bufRatio) bufRatio.textContent = `${data.bufferHitRatio || 99.2}%`;
+    const libRatio = document.getElementById('spot-lib-ratio');
+    if (libRatio) libRatio.textContent = `${data.libraryHitRatio || 98.5}%`;
+    const redoBuf = document.getElementById('spot-redo-buf');
+    if (redoBuf) redoBuf.textContent = `${data.redoLogBufferMb || 32} MB`;
+
+    // 4. Wait Events
+    if (data.topWaitEvents && data.topWaitEvents.length > 0) {
+      const tbody = document.getElementById('spotlight-events-tbody');
+      if (tbody) {
+        tbody.innerHTML = data.topWaitEvents.map(e => `
+          <tr style="border-bottom: 1px solid #1f2937;">
+            <td style="padding: 4px; color: ${e.timeWaitedMs > 5000 ? '#f87171' : '#e2e8f0'};">${e.event}</td>
+            <td style="padding: 4px; text-align: right;">${Number(e.waits).toLocaleString()}</td>
+            <td style="padding: 4px; text-align: right;">${(e.timeWaitedMs / 1000).toFixed(1)}</td>
+            <td style="padding: 4px;"><span class="toad-conn-badge-indicator" style="background:${e.timeWaitedMs > 5000 ? '#fee2e2' : '#dcfce7'}; color:${e.timeWaitedMs > 5000 ? '#b91c1c' : '#15803d'};">${e.timeWaitedMs > 5000 ? 'WARN' : 'OK'}</span></td>
+          </tr>
+        `).join('');
+      }
+    }
   }
 
   render() {
@@ -20,11 +83,11 @@ class SpotlightOracle {
         <div class="spotlight-toolbar">
           <div class="spotlight-title">
             <span style="font-size: 16px;">💡</span>
-            <span>Spotlight on Oracle - Exadata RAC01 Architectural Topology</span>
-            <span class="spotlight-badge">LIVE NOC MONITOR</span>
+            <span>Spotlight on Oracle - Live Architectural Topology &amp; NOC Monitor</span>
+            <span class="spotlight-badge">REAL-TIME MONITOR</span>
           </div>
           <div style="display: flex; gap: 8px; align-items: center; font-size: 11px;">
-            <span style="color: #9ca3af;">Refresh Rate: <b>1 sec</b></span>
+            <span style="color: #9ca3af;">Refresh Rate: <b>2 sec</b></span>
             <button class="btn btn-primary" onclick="window.TracesApp.spotlightOracle.simulateSpike();">Simulate Load Spike</button>
             <button class="btn" onclick="window.TracesApp.switchDockView('editor');">Back to Editor</button>
           </div>
@@ -47,11 +110,11 @@ class SpotlightOracle {
                 </div>
                 <div class="sga-pool-row">
                   <span>Inactive / Idle:</span>
-                  <span>43 Sessions</span>
+                  <span id="spotlight-idle-sess">43 Sessions</span>
                 </div>
                 <div class="sga-pool-row">
                   <span>Session High Water:</span>
-                  <span>58 Sessions</span>
+                  <span id="spotlight-hwm-sess">58 Sessions</span>
                 </div>
               </div>
             </div>
@@ -78,12 +141,12 @@ class SpotlightOracle {
 
             <div class="spotlight-panel">
               <div class="spotlight-panel-header">
-                <span>PGA Memory Allocation</span>
+                <span>PGA Memory Allocation (V$PGASTAT)</span>
               </div>
               <div style="font-size: 11px; display: flex; flex-direction: column; gap: 6px;">
                 <div class="sga-pool-row">
                   <span>Total Allocated:</span>
-                  <span style="font-weight: 700; color: #a78bfa;">1,420 MB</span>
+                  <span id="spotlight-pga-alloc" style="font-weight: 700; color: #a78bfa;">1,420 MB</span>
                 </div>
                 <div class="sga-pool-row">
                   <span>PGA Target:</span>
@@ -102,8 +165,8 @@ class SpotlightOracle {
             <!-- SGA Box -->
             <div class="spotlight-panel sga-box">
               <div class="spotlight-panel-header" style="color: #93c5fd; border-bottom: 1px solid #1e40af; padding-bottom: 4px;">
-                <span>System Global Area (SGA) - 16 GB Allocated</span>
-                <span style="font-size: 10px; color: #60a5fa;">SGA_TARGET = 16G</span>
+                <span>System Global Area (SGA)</span>
+                <span style="font-size: 10px; color: #60a5fa;">SGA_TARGET</span>
               </div>
 
               <!-- SGA 3 Core Buffers -->
@@ -111,18 +174,18 @@ class SpotlightOracle {
                 <div style="background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 4px; text-align: center;">
                   <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Buffer Cache</div>
                   <div style="font-size: 18px; font-weight: 800; color: #34d399;" id="spot-buf-ratio">99.4%</div>
-                  <div style="font-size: 9.5px; color: #cbd5e1;">Hit Ratio (10.2 GB)</div>
+                  <div style="font-size: 9.5px; color: #cbd5e1;">Hit Ratio</div>
                 </div>
 
                 <div style="background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 4px; text-align: center;">
                   <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Shared Pool</div>
-                  <div style="font-size: 18px; font-weight: 800; color: #60a5fa;">98.9%</div>
-                  <div style="font-size: 9.5px; color: #cbd5e1;">Library Hit (4.8 GB)</div>
+                  <div style="font-size: 18px; font-weight: 800; color: #60a5fa;" id="spot-lib-ratio">98.9%</div>
+                  <div style="font-size: 9.5px; color: #cbd5e1;">Library Hit</div>
                 </div>
 
                 <div style="background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 4px; text-align: center;">
                   <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Redo Log Buffer</div>
-                  <div style="font-size: 18px; font-weight: 800; color: #f59e0b;">64 MB</div>
+                  <div style="font-size: 18px; font-weight: 800; color: #f59e0b;" id="spot-redo-buf">64 MB</div>
                   <div style="font-size: 9.5px; color: #cbd5e1;">0 Latches Waited</div>
                 </div>
               </div>
@@ -166,7 +229,7 @@ class SpotlightOracle {
             <div class="spotlight-panel">
               <div class="spotlight-panel-header">
                 <span>Top System Wait Events (V$SYSTEM_EVENT)</span>
-                <span style="font-size: 10px; color: #f59e0b;">1 Contention Warning</span>
+                <span style="font-size: 10px; color: #f59e0b;">Live Contention Feed</span>
               </div>
               <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
                 <thead>
@@ -177,7 +240,7 @@ class SpotlightOracle {
                     <th style="padding: 4px;">Alarm</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody id="spotlight-events-tbody">
                   <tr style="border-bottom: 1px solid #1f2937;">
                     <td style="padding: 4px; color: #f87171;">enq: TX - row lock contention</td>
                     <td style="padding: 4px; text-align: right;">4</td>

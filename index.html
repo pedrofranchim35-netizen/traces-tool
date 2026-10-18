@@ -336,8 +336,8 @@
                       <button class="grid-nav-btn" id="grid-btn-last" title="Last Record" onclick="window.TracesApp.dataGrid.selectRow(window.TracesApp.dataGrid.data.length - 1);">▶|</button>
                       <button class="grid-nav-btn" id="grid-btn-add-row" title="Insert Record" style="color: #008000; font-weight: 700;">+</button>
                       <button class="grid-nav-btn" id="grid-btn-delete-row" title="Delete Record" style="color: #c00000; font-weight: 700;">-</button>
-                      <button class="grid-nav-btn" title="Post Changes (Commit)" onclick="window.TracesApp.sqlEditor.commitTransaction();" style="color: #008000;">✓</button>
-                      <button class="grid-nav-btn" title="Cancel Changes (Rollback)" onclick="window.TracesApp.sqlEditor.rollbackTransaction();" style="color: #c00000;">✕</button>
+                      <button class="grid-nav-btn" title="Post Changes (Commit to Database)" onclick="window.TracesApp.dataGrid.commitPendingChanges();" style="color: #008000; font-weight: 700;">✓</button>
+                      <button class="grid-nav-btn" title="Cancel Changes (Rollback Grid Edits)" onclick="window.TracesApp.dataGrid.rollbackPendingChanges();" style="color: #c00000; font-weight: 700;">✕</button>
                     </div>
 
                     <!-- Filter text box -->
@@ -460,6 +460,8 @@
               <button class="detail-tab" data-tab="ddl">Script (DDL)</button>
               <button class="detail-tab" data-tab="source">Source (Code)</button>
               <button class="detail-tab" data-tab="grants">Grants</button>
+              <button class="detail-tab" data-tab="partitions">Partitions</button>
+              <button class="detail-tab" data-tab="dependencies">Dependencies</button>
               <button class="detail-tab" data-tab="stats">Stats</button>
             </div>
 
@@ -472,6 +474,8 @@
               <div class="detail-tab-pane" id="tab-pane-ddl"></div>
               <div class="detail-tab-pane" id="tab-pane-source"></div>
               <div class="detail-tab-pane" id="tab-pane-grants"></div>
+              <div class="detail-tab-pane" id="tab-pane-partitions"></div>
+              <div class="detail-tab-pane" id="tab-pane-dependencies"></div>
               <div class="detail-tab-pane" id="tab-pane-stats"></div>
             </div>
           </div>

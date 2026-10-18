@@ -50,6 +50,7 @@ class ToadModals {
 
   // 1. Bind Variables Dialog (:var)
   openBindVariables(detectedVars = [':min_amount']) {
+    this.currentBindVars = detectedVars;
     const varsHtml = detectedVars.map((v, i) => `
       <tr>
         <td style="font-weight: 700; color: #800080;">${v}</td>
@@ -100,8 +101,16 @@ class ToadModals {
   }
 
   applyBindVariables() {
+    const params = {};
+    if (this.currentBindVars) {
+      this.currentBindVars.forEach((v, i) => {
+        const valInput = document.getElementById(`bind-val-${i}`);
+        const cleanName = v.replace(/^:/, '');
+        params[cleanName] = valInput ? valInput.value : '';
+      });
+    }
     this.close();
-    window.TracesApp.sqlEditor.executeStatement();
+    window.TracesApp.sqlEditor.executeWithBinds(params);
   }
 
   // 2. Substitution Variables (&var / &&var)
@@ -145,22 +154,40 @@ class ToadModals {
   }
 
   // 3. Toad Describe (F4)
-  openDescribe(objectName = 'HR.EMPLOYEES') {
+  async openDescribe(objectName = 'HR.EMPLOYEES') {
     const [schema, name] = objectName.includes('.') ? objectName.split('.') : ['HR', objectName];
-    const table = window.TRACES_DB.schemas[schema] ? window.TRACES_DB.schemas[schema].tables.find(t => t.name === name) : null;
-
-    let columnsHtml = '';
-    if (table) {
-      columnsHtml = table.columns.map(c => `
-        <tr>
-          <td>${c.pk ? '🔑 ' : ''}<b>${c.name}</b></td>
-          <td style="color: #2b91af;">${c.type}</td>
-          <td>${c.nullable}</td>
-          <td>${c.defaultVal || ''}</td>
-          <td style="color: #666;">${c.comments || ''}</td>
-        </tr>
-      `).join('');
+    
+    // Live dictionary resolution if connected to Oracle
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch(`/api/object-details?schema=${encodeURIComponent(schema)}&name=${encodeURIComponent(name)}&type=TABLE`);
+        const details = await resp.json();
+        if (!details.error) {
+          this.activeDescribeObj = details;
+          this.renderDescribeModal(schema, name, details);
+          return;
+        }
+      } catch (e) {
+        console.warn('Real describe fetch error', e);
+      }
     }
+
+    const table = window.TRACES_DB.schemas[schema] ? window.TRACES_DB.schemas[schema].tables.find(t => t.name === name) : null;
+    this.activeDescribeObj = table || { columns: [] };
+    this.renderDescribeModal(schema, name, this.activeDescribeObj);
+  }
+
+  renderDescribeModal(schema, name, obj) {
+    const columns = obj.columns || [];
+    let columnsHtml = columns.map(c => `
+      <tr>
+        <td>${c.pk ? '🔑 ' : ''}<b>${c.name}</b></td>
+        <td style="color: #2b91af;">${c.type}</td>
+        <td>${c.nullable}</td>
+        <td>${c.defaultVal || '-'}</td>
+        <td style="color: #666;">${c.comments || ''}</td>
+      </tr>
+    `).join('');
 
     const body = `
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 8px;">
@@ -168,14 +195,14 @@ class ToadModals {
         <span class="toad-conn-badge-indicator" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">TABLE [VALID]</span>
       </div>
       <div style="display: flex; gap: 4px; border-bottom: 1px solid #bfbfbf; margin-bottom: 8px; font-size: 11px;">
-        <button class="btn active" style="font-weight: 700;">Columns (${table ? table.columns.length : 0})</button>
-        <button class="btn">Indexes</button>
-        <button class="btn">Constraints</button>
-        <button class="btn">Script (DDL)</button>
-        <button class="btn">Grants</button>
-        <button class="btn">Dependencies</button>
+        <button class="btn active" id="desc-tab-cols" onclick="window.TracesApp.toadModals.switchDescribeTab('cols');" style="font-weight: 700;">Columns (${columns.length})</button>
+        <button class="btn" id="desc-tab-indexes" onclick="window.TracesApp.toadModals.switchDescribeTab('indexes');">Indexes (${obj.indexes ? obj.indexes.length : 0})</button>
+        <button class="btn" id="desc-tab-constraints" onclick="window.TracesApp.toadModals.switchDescribeTab('constraints');">Constraints (${obj.constraints ? obj.constraints.length : 0})</button>
+        <button class="btn" id="desc-tab-ddl" onclick="window.TracesApp.toadModals.switchDescribeTab('ddl');">Script (DDL)</button>
+        <button class="btn" id="desc-tab-grants" onclick="window.TracesApp.toadModals.switchDescribeTab('grants');">Grants (${obj.grants ? obj.grants.length : 0})</button>
+        <button class="btn" id="desc-tab-part" onclick="window.TracesApp.toadModals.switchDescribeTab('part');">Partitions (${obj.partitions ? obj.partitions.length : 0})</button>
       </div>
-      <div style="height: 240px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
+      <div id="desc-pane-content" style="height: 250px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
         <table class="meta-table" style="width: 100%;">
           <thead>
             <tr>
@@ -186,12 +213,12 @@ class ToadModals {
               <th>Comments</th>
             </tr>
           </thead>
-          <tbody>${columnsHtml}</tbody>
+          <tbody>${columnsHtml || '<tr><td colspan="5" style="text-align:center; padding:16px;">No columns found</td></tr>'}</tbody>
         </table>
       </div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 10px; color: #555;">
         <span>Resolved via ALL_TAB_COLUMNS &amp; ALL_SYNONYMS</span>
-        <button class="btn" onclick="window.TracesApp.openObjectInWorksheet('${name}'); window.TracesApp.toadModals.close();">Query Data in Editor</button>
+        <button class="btn" onclick="window.TracesApp.openObjectInWorksheet('${name}'); window.TracesApp.toadModals.close();">Query Data in Editor (F9)</button>
       </div>
     `;
 
@@ -199,7 +226,75 @@ class ToadModals {
       <button class="btn btn-primary" onclick="window.TracesApp.toadModals.close();">Close (Esc)</button>
     `;
 
-    this.show(`Describe ${schema}.${name} (F4)`, body, footer, '680px');
+    this.show(`Describe ${schema}.${name} (F4)`, body, footer, '700px');
+  }
+
+  switchDescribeTab(tab) {
+    const pane = document.getElementById('desc-pane-content');
+    if (!pane || !this.activeDescribeObj) return;
+
+    ['cols', 'indexes', 'constraints', 'ddl', 'grants', 'part'].forEach(t => {
+      const btn = document.getElementById(`desc-tab-${t}`);
+      if (btn) btn.classList.toggle('active', t === tab);
+    });
+
+    const obj = this.activeDescribeObj;
+    if (tab === 'cols') {
+      const columns = obj.columns || [];
+      pane.innerHTML = `
+        <table class="meta-table" style="width: 100%;">
+          <thead>
+            <tr><th>Column Name</th><th>Data Type</th><th>Null?</th><th>Default</th><th>Comments</th></tr>
+          </thead>
+          <tbody>
+            ${columns.map(c => `<tr><td>${c.pk ? '🔑 ' : ''}<b>${c.name}</b></td><td style="color: #2b91af;">${c.type}</td><td>${c.nullable}</td><td>${c.defaultVal || '-'}</td><td>${c.comments || ''}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      `;
+    } else if (tab === 'indexes') {
+      const idxs = obj.indexes || [];
+      pane.innerHTML = `
+        <table class="meta-table" style="width: 100%;">
+          <thead><tr><th>Index Name</th><th>Uniqueness</th><th>Columns</th><th>Tablespace</th><th>Status</th></tr></thead>
+          <tbody>
+            ${idxs.length > 0 ? idxs.map(i => `<tr><td><b>${i.name}</b></td><td>${i.type}</td><td>${i.columns}</td><td>${i.tablespace || '-'}</td><td><span class="status-indicator valid">${i.status || 'VALID'}</span></td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center; padding:16px;">No indexes found</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    } else if (tab === 'constraints') {
+      const constrs = obj.constraints || [];
+      pane.innerHTML = `
+        <table class="meta-table" style="width: 100%;">
+          <thead><tr><th>Constraint Name</th><th>Type</th><th>Columns</th><th>Details</th><th>Status</th></tr></thead>
+          <tbody>
+            ${constrs.length > 0 ? constrs.map(c => `<tr><td><b>${c.name}</b></td><td style="color:#800080; font-weight:700;">${c.type}</td><td>${c.columns || '-'}</td><td>${c.details || '-'}</td><td>${c.status || 'ENABLED'}</td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center; padding:16px;">No constraints found</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    } else if (tab === 'ddl') {
+      const ddl = obj.ddl || '-- DDL extraction for object';
+      pane.innerHTML = `<pre style="padding: 10px; font-family: var(--toad-font-code); font-size: 11px; margin: 0; line-height: 1.4; white-space: pre-wrap; height: 100%; box-sizing: border-box;">${this.escapeHtml(ddl)}</pre>`;
+    } else if (tab === 'grants') {
+      const grants = obj.grants || [];
+      pane.innerHTML = `
+        <table class="meta-table" style="width: 100%;">
+          <thead><tr><th>Grantee</th><th>Privilege</th><th>Grantable</th></tr></thead>
+          <tbody>
+            ${grants.length > 0 ? grants.map(g => `<tr><td><b>${g.grantee}</b></td><td>${g.privilege}</td><td>${g.grantable}</td></tr>`).join('') : '<tr><td colspan="3" style="text-align:center; padding:16px;">No grants found</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    } else if (tab === 'part') {
+      const parts = obj.partitions || [];
+      pane.innerHTML = `
+        <table class="meta-table" style="width: 100%;">
+          <thead><tr><th>Partition Name</th><th>Tablespace</th><th>Rows</th><th>High Value</th></tr></thead>
+          <tbody>
+            ${parts.length > 0 ? parts.map(p => `<tr><td><b>${p.name}</b></td><td>${p.tablespace}</td><td>${(p.numRows || 0).toLocaleString()}</td><td>${p.highValue}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center; padding:16px;">Non-partitioned table</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    }
   }
 
   // 4. SQL Recall (F8)
@@ -483,72 +578,177 @@ class ToadModals {
   openDataPumpWizard() {
     const body = `
       <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
-        <div style="font-weight: 700; color: #0078d7;">Oracle Data Pump Export Wizard (DBMS_DATAPUMP / expdp)</div>
+        <div style="font-weight: 700; color: #0078d7;">Oracle Data Pump Export &amp; Import Wizard (expdp / impdp)</div>
         <div style="display: flex; gap: 8px;">
-          <label style="width: 120px;">Export Mode:</label>
-          <select class="toad-conn-combobox" style="flex: 1; height: 22px;">
-            <option>SCHEMA (HR, SALES_ADMIN)</option>
-            <option>TABLES (Selected)</option>
-            <option>FULL DATABASE</option>
-            <option>TABLESPACES (USERS)</option>
+          <label style="width: 120px;">Operation:</label>
+          <select id="dp-operation" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="EXPORT">EXPORT (expdp)</option>
+            <option value="IMPORT">IMPORT (impdp)</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Export Scope:</label>
+          <select id="dp-mode" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="SCHEMA">SCHEMA (HR, SALES_ADMIN)</option>
+            <option value="TABLES">TABLES (Selected)</option>
+            <option value="FULL">FULL DATABASE</option>
+            <option value="TABLESPACES">TABLESPACES (USERS)</option>
           </select>
         </div>
         <div style="display: flex; gap: 8px;">
           <label style="width: 120px;">Directory Object:</label>
-          <input type="text" value="DATA_PUMP_DIR (+DATA/dump)" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+          <input id="dp-dir" type="text" value="DATA_PUMP_DIR" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
         </div>
         <div style="display: flex; gap: 8px;">
           <label style="width: 120px;">Parallelism Degree:</label>
-          <input type="number" value="4" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc;">
+          <input id="dp-parallel" type="number" value="4" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc;">
         </div>
         <div style="display: flex; gap: 8px;">
           <label style="width: 120px;">Compression:</label>
-          <select class="toad-conn-combobox" style="flex: 1; height: 22px;">
-            <option>ALL (Metadata &amp; Data)</option>
-            <option>METADATA_ONLY</option>
-            <option>NONE</option>
+          <select id="dp-compression" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="ALL">ALL (Metadata &amp; Data)</option>
+            <option value="METADATA_ONLY">METADATA_ONLY</option>
+            <option value="NONE">NONE</option>
           </select>
         </div>
         <div>
           <input type="checkbox" id="dp-flashback" checked>
-          <label for="dp-flashback"><b>Consistent Export via Flashback SCN</b></label>
+          <label for="dp-flashback"><b>Consistent Export via Flashback SCN (FLASHBACK_TIME=SYSTIMESTAMP)</b></label>
         </div>
       </div>
     `;
 
     const footer = `
-      <button class="btn btn-primary" onclick="window.TracesApp.notify('Data Pump Job DBMS_DATAPUMP_01 launched with Parallel=4.', 'success'); window.TracesApp.toadModals.close();">Start Data Pump Job</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.generateDataPumpScript();">Generate Script to Editor</button>
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.startDataPumpJob();">Start Data Pump Job</button>
       <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
     `;
 
-    this.show('Oracle Data Pump Wizard', body, footer, '540px');
+    this.show('Oracle Data Pump Wizard', body, footer, '580px');
+  }
+
+  generateDataPumpScript() {
+    const op = document.getElementById('dp-operation')?.value || 'EXPORT';
+    const mode = document.getElementById('dp-mode')?.value || 'SCHEMA';
+    const dir = document.getElementById('dp-dir')?.value || 'DATA_PUMP_DIR';
+    const par = document.getElementById('dp-parallel')?.value || '4';
+    const comp = document.getElementById('dp-compression')?.value || 'ALL';
+
+    const cmd = `${op === 'EXPORT' ? 'expdp' : 'impdp'} \\"sys/*****@ORCL as sysdba\\" \\
+  DIRECTORY=${dir} \\
+  DUMPFILE=export_${mode.toLowerCase()}_%U.dmp \\
+  LOGFILE=${mode.toLowerCase()}_pump.log \\
+  SCHEMAS=HR,SALES_ADMIN \\
+  PARALLEL=${par} \\
+  COMPRESSION=${comp} \\
+  FLASHBACK_TIME=SYSTIMESTAMP`;
+
+    const plsql = `DECLARE
+  h1 NUMBER;
+BEGIN
+  h1 := DBMS_DATAPUMP.OPEN(operation => '${op}', mode => '${mode}', job_name => 'TOAD_DP_JOB');
+  DBMS_DATAPUMP.ADD_FILE(handle => h1, filename => 'toad_${mode.toLowerCase()}_%U.dmp', directory => '${dir}', filetype => DBMS_DATAPUMP.KU$_FILE_TYPE_DUMP_FILE);
+  DBMS_DATAPUMP.ADD_FILE(handle => h1, filename => 'toad_${mode.toLowerCase()}.log', directory => '${dir}', filetype => DBMS_DATAPUMP.KU$_FILE_TYPE_LOG_FILE);
+  DBMS_DATAPUMP.SET_PARAMETER(handle => h1, name => 'DEGREE', value => ${par});
+  DBMS_DATAPUMP.START_JOB(handle => h1);
+END;
+/`;
+
+    const full = `-- Oracle Data Pump Command Line:
+/*
+${cmd}
+*/
+
+-- PL/SQL DBMS_DATAPUMP Automation:
+${plsql}`;
+
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(full);
+      window.TracesApp.notify('Script do Data Pump gerado no Editor SQL.', 'success');
+      this.close();
+    }
+  }
+
+  async startDataPumpJob() {
+    if (window.TracesApp?.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/dba/datapump', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            operation: document.getElementById('dp-operation')?.value || 'EXPORT',
+            mode: document.getElementById('dp-mode')?.value || 'SCHEMA',
+            directory: document.getElementById('dp-dir')?.value || 'DATA_PUMP_DIR',
+            parallel: parseInt(document.getElementById('dp-parallel')?.value || '4', 10),
+            compression: document.getElementById('dp-compression')?.value || 'ALL'
+          })
+        });
+        const res = await resp.json();
+        window.TracesApp.notify(res.message || 'Job Data Pump iniciado.', 'success');
+        this.close();
+      } catch (e) {
+        window.TracesApp.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp.notify('Job Data Pump DBMS_DATAPUMP_01 iniciado com Parallel=4 (Mock).', 'success');
+      this.close();
+    }
   }
 
   // 11. SQL*Loader Wizard
   openSqlLoaderWizard() {
     const body = `
       <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
-        <div><b>Generate Control File (.ctl) &amp; Execute sqlldr:</b></div>
-        <textarea style="height: 160px; font-family: var(--toad-font-code); font-size: 11px; padding: 6px; border: 1px solid #ccc;">LOAD DATA
+        <div style="font-weight: 700; color: #0078d7;">Generate SQL*Loader Control File (.ctl) &amp; Execution Command</div>
+        <textarea id="sqlldr-ctl" style="height: 140px; font-family: var(--toad-font-code); font-size: 11px; padding: 6px; border: 1px solid #ccc;">LOAD DATA
 INFILE 'sales_data_oct2026.csv'
 BADFILE 'sales_data.bad'
 DISCARDFILE 'sales_data.dsc'
 INTO TABLE sales_admin.sales_transactions
 FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
 (tx_id, customer_id, amount, tx_date DATE "YYYY-MM-DD", status)</textarea>
-        <div>
-          <input type="checkbox" id="sqlldr-direct" checked>
-          <label for="sqlldr-direct"><b>DIRECT=TRUE (Direct Path Load bypasses SGA buffer cache)</b></label>
+        <div style="display: flex; gap: 12px;">
+          <div>
+            <input type="checkbox" id="sqlldr-direct" checked>
+            <label for="sqlldr-direct"><b>DIRECT=TRUE (Direct Path Load)</b></label>
+          </div>
+          <div>
+            <input type="checkbox" id="sqlldr-multithread" checked>
+            <label for="sqlldr-multithread"><b>MULTITHREADING=TRUE</b></label>
+          </div>
+        </div>
+        <div style="background: #e5f1fb; padding: 6px; border: 1px solid #b8d6f5;">
+          Direct Path bypasses the SGA buffer cache and formats data blocks directly, maximizing ingest speed for millions of rows.
         </div>
       </div>
     `;
 
     const footer = `
-      <button class="btn btn-primary" onclick="window.TracesApp.notify('Executing sqlldr DIRECT=TRUE...', 'success'); window.TracesApp.toadModals.close();">Run SQL*Loader</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.sendSqlLoaderToEditor();">Send .ctl to Editor</button>
+      <button class="btn btn-primary" onclick="window.TracesApp.notify('Executando sqlldr DIRECT=TRUE...', 'success'); window.TracesApp.toadModals.close();">Run SQL*Loader</button>
       <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
     `;
 
-    this.show('SQL*Loader Control File Wizard', body, footer, '560px');
+    this.show('SQL*Loader Control File Wizard', body, footer, '580px');
+  }
+
+  sendSqlLoaderToEditor() {
+    const ctl = document.getElementById('sqlldr-ctl')?.value || '';
+    const script = `-- SQL*Loader Control File (.ctl)
+/*
+${ctl}
+*/
+
+-- Host execution command:
+-- sqlldr userid=sales_admin/*****@ORCL control=sales_data.ctl direct=true log=sales_load.log
+`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(script);
+      window.TracesApp.notify('Arquivo de controle do SQL*Loader enviado para o Editor SQL.', 'success');
+      this.close();
+    }
   }
 
   // 12. Master-Detail Browser
@@ -556,24 +756,24 @@ FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
     const body = `
       <div style="display: flex; flex-direction: column; height: 380px; gap: 8px;">
         <div style="height: 140px; border: 1px solid #ccc; display: flex; flex-direction: column; background: #fff;">
-          <div style="padding: 4px 8px; background: #e4e4e4; font-weight: 700; font-size: 11px;">Parent: HR.DEPARTMENTS</div>
+          <div style="padding: 4px 8px; background: #e4e4e4; font-weight: 700; font-size: 11px;">Parent: HR.DEPARTMENTS (Click to Filter Children)</div>
           <div style="flex: 1; overflow-y: auto;">
             <table class="oracle-data-table" style="width: 100%;">
               <thead><tr><th>DEPARTMENT_ID</th><th>DEPARTMENT_NAME</th><th>MANAGER_ID</th><th>LOCATION_ID</th></tr></thead>
               <tbody>
-                <tr class="selected"><td>90</td><td>Executive</td><td>100</td><td>1700</td></tr>
-                <tr><td>60</td><td>IT</td><td>103</td><td>1400</td></tr>
-                <tr><td>80</td><td>Sales</td><td>145</td><td>2500</td></tr>
+                <tr class="selected" style="background:#e0f2fe; cursor:pointer;" onclick="window.TracesApp.toadModals.filterMasterDetail(90);"><td>90</td><td>Executive</td><td>100</td><td>1700</td></tr>
+                <tr style="cursor:pointer;" onclick="window.TracesApp.toadModals.filterMasterDetail(60);"><td>60</td><td>IT</td><td>103</td><td>1400</td></tr>
+                <tr style="cursor:pointer;" onclick="window.TracesApp.toadModals.filterMasterDetail(80);"><td>80</td><td>Sales</td><td>145</td><td>2500</td></tr>
               </tbody>
             </table>
           </div>
         </div>
         <div style="flex: 1; border: 1px solid #ccc; display: flex; flex-direction: column; background: #fff;">
-          <div style="padding: 4px 8px; background: #e4e4e4; font-weight: 700; font-size: 11px;">Child: HR.EMPLOYEES (Filtered by DEPARTMENT_ID = 90)</div>
+          <div id="md-child-header" style="padding: 4px 8px; background: #e4e4e4; font-weight: 700; font-size: 11px;">Child: HR.EMPLOYEES (Filtered by DEPARTMENT_ID = 90)</div>
           <div style="flex: 1; overflow-y: auto;">
             <table class="oracle-data-table" style="width: 100%;">
               <thead><tr><th>EMPLOYEE_ID</th><th>FIRST_NAME</th><th>LAST_NAME</th><th>SALARY</th><th>JOB_ID</th></tr></thead>
-              <tbody>
+              <tbody id="md-child-tbody">
                 <tr><td>100</td><td>Steven</td><td>King</td><td>24000.00</td><td>AD_PRES</td></tr>
                 <tr><td>101</td><td>Neena</td><td>Kochhar</td><td>17000.00</td><td>AD_VP</td></tr>
                 <tr><td>102</td><td>Lex</td><td>De Haan</td><td>17000.00</td><td>AD_VP</td></tr>
@@ -591,6 +791,33 @@ FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
     this.show('Master-Detail Browser (Cascade Table Relations)', body, footer, '720px');
   }
 
+  filterMasterDetail(deptId) {
+    const hdr = document.getElementById('md-child-header');
+    const tbody = document.getElementById('md-child-tbody');
+    if (hdr) hdr.textContent = `Child: HR.EMPLOYEES (Filtered by DEPARTMENT_ID = ${deptId})`;
+    if (tbody) {
+      if (deptId === 60) {
+        tbody.innerHTML = `
+          <tr><td>103</td><td>Alexander</td><td>Hunold</td><td>9000.00</td><td>IT_PROG</td></tr>
+          <tr><td>104</td><td>Bruce</td><td>Ernst</td><td>6000.00</td><td>IT_PROG</td></tr>
+          <tr><td>105</td><td>David</td><td>Austin</td><td>4800.00</td><td>IT_PROG</td></tr>
+        `;
+      } else if (deptId === 80) {
+        tbody.innerHTML = `
+          <tr><td>145</td><td>John</td><td>Russell</td><td>14000.00</td><td>SA_MAN</td></tr>
+          <tr><td>146</td><td>Karen</td><td>Partners</td><td>13500.00</td><td>SA_MAN</td></tr>
+          <tr><td>176</td><td>Jonathon</td><td>Taylor</td><td>8600.00</td><td>SA_REP</td></tr>
+        `;
+      } else {
+        tbody.innerHTML = `
+          <tr><td>100</td><td>Steven</td><td>King</td><td>24000.00</td><td>AD_PRES</td></tr>
+          <tr><td>101</td><td>Neena</td><td>Kochhar</td><td>17000.00</td><td>AD_VP</td></tr>
+          <tr><td>102</td><td>Lex</td><td>De Haan</td><td>17000.00</td><td>AD_VP</td></tr>
+        `;
+      }
+    }
+  }
+
   // 13. Generate Test Data
   openDataGenerator() {
     const body = `
@@ -598,15 +825,15 @@ FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
         <div>Generate realistic test data respecting constraints &amp; foreign keys:</div>
         <div style="display: flex; gap: 8px;">
           <label style="width: 110px;">Target Table:</label>
-          <select class="toad-conn-combobox" style="flex: 1; height: 22px;">
-            <option>HR.EMPLOYEES</option>
-            <option>SALES_ADMIN.CUSTOMERS</option>
-            <option>SALES_ADMIN.SALES_TRANSACTIONS</option>
+          <select id="gen-table" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="HR.EMPLOYEES">HR.EMPLOYEES</option>
+            <option value="SALES_ADMIN.CUSTOMERS">SALES_ADMIN.CUSTOMERS</option>
+            <option value="SALES_ADMIN.SALES_TRANSACTIONS">SALES_ADMIN.SALES_TRANSACTIONS</option>
           </select>
         </div>
         <div style="display: flex; gap: 8px;">
           <label style="width: 110px;">Number of Rows:</label>
-          <input type="number" value="1000" style="width: 80px; padding: 2px 4px; border: 1px solid #ccc;">
+          <input id="gen-rows" type="number" value="1000" style="width: 80px; padding: 2px 4px; border: 1px solid #ccc;">
         </div>
         <div style="display: flex; gap: 8px;">
           <label style="width: 110px;">Foreign Key Rule:</label>
@@ -616,17 +843,24 @@ FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
           </select>
         </div>
         <div style="padding: 6px; background: #e5f1fb; border: 1px solid #b8d6f5;">
-          Generators: First Name (random Brazilian/English), Email (RFC compliant), Salary (Between $2,500 and $25,000).
+          Generators: First Name (Brazilian/English), Email (RFC compliant), Salary (Between $2,500 and $25,000).
         </div>
       </div>
     `;
 
     const footer = `
-      <button class="btn btn-primary" onclick="window.TracesApp.notify('Generated 1,000 test rows in HR.EMPLOYEES.', 'success'); window.TracesApp.toadModals.close();">Generate &amp; Insert</button>
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.executeDataGeneration();">Generate &amp; Insert</button>
       <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
     `;
 
     this.show('Generate Test Data (Data Generator)', body, footer, '500px');
+  }
+
+  executeDataGeneration() {
+    const table = document.getElementById('gen-table')?.value || 'HR.EMPLOYEES';
+    const rows = document.getElementById('gen-rows')?.value || '1000';
+    window.TracesApp.notify(`Geradas ${rows} linhas de teste sintéticas para ${table} respeitando constraints.`, 'success');
+    this.close();
   }
 
   // 14. About Toad for Oracle
@@ -654,54 +888,402 @@ FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
     this.show('About Toad for Oracle', body, footer, '480px');
   }
 
-  openCodeTemplates() {
-    window.TracesApp.notify('Code Templates: cr_tab, cur_for, pkg_spec ready. Type template and press Tab in editor.', 'info');
-  }
-
-  openAutoReplace() {
-    window.TracesApp.notify('Auto-Replace: Shortcuts configured (e.g. df -> DELETE FROM, sf -> SELECT * FROM).', 'info');
-  }
-
-  openFindDialog(replace = false) {
-    const term = prompt(replace ? 'Toad Replace: Search for text:' : 'Toad Find: Search for text:');
-    if (term) window.TracesApp.notify(`Searching for '${term}' in active worksheet.`, 'info');
-  }
-
-  openProjectManager() {
-    window.TracesApp.notify('Project Manager: Project workspace open with 3 connections and 12 SQL scripts.', 'info');
-  }
-
+  // 15. Clone User Wizard (Create Like)
   openCloneUser() {
-    const user = prompt('Clone User (Create Like)\nEnter template username to duplicate privileges from:', 'HR');
-    if (user) window.TracesApp.notify(`Generated CREATE USER DDL replicating roles, grants, and tablespace quotas from ${user}.`, 'success');
+    const body = `
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+        <div style="font-weight: 700; color: #0078d7;">Clone Oracle User / Role (Create Like Wizard)</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Template (Source User):</label>
+          <input id="clone-src-user" type="text" value="HR" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc; font-weight:700;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">New Username:</label>
+          <input id="clone-tgt-user" type="text" value="HR_COPY" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc; font-weight:700;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Temporary Password:</label>
+          <input id="clone-pwd" type="password" value="Oracle2026#Temp" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Default Tablespace:</label>
+          <input id="clone-ts" type="text" value="USERS" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div>
+          <input type="checkbox" id="clone-roles" checked>
+          <label for="clone-roles">Replicate Granted Roles (DBA_ROLE_PRIVS)</label>
+        </div>
+        <div>
+          <input type="checkbox" id="clone-sysprivs" checked>
+          <label for="clone-sysprivs">Replicate System Privileges (DBA_SYS_PRIVS)</label>
+        </div>
+        <div>
+          <input type="checkbox" id="clone-tabprivs" checked>
+          <label for="clone-tabprivs">Replicate Object Grants (DBA_TAB_PRIVS)</label>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.generateCloneUserScript();">Generate Script to Editor</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('Clone User Wizard (Create Like)', body, footer, '540px');
   }
 
+  generateCloneUserScript() {
+    const src = document.getElementById('clone-src-user')?.value || 'HR';
+    const tgt = document.getElementById('clone-tgt-user')?.value || 'HR_COPY';
+    const pwd = document.getElementById('clone-pwd')?.value || 'Oracle2026#Temp';
+    const ts = document.getElementById('clone-ts')?.value || 'USERS';
+
+    const sql = `-- Toad Clone User DDL (Replicated from ${src})
+CREATE USER ${tgt} IDENTIFIED BY "${pwd}"
+  DEFAULT TABLESPACE ${ts}
+  TEMPORARY TABLESPACE TEMP
+  QUOTA UNLIMITED ON ${ts}
+  PASSWORD EXPIRE;
+
+-- Replicated Role Privileges:
+GRANT CONNECT, RESOURCE TO ${tgt};
+
+-- Replicated System Privileges:
+GRANT CREATE VIEW, CREATE PROCEDURE, CREATE SEQUENCE TO ${tgt};
+
+-- Replicated Object Grants:
+GRANT SELECT, INSERT, UPDATE, DELETE ON ${src}.EMPLOYEES TO ${tgt};
+GRANT SELECT ON ${src}.DEPARTMENTS TO ${tgt};
+`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(sql);
+      window.TracesApp.notify(`Script de clonagem do usuário ${src} para ${tgt} gerado no Editor.`, 'success');
+      this.close();
+    }
+  }
+
+  // 16. RMAN Script Generator
   openRmanGenerator() {
-    window.TracesApp.notify('RMAN Template: Generated Incremental Level 0 Backup script with ARCHIVELOG ALL DELETE INPUT.', 'info');
+    const body = `
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+        <div style="font-weight: 700; color: #0078d7;">RMAN Backup &amp; Recovery Template Generator</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Backup Level:</label>
+          <select id="rman-level" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="0">Incremental Level 0 (Full Baseline)</option>
+            <option value="1">Incremental Level 1 (Differential)</option>
+            <option value="ARCH">Archive Logs Only</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Parallel Channels:</label>
+          <input id="rman-channels" type="number" value="4" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Compression Algorithm:</label>
+          <select id="rman-comp" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="BASIC">BASIC (ZLIB)</option>
+            <option value="HIGH">HIGH (BZIP2 / Advanced Compression)</option>
+            <option value="MEDIUM">MEDIUM (ZSTD)</option>
+          </select>
+        </div>
+        <div>
+          <input type="checkbox" id="rman-delete-input" checked>
+          <label for="rman-delete-input"><b>DELETE ALL INPUT (Purge archived logs after backup)</b></label>
+        </div>
+        <div>
+          <input type="checkbox" id="rman-plus-arch" checked>
+          <label for="rman-plus-arch"><b>PLUS ARCHIVELOG</b></label>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.generateRmanScript();">Generate RMAN Script to Editor</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('RMAN Template Generator & Script Builder', body, footer, '540px');
   }
 
+  generateRmanScript() {
+    const lvl = document.getElementById('rman-level')?.value || '0';
+    const chan = parseInt(document.getElementById('rman-channels')?.value || '4', 10);
+    const comp = document.getElementById('rman-comp')?.value || 'BASIC';
+
+    let allocs = '';
+    for (let i = 1; i <= chan; i++) {
+      allocs += `  ALLOCATE CHANNEL c${i} DEVICE TYPE DISK FORMAT '+RECO/backup_%U';\n`;
+    }
+
+    const script = `-- Toad RMAN Script Generator
+RUN {
+${allocs}
+  BACKUP AS COMPRESSED BACKUPSET
+    INCREMENTAL LEVEL ${lvl}
+    DATABASE
+    PLUS ARCHIVELOG DELETE ALL INPUT;
+
+  CROSSCHECK BACKUP;
+  DELETE NOPROMPT OBSOLETE;
+}
+`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(script);
+      window.TracesApp.notify('Script RMAN gerado no Editor.', 'success');
+      this.close();
+    }
+  }
+
+  // 17. TKProf Wizard
   openTkprofWizard() {
-    window.TracesApp.notify('TKProf: Formatted trace output sorted by elapsed time (fchela).', 'success');
+    const body = `
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+        <div style="font-weight: 700; color: #0078d7;">TKProf Trace Analyzer Wizard (Event 10046 Profiling)</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Trace File (.trc):</label>
+          <input id="tk-input" type="text" value="/u01/app/oracle/diag/rdbms/orcl/ORCL/trace/orcl_ora_14829.trc" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Output Text (.prf):</label>
+          <input id="tk-output" type="text" value="tkprof_analysis_output.prf" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Sort Order:</label>
+          <select id="tk-sort" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="fchela">fchela (Elapsed time spent fetching)</option>
+            <option value="exeela">exeela (Elapsed time executing)</option>
+            <option value="prscpu">prscpu (CPU time parsing)</option>
+            <option value="exeqry">exeqry (Number of consistent reads)</option>
+          </select>
+        </div>
+        <div>
+          <input type="checkbox" id="tk-sys" checked>
+          <label for="tk-sys"><b>SYS=NO (Exclude internal dictionary recursive queries)</b></label>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.generateTkprofCommand();">Generate Command to Editor</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('TKProf Trace Analyzer Wizard', body, footer, '560px');
   }
 
+  generateTkprofCommand() {
+    const inp = document.getElementById('tk-input')?.value || 'trace.trc';
+    const out = document.getElementById('tk-output')?.value || 'output.prf';
+    const sort = document.getElementById('tk-sort')?.value || 'fchela';
+
+    const cmd = `-- TKProf Analysis Command Line:
+-- tkprof ${inp} ${out} sort=${sort} sys=no explain=hr/hr@ORCL
+
+-- Generated TKProf Top Section:
+/*
+OVERALL TOTALS FOR ALL NON-RECURSIVE STATEMENTS
+
+call     count       cpu    elapsed       disk      query    current        rows
+------- ------  -------- ---------- ---------- ---------- ----------  ----------
+Parse        1      0.00       0.00          0          0          0           0
+Execute      1      0.00       0.00          0          0          0           0
+Fetch       15      0.01       0.03          4        184          0         107
+------- ------  -------- ---------- ---------- ---------- ----------  ----------
+total       17      0.01       0.03          4        184          0         107
+
+Misses in library cache during parse: 0
+Optimizer mode: ALL_ROWS
+Parsing user id: 104  (HR)
+*/`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(cmd);
+      window.TracesApp.notify('Comando TKProf e análise inicial gerados no Editor.', 'success');
+      this.close();
+    }
+  }
+
+  // 18. Generate Schema DDL Script
   openGenerateScript() {
-    window.TracesApp.notify('Extracted schema DDL ordered topographically by object dependencies.', 'success');
+    const body = `
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+        <div style="font-weight: 700; color: #0078d7;">Generate Topological Schema DDL Script (DBMS_METADATA)</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Target Schema:</label>
+          <input id="gen-ddl-schema" type="text" value="HR" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc; font-weight:700;">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 6px; background:#fff; border:1px solid #ccc;">
+          <div><input type="checkbox" id="g-tables" checked> <label for="g-tables">Tables &amp; Constraints</label></div>
+          <div><input type="checkbox" id="g-indexes" checked> <label for="g-indexes">Indexes</label></div>
+          <div><input type="checkbox" id="g-views" checked> <label for="g-views">Views</label></div>
+          <div><input type="checkbox" id="g-packages" checked> <label for="g-packages">Packages &amp; Procedures</label></div>
+          <div><input type="checkbox" id="g-triggers" checked> <label for="g-triggers">Triggers</label></div>
+          <div><input type="checkbox" id="g-grants" checked> <label for="g-grants">Grants &amp; Synonyms</label></div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.generateSchemaDdlScript();">Generate Schema Script to Editor</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('Generate Schema DDL Script Wizard', body, footer, '500px');
   }
 
+  generateSchemaDdlScript() {
+    const schema = document.getElementById('gen-ddl-schema')?.value || 'HR';
+    const sql = `-- Toad Topological Schema DDL Script
+-- Extracted via DBMS_METADATA.GET_DDL for Schema: ${schema}
+
+SET DEFINE OFF;
+
+-- ===================================================
+-- 1. TABLES & PRIMARY KEYS
+-- ===================================================
+CREATE TABLE ${schema}.DEPARTMENTS (
+    DEPARTMENT_ID NUMBER(4) CONSTRAINT DEPT_ID_PK PRIMARY KEY,
+    DEPARTMENT_NAME VARCHAR2(30) NOT NULL,
+    MANAGER_ID NUMBER(6),
+    LOCATION_ID NUMBER(4)
+);
+
+CREATE TABLE ${schema}.EMPLOYEES (
+    EMPLOYEE_ID NUMBER(6) CONSTRAINT EMP_EMP_ID_PK PRIMARY KEY,
+    FIRST_NAME VARCHAR2(20),
+    LAST_NAME VARCHAR2(25) NOT NULL,
+    EMAIL VARCHAR2(25) NOT NULL CONSTRAINT EMP_EMAIL_UK UNIQUE,
+    PHONE_NUMBER VARCHAR2(20),
+    HIRE_DATE DATE NOT NULL,
+    JOB_ID VARCHAR2(10) NOT NULL,
+    SALARY NUMBER(8,2),
+    COMMISSION_PCT NUMBER(2,2),
+    MANAGER_ID NUMBER(6),
+    DEPARTMENT_ID NUMBER(4) CONSTRAINT EMP_DEPT_FK REFERENCES ${schema}.DEPARTMENTS(DEPARTMENT_ID)
+);
+
+-- ===================================================
+-- 2. INDEXES
+-- ===================================================
+CREATE INDEX ${schema}.EMP_DEPARTMENT_IX ON ${schema}.EMPLOYEES(DEPARTMENT_ID);
+CREATE INDEX ${schema}.EMP_NAME_IX ON ${schema}.EMPLOYEES(LAST_NAME, FIRST_NAME);
+
+-- ===================================================
+-- 3. GRANTS
+-- ===================================================
+GRANT SELECT, INSERT, UPDATE, DELETE ON ${schema}.EMPLOYEES TO PUBLIC;
+GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
+`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(sql);
+      window.TracesApp.notify(`Script DDL do Schema ${schema} gerado com sucesso no Editor.`, 'success');
+      this.close();
+    }
+  }
+
+  // 19. Benchmark Factory
   openBenchmarkFactory() {
-    window.TracesApp.notify('Benchmark Factory: Simulated 250 concurrent virtual users executing TPC-C transactions.', 'info');
+    const body = `
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+        <div style="font-weight: 700; color: #0078d7;">Quest Benchmark Factory for Oracle</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Workload Profile:</label>
+          <select id="bm-workload" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option>TPC-C Standard OLTP Workload (New-Order, Payment)</option>
+            <option>TPC-E Financial Brokerage Benchmark</option>
+            <option>Custom SQL Workload Replay from SQL Editor</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Virtual Users:</label>
+          <input id="bm-users" type="range" min="10" max="500" value="100" style="flex: 1;" oninput="document.getElementById('bm-u-val').textContent = this.value + ' Users';">
+          <span id="bm-u-val" style="width: 70px; font-weight:700;">100 Users</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 130px;">Duration:</label>
+          <input type="text" value="5 minutes (Ramp-up 30s)" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div id="bm-results" style="background:#fff; border:1px solid #ccc; padding:8px; display:none;">
+          <div style="font-weight:700; color:#008000; margin-bottom:4px;">Benchmark Run Complete:</div>
+          <div>Throughput: <b>1,482 Transactions / sec (TPS)</b></div>
+          <div>Average Response Time: <b>4.2 ms</b></div>
+          <div>Error Rate: <b>0.00%</b></div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.runBenchmarkSimulation();">Run Benchmark</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Benchmark Factory for Oracle Database', body, footer, '540px');
   }
 
+  runBenchmarkSimulation() {
+    const res = document.getElementById('bm-results');
+    if (res) {
+      res.style.display = 'block';
+      window.TracesApp.notify('Executando teste de carga com 100 usuários virtuais concorrentes...', 'info');
+    }
+  }
+
+  // 20. Scheduler Manager (DBMS_SCHEDULER)
   openSchedulerManager() {
-    window.TracesApp.notify('DBMS_SCHEDULER: 14 Active Jobs, 4 Chains, 2 Windows scheduled.', 'info');
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 700; color: #0078d7;">Oracle Scheduler Manager (DBMS_SCHEDULER &amp; DBA_SCHEDULER_JOBS)</div>
+        <div style="max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
+          <table class="meta-table" style="width: 100%;">
+            <thead><tr><th>Job Name</th><th>State</th><th>Last Run</th><th>Next Run</th><th>Repeat Interval</th><th>Actions</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><b>DAILY_SALES_AGG</b></td>
+                <td><span style="color:#008000; font-weight:700;">SCHEDULED</span></td>
+                <td>2026-10-18 01:00:00</td>
+                <td>2026-10-19 01:00:00</td>
+                <td>FREQ=DAILY;BYHOUR=1</td>
+                <td><button class="btn" onclick="window.TracesApp.notify('DBMS_SCHEDULER.RUN_JOB(DAILY_SALES_AGG) executado.', 'success');">Run Now</button></td>
+              </tr>
+              <tr>
+                <td><b>PURGE_AUDIT_LOGS</b></td>
+                <td><span style="color:#008000; font-weight:700;">SCHEDULED</span></td>
+                <td>2026-10-18 03:00:00</td>
+                <td>2026-10-19 03:00:00</td>
+                <td>FREQ=DAILY;BYHOUR=3</td>
+                <td><button class="btn" onclick="window.TracesApp.notify('DBMS_SCHEDULER.RUN_JOB(PURGE_AUDIT_LOGS) executado.', 'success');">Run Now</button></td>
+              </tr>
+              <tr>
+                <td><b>GATHER_STATS_JOB</b></td>
+                <td><span style="color:#666;">DISABLED</span></td>
+                <td>2026-10-17 22:00:00</td>
+                <td>-</td>
+                <td>FREQ=WEEKLY;BYDAY=SUN</td>
+                <td><button class="btn" onclick="window.TracesApp.notify('DBMS_SCHEDULER.ENABLE(GATHER_STATS_JOB) executado.', 'info');">Enable</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Oracle Scheduler Manager (DBMS_SCHEDULER)', body, footer, '680px');
   }
 
   openCrontabManager() {
-    window.TracesApp.notify('Crontab Manager: Connected via SSH to Oracle Linux host.', 'info');
+    window.TracesApp.notify('Crontab Manager: Conectado via SSH ao host Oracle Linux.', 'info');
   }
 
   openExternalTools() {
-    window.TracesApp.notify('External Tools: Mapped PuTTY ($HOST:$PORT), VS Code ($FILEPATH), and Git Bash.', 'info');
+    window.TracesApp.notify('External Tools: Mapeado PuTTY ($HOST:$PORT), VS Code ($FILEPATH) e Git Bash.', 'info');
   }
 
   openShortcutsCheatsheet() {
@@ -709,12 +1291,30 @@ FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
   }
 
   openHtmlDocGen() {
-    window.TracesApp.notify('HTML Schema Doc Generator: Built full Javadoc-style static schema documentation in /docs.', 'success');
+    window.TracesApp.notify('HTML Schema Doc Generator: Construída documentação HTML completa do schema em /docs.', 'success');
   }
 
   openCopyData() {
-    window.TracesApp.notify('Copy Data: Direct cursor cross-connection transfer initialized without DBLink.', 'info');
+    window.TracesApp.notify('Copy Data: Transferência direta entre conexões inicializada sem DBLink.', 'info');
+  }
+
+  openCodeTemplates() {
+    window.TracesApp.notify('Code Templates: cr_tab, cur_for, pkg_spec prontos. Digite a template e aperte Tab no editor.', 'info');
+  }
+
+  openAutoReplace() {
+    window.TracesApp.notify('Auto-Replace: Atalhos ativos (ex.: df -> DELETE FROM, sf -> SELECT * FROM).', 'info');
+  }
+
+  openFindDialog(replace = false) {
+    const term = prompt(replace ? 'Toad Replace: Buscar texto:' : 'Toad Find: Buscar texto:');
+    if (term) window.TracesApp.notify(`Buscando '${term}' na worksheet ativa.`, 'info');
+  }
+
+  openProjectManager() {
+    window.TracesApp.notify('Project Manager: Workspace do projeto aberto com 3 conexões e 12 scripts SQL.', 'info');
   }
 }
 
 window.ToadModals = ToadModals;
+
