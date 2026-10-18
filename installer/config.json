@@ -1,7 +1,7 @@
 {
   "appName": "TRACES Toad for Oracle",
   "version": "2026.2.0",
-  "gitRepoUrl": "https://github.com/morluto/rea.git",
+  "gitRepoUrl": "https://github.com/pedrofranchim35-netizen/traces-tool.git",
   "gitBranch": "main",
   "serverPort": 3033,
   "installDirName": "TracesToad",
