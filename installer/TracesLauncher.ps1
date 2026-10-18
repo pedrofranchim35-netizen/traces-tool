@@ -202,6 +202,17 @@ Write-Host "      ✔ Driver Oracle pronto!" -ForegroundColor Green
 Write-Host "[3/3] Iniciando Traces Toad for Oracle na porta $Port..." -ForegroundColor Green
 $ServerScript = Join-Path $AppDir "bridge\oracle_server.py"
 
+# Encerrar processo antigo rodando na porta do servidor para garantir atualização
+try {
+    $OldConn = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if ($OldConn) {
+        foreach ($c in $OldConn) {
+            Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 600
+    }
+} catch {}
+
 Start-Process -FilePath $PyExe -ArgumentList "`"$ServerScript`"" -WorkingDirectory $AppDir -WindowStyle Hidden
 Start-Sleep -Seconds 2
 
@@ -212,7 +223,8 @@ try {
     if ($resp.StatusCode -eq 200) { $ServerAlive = $true }
 } catch {}
 
-$AppUrl = "http://localhost:$Port/index.html"
+$CacheBust = Get-Date -Format "yyyyMMddHHmmss"
+$AppUrl = "http://localhost:$Port/index.html?v=$CacheBust"
 Write-Host ""
 Write-Host "==================================================================" -ForegroundColor Green
 Write-Host "  SISTEMA PRONTO! Abrindo Toad for Oracle em: $AppUrl" -ForegroundColor White
