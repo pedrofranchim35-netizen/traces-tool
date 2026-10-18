@@ -49,6 +49,31 @@ END process_customer_ledger;`;
     this.activeViolations = [];
     this.initElements();
     this.analyzeCode();
+    this.loadRuleUniverse();
+  }
+
+  async loadRuleUniverse() {
+    try {
+      const resp = await fetch('assets/rule_universe.json');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          this.fullCatalog = data;
+          // Populate rule map with rich tips from asset
+          data.forEach(r => {
+            const ruleId = `RULE-${r.id}`;
+            const existing = this.rules.find(x => x.id === ruleId);
+            if (existing) {
+              existing.tip = r.tip;
+              existing.title = r.def || existing.title;
+            }
+          });
+          this.renderDetail();
+        }
+      }
+    } catch (e) {
+      // offline fallback
+    }
   }
 
   initElements() {
@@ -228,11 +253,12 @@ END process_customer_ledger;`;
     `;
 
     if (this.tipBox) {
+      const guidanceHtml = rule.tip || `<div>${rule.title}. Violations of this rule in Oracle Database often degrade buffer cache efficiency, cause PGA exhaustion, or introduce transaction rollback locks.</div>`;
       this.tipBox.innerHTML = `
-        <div style="font-size: 11.5px; line-height: 1.5; color: #333;">
+        <div style="font-size: 11.5px; line-height: 1.5; color: #333; max-height: 220px; overflow-y: auto;">
           <div style="font-weight: 700; margin-bottom: 4px; color: #0078d7;">Toad CodeXpert Guidance:</div>
-          <div>${rule.title}. Violations of this rule in Oracle Database often degrade buffer cache efficiency, cause PGA exhaustion, or introduce transaction rollback locks.</div>
-          <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <div>${guidanceHtml}</div>
+          <div style="margin-top: 8px; display: flex; gap: 8px; position: sticky; bottom: 0; background: #fff; padding-top: 4px;">
             <button class="btn btn-primary" onclick="window.TracesApp.ruleAuditor.applyFix('${rule.id}');">Apply Auto-Fix</button>
             <button class="btn" onclick="window.TracesApp.ruleAuditor.sendCodeToEditor();">Send to SQL Editor</button>
           </div>

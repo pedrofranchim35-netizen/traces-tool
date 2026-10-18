@@ -1311,6 +1311,126 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
     if (term) window.TracesApp.notify(`Buscando '${term}' na worksheet ativa.`, 'info');
   }
 
+  openOriginalExpImpWizard() {
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 700; color: #0078d7;">Original Oracle Export / Import Utility (exp / imp)</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Mode:</label>
+          <select id="orig-mode" class="toad-conn-combobox" style="flex: 1; height: 22px;">
+            <option value="EXP">Export (exp)</option>
+            <option value="IMP">Import (imp)</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Dump File (.dmp):</label>
+          <input id="orig-file" type="text" value="export_legacy.dmp" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Log File (.log):</label>
+          <input id="orig-log" type="text" value="export_legacy.log" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 120px;">Owner / Schema:</label>
+          <input id="orig-owner" type="text" value="HR,SALES_ADMIN" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 4px;">
+          <div><input type="checkbox" id="orig-consistent" checked> <label for="orig-consistent">CONSISTENT=Y</label></div>
+          <div><input type="checkbox" id="orig-compress" checked> <label for="orig-compress">COMPRESS=Y</label></div>
+          <div><input type="checkbox" id="orig-grants" checked> <label for="orig-grants">GRANTS=Y</label></div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.generateOriginalExpImpCommand();">Generate Command to Editor</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('Original Export / Import (exp / imp) Wizard', body, footer, '540px');
+  }
+
+  generateOriginalExpImpCommand() {
+    const mode = document.getElementById('orig-mode')?.value || 'EXP';
+    const file = document.getElementById('orig-file')?.value || 'export.dmp';
+    const log = document.getElementById('orig-log')?.value || 'export.log';
+    const owner = document.getElementById('orig-owner')?.value || 'HR';
+
+    const cmd = `-- Legacy Oracle ${mode} Command Line:
+-- ${mode.toLowerCase()} userid=\\"sys/*****@ORCL as sysdba\\" file=${file} log=${log} owner=${owner} consistent=y compress=y grants=y
+`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(cmd);
+      window.TracesApp.notify(`Comando ${mode.toLowerCase()} gerado no Editor SQL.`, 'success');
+      this.close();
+    }
+  }
+
+  openHelpTopics() {
+    const body = `
+      <div style="display: flex; height: 380px; gap: 10px; font-size: 11px;">
+        <div style="width: 180px; border: 1px solid #ccc; background: #fff; overflow-y: auto; padding: 4px;">
+          <div style="font-weight: 700; padding: 4px 6px; background: #e0f2fe; color: #0369a1; cursor: pointer; border-radius: 2px;" onclick="window.TracesApp.toadModals.showHelpDoc('overview');">1. Overview &amp; Net8</div>
+          <div style="padding: 4px 6px; cursor: pointer;" onclick="window.TracesApp.toadModals.showHelpDoc('editor');">2. SQL Editor &amp; Hotkeys</div>
+          <div style="padding: 4px 6px; cursor: pointer;" onclick="window.TracesApp.toadModals.showHelpDoc('browser');">3. Schema Browser</div>
+          <div style="padding: 4px 6px; cursor: pointer;" onclick="window.TracesApp.toadModals.showHelpDoc('sessions');">4. Session Browser &amp; Locks</div>
+          <div style="padding: 4px 6px; cursor: pointer;" onclick="window.TracesApp.toadModals.showHelpDoc('dba');">5. DBA Suite &amp; HA</div>
+          <div style="padding: 4px 6px; cursor: pointer;" onclick="window.TracesApp.toadModals.showHelpDoc('codexpert');">6. CodeXpert &amp; Optimizer</div>
+        </div>
+        <div id="help-doc-content" style="flex: 1; border: 1px solid #ccc; background: #fff; overflow-y: auto; padding: 12px; line-height: 1.5;">
+          <h4 style="margin: 0 0 8px 0; color: #0078d7;">Toad for Oracle 2026 R2 - User Guide &amp; Architecture</h4>
+          <p>Traces Toad for Oracle connects directly to Oracle Database instances (11g through 23ai) using python-oracledb Thin/Thick client over Net8 protocol (port 1521).</p>
+          <p><b>Key Capabilities:</b></p>
+          <ul>
+            <li><b>SSH Jump Host Bridge:</b> Encrypted bastion tunnel for private subnet databases.</li>
+            <li><b>Transaction Management:</b> Manual commit (F11) and rollback (Shift+F11) with safe DML staging.</li>
+            <li><b>19 DBA Administration Panes:</b> Tablespace Map, Segment Advisor, Undo Sizing, Flashback, LogMiner, ASM, RAC, Exadata, AWR.</li>
+          </ul>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Toad for Oracle Help Topics & Documentation', body, footer, '680px');
+  }
+
+  showHelpDoc(topic) {
+    const el = document.getElementById('help-doc-content');
+    if (!el) return;
+    if (topic === 'editor') {
+      el.innerHTML = `
+        <h4 style="margin:0 0 8px 0; color:#0078d7;">SQL Editor &amp; Keybindings</h4>
+        <p><b>F9:</b> Execute Statement at cursor into OCI cursor grid.<br>
+        <b>F5:</b> Execute entire worksheet as SQL*Plus script.<br>
+        <b>Ctrl+E:</b> Visual Explain Plan with Cost-Based Optimizer advisor.<br>
+        <b>F4:</b> Instant Object Describe (Popup Columns, Indexes, Constraints, DDL).<br>
+        <b>F8:</b> SQL Recall from persistent history (SavedSQL.dat).<br>
+        <b>Ctrl+Shift+F:</b> Toad FmtPlus SQL Beautifier.<br>
+        <b>F11 / Shift+F11:</b> Commit / Rollback Transaction.</p>
+      `;
+    } else if (topic === 'sessions') {
+      el.innerHTML = `
+        <h4 style="margin:0 0 8px 0; color:#0078d7;">Session Browser &amp; V$LOCK Tree</h4>
+        <p>12 native Toad filters from <code>TOAD_SESSBROWFILTERS.INI</code> are evaluated against V$SESSION.</p>
+        <p>Allows inspecting locks, blocked sessions, SQL text, session wait events, and executing <code>ALTER SYSTEM KILL SESSION 'sid,serial' IMMEDIATE</code> or disconnect.</p>
+      `;
+    } else if (topic === 'dba') {
+      el.innerHTML = `
+        <h4 style="margin:0 0 8px 0; color:#0078d7;">DBA Suite &amp; High Availability</h4>
+        <p>Complete suite of 19 administration modules: Tablespace Map (HWM), Segment Advisor (DBMS_SPACE), Undo Advisor (V$UNDOSTAT), Flashback Recycle Bin, LogMiner (DBMS_LOGMNR), Data Guard, ASM, RAC, Exadata Smart Scan, and AWR reports.</p>
+      `;
+    } else {
+      el.innerHTML = `
+        <h4 style="margin:0 0 8px 0; color:#0078d7;">Toad for Oracle 2026 R2 - Overview</h4>
+        <p>Professional Oracle Database developer and administration suite with 1:1 Quest Toad feature parity.</p>
+      `;
+    }
+  }
+
   openProjectManager() {
     window.TracesApp.notify('Project Manager: Workspace do projeto aberto com 3 conexões e 12 scripts SQL.', 'info');
   }

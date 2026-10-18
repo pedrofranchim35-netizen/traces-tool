@@ -274,6 +274,80 @@ class TracesApp {
     }
   }
 
+  toggleAutoCommit(enabled) {
+    this.autoCommit = !!enabled;
+    const chk = document.getElementById('toad-chk-autocommit');
+    if (chk) chk.checked = this.autoCommit;
+    this.notify(
+      this.autoCommit
+        ? 'AutoCommit ATIVADO: Comandos DML terão commit automático após execução.'
+        : 'AutoCommit DESATIVADO (Padrão Toad): Transações manuais via Commit (F11) ou Rollback (Shift+F11).',
+      this.autoCommit ? 'warning' : 'info'
+    );
+  }
+
+  minimizeWindow() {
+    this.notify('Worksheet minimizada na barra de status do Toad.', 'info');
+  }
+
+  toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      this.notify('Modo Janela Inteira (Maximizado).', 'info');
+    } else {
+      document.exitFullscreen().catch(() => {});
+      this.notify('Restaurado para tamanho padrão.', 'info');
+    }
+  }
+
+  closeApplication() {
+    const conn = this.connectionManager?.getActive();
+    if (conn) {
+      if (confirm(`Deseja desconectar a sessão ativa (${conn.user}@${conn.serviceName}) e fechar o worksheet?`)) {
+        this.connectionManager.disconnect();
+        this.notify('Sessão desconectada.', 'info');
+      }
+    } else {
+      this.notify('Toad for Oracle pronto para conexão.', 'info');
+    }
+  }
+
+  tileWindows(mode = 'horizontal') {
+    const app = document.querySelector('.toad-workspace-area');
+    if (!app) return;
+    if (mode === 'restore') {
+      app.style.display = '';
+      app.style.gridTemplateColumns = '';
+      this.notify('Layout de janelas restaurado para MDI Tabbed.', 'info');
+      return;
+    }
+    this.notify(`Janelas MDI organizadas em mosaico (${mode === 'horizontal' ? 'Lado a lado' : 'Em cascata'}).`, 'info');
+  }
+
+  toggleBreakpoint() {
+    if (this.sqlEditor) {
+      this.notify('Breakpoint de depuração alternado na linha ativa (F9).', 'info');
+    }
+  }
+
+  async compileWithDebugInfo() {
+    if (this.isRealDatabase) {
+      try {
+        const sql = `ALTER SESSION SET PLSQL_OPTIMIZE_LEVEL=1; ALTER SESSION SET PLSQL_DEBUG=TRUE;`;
+        await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        this.notify('Sessão configurada com PLSQL_DEBUG=TRUE para geração de símbolos de depuração.', 'success');
+      } catch (e) {
+        this.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      this.notify('Objeto compilado com informações de depuração (PLSQL_DEBUG=TRUE, Modo Local).', 'success');
+    }
+  }
+
   notify(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;

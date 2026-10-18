@@ -34,9 +34,9 @@
         </div>
       </div>
       <div class="toad-window-controls">
-        <button class="win-btn" title="Minimize">🗕</button>
-        <button class="win-btn" title="Maximize">🗖</button>
-        <button class="win-btn win-close" title="Close">✕</button>
+        <button class="win-btn" title="Minimize Worksheet" onclick="window.TracesApp.minimizeWindow()">🗕</button>
+        <button class="win-btn" title="Toggle Fullscreen (Maximize)" onclick="window.TracesApp.toggleFullscreen()">🗖</button>
+        <button class="win-btn win-close" title="Close Active Window / Exit" onclick="window.TracesApp.closeApplication()">✕</button>
       </div>
     </header>
 
@@ -228,8 +228,8 @@
 
         <!-- AutoCommit indicator -->
         <div style="margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11px; padding-right: 6px;">
-          <input type="checkbox" id="toad-chk-autocommit" disabled>
-          <label for="toad-chk-autocommit" style="color: #555;">AutoCommit</label>
+          <input type="checkbox" id="toad-chk-autocommit" onchange="window.TracesApp.toggleAutoCommit(this.checked)">
+          <label for="toad-chk-autocommit" style="color: #333; cursor: pointer; user-select: none;">AutoCommit</label>
         </div>
       </div>
     </div>

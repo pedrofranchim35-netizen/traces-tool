@@ -138,7 +138,7 @@ class ToadMenus {
           icon: '🛠',
           submenu: [
             { label: 'Data Pump Wizard (Export / Import)...', action: () => window.TracesApp.toadModals.openDataPumpWizard() },
-            { label: 'Original Export / Import (exp / imp)...', action: () => window.TracesApp.notify('Original exp/imp utility builder opened.', 'info') },
+            { label: 'Original Export / Import (exp / imp)...', action: () => window.TracesApp.toadModals.openOriginalExpImpWizard() },
             { label: 'RMAN Template Generator & Script Builder...', action: () => window.TracesApp.toadModals.openRmanGenerator() },
             { label: 'SQL*Loader Wizard (.ctl Control File)...', action: () => window.TracesApp.toadModals.openSqlLoaderWizard() },
             { label: 'TKProf Trace Analyzer Wizard...', action: () => window.TracesApp.toadModals.openTkprofWizard() },
@@ -179,9 +179,9 @@ class ToadMenus {
 
       'Debug': [
         { label: 'Start PL/SQL Debugger', icon: '🐞', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'debug') },
-        { label: 'Toggle Breakpoint', icon: '🔴', shortcut: 'F9', action: () => window.TracesApp.notify('Breakpoint toggled at current line.', 'info') },
+        { label: 'Toggle Breakpoint', icon: '🔴', shortcut: 'F9', action: () => window.TracesApp.toggleBreakpoint() },
         { label: 'Watches & Call Stack', icon: '👁', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'debug') },
-        { label: 'Compile with Debug Information', icon: '🔨', shortcut: '', action: () => window.TracesApp.notify('Object compiled with PLSQL_DEBUG=TRUE.', 'success') },
+        { label: 'Compile with Debug Information', icon: '🔨', shortcut: '', action: () => window.TracesApp.compileWithDebugInfo() },
         { separator: true },
         { label: 'PL/SQL Profiler (DBMS_PROFILER Line-by-Line)', icon: '⏱', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'profiler') },
         { label: 'Code Analysis (CodeXpert AST Metrics)', icon: '📊', shortcut: '', action: () => window.TracesApp.switchDockView('rules') },
@@ -221,15 +221,16 @@ class ToadMenus {
       ],
 
       'Window': [
-        { label: 'Cascade Windows', icon: '🪟', shortcut: '', action: () => window.TracesApp.notify('MDI Windows Cascaded.', 'info') },
-        { label: 'Tile Horizontally', icon: '═', shortcut: '', action: () => window.TracesApp.notify('MDI Windows Tiled Horizontally.', 'info') },
-        { label: 'Tile Vertically', icon: '║', shortcut: '', action: () => window.TracesApp.notify('MDI Windows Tiled Vertically.', 'info') },
+        { label: 'Cascade Windows', icon: '🪟', shortcut: '', action: () => window.TracesApp.tileWindows('cascade') },
+        { label: 'Tile Horizontally', icon: '═', shortcut: '', action: () => window.TracesApp.tileWindows('horizontal') },
+        { label: 'Tile Vertically', icon: '║', shortcut: '', action: () => window.TracesApp.tileWindows('vertical') },
+        { label: 'Restore MDI Tabbed Layout', icon: '🗗', shortcut: '', action: () => window.TracesApp.tileWindows('restore') },
         { separator: true },
         { label: 'Toggle Traces AI Copilot', icon: '▲', shortcut: 'Ctrl+Shift+C', action: () => window.TracesApp.tracesCopilot.toggleDrawer() }
       ],
 
       'Help': [
-        { label: 'Toad for Oracle Help Topics', icon: '❓', shortcut: 'F1', action: () => alert('Toad for Oracle (Traces Edition) Documentation\nAll 8 Core Modules & DBA Suite fully mapped.') },
+        { label: 'Toad for Oracle Help Topics', icon: '❓', shortcut: 'F1', action: () => window.TracesApp.toadModals.openHelpTopics() },
         { label: 'Keyboard Shortcuts Cheatsheet', icon: '⌨', shortcut: '', action: () => window.TracesApp.toadModals.openShortcutsCheatsheet() },
         { separator: true },
         { label: 'About Toad for Oracle', icon: 'ℹ', shortcut: '', action: () => window.TracesApp.toadModals.openAboutDialog() }

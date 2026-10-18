@@ -14,6 +14,16 @@ class ExplainPlan {
     this.initDefaultPlan();
     this.initElements();
     this.render();
+    this.loadColumnDefs();
+  }
+
+  async loadColumnDefs() {
+    try {
+      const resp = await fetch('assets/explain_plan_cols.json');
+      if (resp.ok) {
+        this.planColumns = await resp.json();
+      }
+    } catch (e) {}
   }
 
   initDefaultPlan() {

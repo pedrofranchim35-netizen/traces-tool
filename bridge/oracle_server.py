@@ -1137,6 +1137,19 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         elif filter_id == "filter12": # SHARED
             where_sql = "s.server = 'SHARED'"
 
+        # Dynamically evaluate custom filter expressions from assets/session_filters.json
+        try:
+            filters_file = os.path.join(BASE_DIR, 'assets', 'session_filters.json')
+            if os.path.exists(filters_file):
+                with open(filters_file, 'r', encoding='utf-8') as f:
+                    filt_data = json.load(f)
+                    for item in filt_data:
+                        if item.get('id') == filter_id and item.get('expr'):
+                            where_sql = item['expr']
+                            break
+        except Exception:
+            pass
+
         try:
             with conn.cursor() as cur:
                 cur.execute(f"""
