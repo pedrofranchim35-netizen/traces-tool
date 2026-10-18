@@ -209,8 +209,10 @@ END;`
   }
 
   updateHighlighting() {
-    const code = this.textarea.value;
-    this.highlightEl.innerHTML = this.highlightSql(code);
+    if (this.highlightEl && this.highlightEl.style.display !== 'none') {
+      const code = this.textarea.value;
+      this.highlightEl.innerHTML = this.highlightSql(code);
+    }
   }
 
   highlightSql(sql) {
@@ -264,7 +266,11 @@ END;`
 
   // Execution Handlers
   executeStatement() {
-    const text = this.textarea.value;
+    const text = this.textarea ? this.textarea.value : '';
+    if (!text || !text.trim()) {
+      window.TracesApp.notify('Nenhum comando SQL na worksheet para executar.', 'warning');
+      return;
+    }
 
     // Route to real database if connected
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
@@ -296,28 +302,32 @@ END;`
     this.updateTransactionBadge();
 
     // Record into SavedSQL.dat for F8 SQL Recall
-    window.TRACES_DB.savedSql.unshift({
-      timestamp: new Date().toLocaleTimeString(),
-      schema: window.TRACES_DB.activeSchema || 'HR',
-      executions: 1,
-      text: text.trim()
-    });
+    if (window.TRACES_DB && window.TRACES_DB.savedSql) {
+      window.TRACES_DB.savedSql.unshift({
+        timestamp: new Date().toLocaleTimeString(),
+        schema: window.TRACES_DB.activeSchema || 'HR',
+        executions: 1,
+        text: text.trim()
+      });
+    }
 
     // Route query results to Data Grid
-    if (text.toLowerCase().includes('sales_transactions') || text.toLowerCase().includes('sales_admin')) {
-      const salesData = window.TRACES_DB.schemas['SALES_ADMIN'].tables[1].data;
-      window.TracesApp.dataGrid.setData(salesData, 'SALES_TRANSACTIONS');
-    } else {
-      const empData = window.TRACES_DB.schemas['HR'].tables[0].data;
-      window.TracesApp.dataGrid.setData(empData, 'EMPLOYEES');
+    if (window.TRACES_DB && window.TRACES_DB.schemas) {
+      if (text.toLowerCase().includes('sales_transactions') || text.toLowerCase().includes('sales_admin')) {
+        const salesData = window.TRACES_DB.schemas['SALES_ADMIN']?.tables[1]?.data || [];
+        window.TracesApp.dataGrid.setData(salesData, 'SALES_TRANSACTIONS');
+      } else {
+        const empData = window.TRACES_DB.schemas['HR']?.tables[0]?.data || [];
+        window.TracesApp.dataGrid.setData(empData, 'EMPLOYEES');
+      }
     }
 
     // Update Script output log
-    this.logScriptOutput(`[${new Date().toLocaleTimeString()}] Statement executed successfully in ${elapsedMs} ms. Rows fetched: 14.`);
+    this.logScriptOutput(`[${new Date().toLocaleTimeString()}] Statement executed successfully in ${elapsedMs} ms. Rows fetched: 14. (Modo Local)`);
     
     // Switch to Data Grid tab
     this.switchOutputTab('grid');
-    window.TracesApp.notify(`Query executed in ${elapsedMs} ms. Data Grid updated.`, 'success');
+    window.TracesApp.notify(`Executado em ${elapsedMs} ms (Modo Local). Conecte ao banco real no botão ⚡ Connect para dados ao vivo.`, 'success');
 
     this.updateAutotrace();
   }
@@ -367,7 +377,11 @@ END;`
   }
 
   async executeScript() {
-    const text = this.textarea.value;
+    const text = this.textarea ? this.textarea.value : '';
+    if (!text || !text.trim()) {
+      window.TracesApp.notify('Nenhum script na worksheet para executar.', 'warning');
+      return;
+    }
     const startTime = performance.now();
 
     if (window.TracesApp && window.TracesApp.isRealDatabase) {

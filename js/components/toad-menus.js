@@ -20,8 +20,8 @@ class ToadMenus {
     return {
       'File': [
         { label: 'New Connection...', icon: '⚡', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
-        { label: 'End Connection (Disconnect)', icon: '🔌', shortcut: '', action: () => window.TracesApp.notify('Disconnected active session.', 'info') },
-        { label: 'Reconnect', icon: '🔄', shortcut: '', action: () => window.TracesApp.notify('Re-established connection to Oracle Database 23ai RAC.', 'success') },
+        { label: 'End Connection (Disconnect)', icon: '🔌', shortcut: '', action: () => window.TracesApp.connectionManager.disconnect() },
+        { label: 'Reconnect', icon: '🔄', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
         { separator: true },
         { label: 'Open File...', icon: '📂', shortcut: 'Ctrl+O', action: () => window.TracesApp.sqlEditor.addNewTab() },
         { label: 'Save Worksheet', icon: '💾', shortcut: 'Ctrl+S', action: () => window.TracesApp.notify('Saved query to local SQL file.', 'info') },
@@ -322,13 +322,29 @@ class ToadMenus {
 
         const subidx = entry.getAttribute('data-subidx');
         if (subidx !== null) {
-          const parentIdx = entry.closest('.has-submenu').getAttribute('data-idx');
-          const subItem = this.menuDefs[menuKey][parentIdx].submenu[subidx];
-          if (subItem && subItem.action) subItem.action();
+          const parentEntry = entry.closest('.has-submenu');
+          const parentIdx = parentEntry ? parentEntry.getAttribute('data-idx') : null;
+          if (parentIdx !== null && this.menuDefs[menuKey]?.[parentIdx]?.submenu?.[subidx]) {
+            const subItem = this.menuDefs[menuKey][parentIdx].submenu[subidx];
+            try {
+              if (subItem && subItem.action) subItem.action();
+            } catch (err) {
+              console.error('Menu subitem action error:', err);
+            }
+          }
         } else {
+          // If this entry has a submenu flyout, don't close, keep open
+          if (entry.classList.contains('has-submenu')) {
+            entry.classList.toggle('has-open-submenu');
+            return;
+          }
           const idx = entry.getAttribute('data-idx');
-          const item = this.menuDefs[menuKey][idx];
-          if (item && item.action) item.action();
+          const item = this.menuDefs[menuKey]?.[idx];
+          try {
+            if (item && item.action) item.action();
+          } catch (err) {
+            console.error('Menu item action error:', err);
+          }
         }
 
         this.closeAll();

@@ -26,7 +26,12 @@
       <div class="toad-titlebar-left">
         <!-- Replaced Toad frog logo with TRACES official logo -->
         <img src="assets/traces-logo.png" alt="TRACES" class="toad-traces-logo-img" title="TRACES Oracle Studio">
-        <span class="toad-title-text" id="toad-window-title">Toad for Oracle - [Editor (SYSTEM@sales_prod.db.corp)]</span>
+        <span class="toad-title-text" id="toad-window-title">Toad for Oracle - [Desconectado]</span>
+        <div class="toad-conn-pill" id="header-connection-pill" onclick="window.TracesApp.connectionManager.openModal()" title="Gerenciar Conexão Oracle" style="cursor: pointer; margin-left: 14px; font-size: 11px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 3px; background: rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.1);">
+          <span class="toad-conn-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; display: inline-block;"></span>
+          <span style="font-weight: 700; color: #555;">Desconectado</span>
+          <span style="color: #888; font-size: 10px;">(Clique para Conectar)</span>
+        </div>
       </div>
       <div class="toad-window-controls">
         <button class="win-btn" title="Minimize">🗕</button>
@@ -47,18 +52,7 @@
          TOAD CLASSIC MENU BAR
          ==================================================================== -->
     <nav class="toad-menubar" aria-label="Main Menu">
-      <div class="toad-menu-item" onclick="window.TracesApp.connectionManager.openModal()">File</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.sqlEditor.formatSql()">Edit</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.schemaBrowser.searchInput.focus()">Search</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('browser')">View</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('sessions')">Database</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('browser')">Schema</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('editor')">Editor</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('rules')">Debug</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('sessions')">Session</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.switchDockView('probe')">Tools</div>
-      <div class="toad-menu-item" onclick="window.TracesApp.tracesCopilot.toggleDrawer()">Window</div>
-      <div class="toad-menu-item" onclick="alert('Toad for Oracle 2026 R2 - Re-engineered with TRACES\nConnected to: Oracle Database 23ai RAC')">Help</div>
+      <!-- Injected and managed by ToadMenus with full desktop dropdown & submenu system -->
     </nav>
 
     <!-- ====================================================================
@@ -74,24 +68,24 @@
           <span class="toad-btn-icon" style="color: #008000;">⚡</span>
           <span>Connect</span>
         </button>
-        <button class="toad-btn" onclick="window.TracesApp.notify('Disconnected session.', 'info')" title="End Connection">
+        <button class="toad-btn" onclick="window.TracesApp.connectionManager.disconnect()" title="End Connection">
           <span class="toad-btn-icon" style="color: #c00000;">🔌</span>
           <span>Disconnect</span>
         </button>
 
         <!-- Connection Dropdown Selector -->
         <select class="toad-conn-combobox" id="toad-conn-selector">
-          <option value="rmprod-traces" selected>SYS@10.100.10.39/RMPROD (SYSDBA)</option>
+          <option value="" selected>-- Desconectado (Clique em ⚡ Conectar) --</option>
         </select>
 
         <div class="toad-separator"></div>
 
         <!-- Commit & Rollback -->
-        <button class="toad-btn btn-commit" id="btn-commit" title="Commit Transaction (F11)">
+        <button class="toad-btn btn-commit" id="btn-commit" onclick="window.TracesApp.sqlEditor.commitTransaction()" title="Commit Transaction (F11)">
           <span class="toad-btn-icon">✓</span>
           <span>Commit</span>
         </button>
-        <button class="toad-btn btn-rollback" id="btn-rollback" title="Rollback Transaction (Shift+F11)">
+        <button class="toad-btn btn-rollback" id="btn-rollback" onclick="window.TracesApp.sqlEditor.rollbackTransaction()" title="Rollback Transaction (Shift+F11)">
           <span class="toad-btn-icon">✕</span>
           <span>Rollback</span>
         </button>
@@ -151,7 +145,7 @@
         <div class="toad-separator"></div>
 
         <!-- Traces AI Copilot -->
-        <button class="toad-btn" id="btn-toggle-copilot" title="Traces AI Copilot" style="font-weight: 600; color: var(--traces-red);">
+        <button class="toad-btn" id="btn-toggle-copilot" onclick="window.TracesApp.tracesCopilot.toggleDrawer()" title="Traces AI Copilot" style="font-weight: 600; color: var(--traces-red);">
           <span class="toad-btn-icon" style="color: var(--traces-red);">▲</span>
           <span>Traces Copilot</span>
         </button>
@@ -162,13 +156,13 @@
         <div class="toolbar-grip"></div>
 
         <!-- F9: Execute Statement -->
-        <button class="toad-btn btn-run-sql" id="btn-run-statement" title="Execute Statement (F9)">
+        <button class="toad-btn btn-run-sql" id="btn-run-statement" onclick="window.TracesApp.sqlEditor.executeStatement()" title="Execute Statement (F9)">
           <span class="toad-btn-icon" style="color: #008000; font-size: 14px;">▶</span>
           <span>Execute (F9)</span>
         </button>
 
         <!-- F5: Execute as Script -->
-        <button class="toad-btn" id="btn-run-script" title="Execute as Script (F5)">
+        <button class="toad-btn" id="btn-run-script" onclick="window.TracesApp.sqlEditor.executeScript()" title="Execute as Script (F5)">
           <span class="toad-btn-icon">📄▶</span>
           <span>Script (F5)</span>
         </button>
@@ -186,13 +180,13 @@
         <div class="toad-separator"></div>
 
         <!-- Ctrl+E: Explain Plan -->
-        <button class="toad-btn" id="btn-explain-plan" title="Explain Plan (Ctrl+E)">
+        <button class="toad-btn" id="btn-explain-plan" onclick="window.TracesApp.sqlEditor.explainPlan()" title="Explain Plan (Ctrl+E)">
           <span class="toad-btn-icon" style="color: #008000;">🌳</span>
           <span>Explain Plan (Ctrl+E)</span>
         </button>
 
         <!-- Ctrl+Shift+F: Beautifier / Formatter -->
-        <button class="toad-btn" id="btn-format-sql" title="Format Code / Beautifier (Ctrl+Shift+F)">
+        <button class="toad-btn" id="btn-format-sql" onclick="window.TracesApp.sqlEditor.formatSql()" title="Format Code / Beautifier (Ctrl+Shift+F)">
           <span class="toad-btn-icon">🧹</span>
           <span>Format</span>
         </button>
@@ -775,9 +769,9 @@
       <div class="status-cell" style="width: 70px;">1 : 1</div>
       <div class="status-cell" style="width: 80px;">Modified</div>
       <div class="status-cell cell-tx" id="status-db-transaction" style="width: 140px;">[Transaction: Idle]</div>
-      <div class="status-cell" id="status-db-user" style="width: 220px;">SYSTEM@sales_prod (64-bit)</div>
-      <div class="status-cell cell-grow" id="status-db-version">Oracle Database 23ai Enterprise Edition Release 23.4.0.24.05</div>
-      <div class="status-cell" id="status-db-latency" style="width: 80px;">14 ms</div>
+      <div class="status-cell" id="status-db-user" style="width: 220px;">[Desconectado]</div>
+      <div class="status-cell cell-grow" id="status-db-version">Pronto para conectar ao banco de dados</div>
+      <div class="status-cell" id="status-db-latency" style="width: 80px;">-- ms</div>
       <div class="status-cell status-traces-badge" style="width: 120px;" title="Powered by Traces">
         <img src="assets/traces-logo.png" alt="TRACES" style="height: 12px; width: auto;">
       </div>

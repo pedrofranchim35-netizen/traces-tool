@@ -331,11 +331,11 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.45);
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .modal-backdrop.open {
@@ -345,12 +345,13 @@
 .modal-dialog {
   background: #f0f0f0;
   border: 1px solid #7f9db9;
-  box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.3);
+  box-shadow: 2px 2px 15px rgba(0, 0, 0, 0.4);
   width: 90%;
-  max-width: 620px;
+  max-width: 680px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
+  z-index: 10000;
 }
 
 .modal-header {

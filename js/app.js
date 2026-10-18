@@ -68,6 +68,15 @@ class TracesApp {
         const userEl = document.getElementById('status-db-user');
         if (dbVerEl && data.connection.banner) dbVerEl.textContent = data.connection.banner.split('\n')[0];
         if (userEl) userEl.textContent = `${cfg.user}@${cfg.service_name}`;
+      } else {
+        this.isRealDatabase = false;
+        this.realDatabaseConfig = null;
+        const titleEl = document.getElementById('toad-window-title');
+        if (titleEl) titleEl.textContent = 'Toad for Oracle - [Desconectado]';
+        const userEl = document.getElementById('status-db-user');
+        const verEl = document.getElementById('status-db-version');
+        if (userEl) userEl.textContent = '[Desconectado]';
+        if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
       }
     } catch (e) {
       // Bridge server offline or starting
@@ -77,10 +86,10 @@ class TracesApp {
   bindDockNavigation() {
     const tabs = document.querySelectorAll('.toad-window-tab[data-view], .dock-item[data-view]');
     tabs.forEach(item => {
-      item.addEventListener('click', (e) => {
+      item.onclick = (e) => {
         const view = e.currentTarget.getAttribute('data-view');
         this.switchDockView(view);
-      });
+      };
     });
   }
 
@@ -106,22 +115,26 @@ class TracesApp {
     // Update Window Titlebar
     const titleEl = document.getElementById('toad-window-title');
     if (titleEl) {
-      const conn = this.connectionManager ? this.connectionManager.getActive() : { user: 'SYSTEM', serviceName: 'sales_prod.db.corp' };
-      const titles = {
-        'editor': `Toad for Oracle - [Editor (${conn.user}@${conn.serviceName})]`,
-        'browser': `Toad for Oracle - [Schema Browser (${conn.user}@${conn.serviceName})]`,
-        'explain': `Toad for Oracle - [Explain Plan (${conn.user}@${conn.serviceName})]`,
-        'sessions': `Toad for Oracle - [Session Browser (${conn.user}@${conn.serviceName})]`,
-        'probe': `Toad for Oracle - [Database Probe (${conn.user}@${conn.serviceName})]`,
-        'rules': `Toad for Oracle - [Rule Universe (${conn.user}@${conn.serviceName})]`,
-        'spotlight': `Toad for Oracle - [Spotlight on Oracle (${conn.user}@${conn.serviceName})]`,
-        'modeler': `Toad for Oracle - [Toad Data Modeler & Query Builder]`,
-        'dba': `Toad for Oracle - [DBA Administration Hub (${conn.user}@${conn.serviceName})]`,
-        'optimizer': `Toad for Oracle - [Quest SQL Optimizer (${conn.user}@${conn.serviceName})]`,
-        'automation': `Toad for Oracle - [Automation Designer (App Designer)]`,
-        'profiler': `Toad for Oracle - [PL/SQL Profiler & Code Analysis]`
-      };
-      titleEl.textContent = titles[viewKey] || `Toad for Oracle - [${viewKey.toUpperCase()}]`;
+      const conn = this.connectionManager ? this.connectionManager.getActive() : null;
+      if (!conn) {
+        titleEl.textContent = `Toad for Oracle - [${viewKey.toUpperCase()} - Desconectado]`;
+      } else {
+        const titles = {
+          'editor': `Toad for Oracle - [Editor (${conn.user}@${conn.serviceName})]`,
+          'browser': `Toad for Oracle - [Schema Browser (${conn.user}@${conn.serviceName})]`,
+          'explain': `Toad for Oracle - [Explain Plan (${conn.user}@${conn.serviceName})]`,
+          'sessions': `Toad for Oracle - [Session Browser (${conn.user}@${conn.serviceName})]`,
+          'probe': `Toad for Oracle - [Database Probe (${conn.user}@${conn.serviceName})]`,
+          'rules': `Toad for Oracle - [Rule Universe (${conn.user}@${conn.serviceName})]`,
+          'spotlight': `Toad for Oracle - [Spotlight on Oracle (${conn.user}@${conn.serviceName})]`,
+          'modeler': `Toad for Oracle - [Toad Data Modeler & Query Builder]`,
+          'dba': `Toad for Oracle - [DBA Administration Hub (${conn.user}@${conn.serviceName})]`,
+          'optimizer': `Toad for Oracle - [Quest SQL Optimizer (${conn.user}@${conn.serviceName})]`,
+          'automation': `Toad for Oracle - [Automation Designer (App Designer)]`,
+          'profiler': `Toad for Oracle - [PL/SQL Profiler & Code Analysis]`
+        };
+        titleEl.textContent = titles[viewKey] || `Toad for Oracle - [${viewKey.toUpperCase()}]`;
+      }
     }
 
     // Component-specific hooks on switch

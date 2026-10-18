@@ -8,8 +8,8 @@ class ConnectionManager {
   constructor() {
     this.storageKey = 'traces_oracle_saved_connections';
     this.connections = this.loadSavedConnections();
-    this.activeConn = this.connections[0] || null;
-    this.editingConn = JSON.parse(JSON.stringify(this.activeConn));
+    this.activeConn = null; // Start disconnected! Never force auto-connection
+    this.editingConn = this.connections[0] ? JSON.parse(JSON.stringify(this.connections[0])) : null;
 
     this.initElements();
     this.bindEvents();
@@ -33,16 +33,16 @@ class ConnectionManager {
   loadSavedConnections() {
     const defaultConnections = [
       {
-        id: 'rmprod-traces',
-        name: 'RMPROD - Produção Traces',
-        host: '10.100.10.39',
+        id: 'conn-default',
+        name: 'Conexão Oracle (Customizada)',
+        host: 'localhost',
         port: 1521,
-        serviceName: 'RMPROD',
-        user: 'SYS',
-        role: 'SYSDBA',
-        color: '#dc2626',
+        serviceName: 'ORCL',
+        user: 'SYSTEM',
+        role: 'NORMAL',
+        color: '#0078d7',
         password: '',
-        savePassword: true,
+        savePassword: false,
         lastConnected: null
       }
     ];
@@ -93,11 +93,11 @@ class ConnectionManager {
     const newProfile = {
       id: newId,
       name: 'Nova Conexão Oracle',
-      host: '10.100.10.39',
+      host: 'localhost',
       port: 1521,
-      serviceName: 'RMPROD',
-      user: 'SYS',
-      role: 'SYSDBA',
+      serviceName: 'ORCL',
+      user: 'SYSTEM',
+      role: 'NORMAL',
       color: '#0078d7',
       password: '',
       savePassword: false,
@@ -173,7 +173,7 @@ class ConnectionManager {
 
             <div style="display: flex; gap: 8px; align-items: center;">
               <label style="width: 130px; font-weight: 600;">Host (IP/DNS):</label>
-              <input type="text" id="form-host" value="${c.host || '10.100.10.39'}" placeholder="e.g. 10.100.10.39 ou localhost" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+              <input type="text" id="form-host" value="${c.host || 'localhost'}" placeholder="e.g. localhost ou IP do servidor" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
               <label style="font-weight: 600;">Porta:</label>
               <input type="number" id="form-port" value="${c.port || 1521}" style="width: 75px; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
             </div>
@@ -230,12 +230,12 @@ class ConnectionManager {
   readFormData() {
     const c = this.editingConn;
     c.name = document.getElementById('form-name')?.value || c.name;
-    c.host = document.getElementById('form-host')?.value || '10.100.10.39';
+    c.host = document.getElementById('form-host')?.value || 'localhost';
     c.port = parseInt(document.getElementById('form-port')?.value || '1521');
-    c.serviceName = document.getElementById('form-service')?.value || 'RMPROD';
-    c.user = document.getElementById('form-user')?.value || 'SYS';
-    c.role = document.getElementById('form-role')?.value || 'SYSDBA';
-    c.color = document.getElementById('form-color')?.value || '#dc2626';
+    c.serviceName = document.getElementById('form-service')?.value || c.serviceName || 'ORCL';
+    c.user = document.getElementById('form-user')?.value || c.user || 'SYSTEM';
+    c.role = document.getElementById('form-role')?.value || c.role || 'NORMAL';
+    c.color = document.getElementById('form-color')?.value || c.color || '#0078d7';
     c.savePassword = document.getElementById('form-save-pwd')?.checked || false;
     c.password = document.getElementById('form-password')?.value || '';
 
@@ -369,9 +369,17 @@ class ConnectionManager {
 
   renderHeaderPill() {
     if (!this.headerPill) return;
-    const c = this.activeConn || this.connections[0];
+    if (!this.activeConn) {
+      this.headerPill.innerHTML = `
+        <span class="toad-conn-indicator" style="background: #9ca3af;"></span>
+        <span style="font-weight: 700; color: #555;">Desconectado</span>
+        <span style="color: #888; font-size: 10px;">(Clique para Conectar)</span>
+      `;
+      return;
+    }
+    const c = this.activeConn;
     this.headerPill.innerHTML = `
-      <span class="toad-conn-indicator" style="background: ${c.color || '#dc2626'};"></span>
+      <span class="toad-conn-indicator" style="background: ${c.color || '#0078d7'};"></span>
       <span style="font-weight: 700; color: #111;">${c.user}@${c.serviceName}</span>
       <span style="color: #666; font-size: 10px;">(${c.role})</span>
     `;
@@ -379,20 +387,48 @@ class ConnectionManager {
 
   updateSelectorDropdown() {
     if (!this.selectorEl) return;
-    this.selectorEl.innerHTML = this.connections.map(c => `
+    let html = `<option value="" ${!this.activeConn ? 'selected' : ''}>-- Desconectado (Clique em ⚡ Conectar) --</option>`;
+    html += this.connections.map(c => `
       <option value="${c.id}" ${this.activeConn && this.activeConn.id === c.id ? 'selected' : ''}>
         ${c.user}@${c.serviceName} (${c.role}) - ${c.host}
       </option>
     `).join('');
+    this.selectorEl.innerHTML = html;
 
     this.selectorEl.onchange = (e) => {
-      this.selectProfile(e.target.value);
-      this.connectCurrentProfile();
+      const selectedId = e.target.value;
+      if (selectedId) {
+        this.selectProfile(selectedId);
+        this.openModal();
+      } else {
+        this.disconnect();
+      }
     };
   }
 
+  disconnect() {
+    this.activeConn = null;
+    if (window.TracesApp) {
+      window.TracesApp.isRealDatabase = false;
+      window.TracesApp.realDatabaseConfig = null;
+    }
+    this.renderHeaderPill();
+    this.updateSelectorDropdown();
+    const titleEl = document.getElementById('toad-window-title');
+    if (titleEl) {
+      titleEl.textContent = 'Toad for Oracle - [Desconectado]';
+    }
+    const userEl = document.getElementById('status-db-user');
+    const verEl = document.getElementById('status-db-version');
+    const latEl = document.getElementById('status-db-latency');
+    if (userEl) userEl.textContent = '[Desconectado]';
+    if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
+    if (latEl) latEl.textContent = '-- ms';
+    window.TracesApp?.notify('Sessão desconectada.', 'info');
+  }
+
   getActive() {
-    return this.activeConn || this.connections[0];
+    return this.activeConn;
   }
 }
 

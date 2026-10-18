@@ -125,7 +125,7 @@
 
 .gutter-line {
   padding-right: 8px;
-  height: 18px;
+  height: 19px;
 }
 
 .editor-textarea-container {
@@ -141,15 +141,15 @@
   width: 100%;
   height: 100%;
   padding: 8px 10px;
-  background: transparent;
-  color: transparent;
-  caret-color: #000000;
+  background: #ffffff !important;
+  color: #111111 !important;
+  caret-color: #000000 !important;
   border: none;
   outline: none;
   resize: none;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
+  font-family: var(--toad-font-code);
+  font-size: 13px;
+  line-height: 19px;
   white-space: pre;
   overflow: auto;
   z-index: 2;
@@ -157,19 +157,7 @@
 }
 
 .sql-code-highlighted {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 8px 10px;
-  pointer-events: none;
-  white-space: pre;
-  overflow: hidden;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  z-index: 1;
-  color: #000000;
+  display: none !important;
 }
 
 /* Classic Toad Syntax Colors */

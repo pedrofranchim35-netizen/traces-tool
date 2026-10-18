@@ -26,6 +26,12 @@
   --toad-text-muted: #666666;
   --toad-text-disabled: #888888;
 
+  /* Universal Form Input Variables */
+  --bg-input: #ffffff;
+  --text-primary: #111111;
+  --border-default: #cbd5e1;
+  --radius-sm: 3px;
+
   /* Toad Grid & Selection */
   --toad-select-bg: #0078d7;
   --toad-select-text: #ffffff;

@@ -135,7 +135,7 @@
 .toad-conn-color-band {
   height: 4px;
   width: 100%;
-  background-color: #ef4444; /* Default PROD Red */
+  background-color: #9ca3af; /* Default Disconnected Gray */
   transition: background-color 200ms ease;
   flex-shrink: 0;
 }
