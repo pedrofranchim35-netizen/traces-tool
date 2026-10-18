@@ -185,18 +185,18 @@ if (-not $HasRealPython) {
     Write-Host "      ✔ Python instalado com sucesso: $PyExe" -ForegroundColor Green
 }
 
-# 6. Instalar driver oficial python-oracledb
-Write-Host "      Verificando driver python-oracledb..." -ForegroundColor Gray
-& $PyExe -c "import oracledb" 2>$null
+# 6. Instalar drivers python-oracledb, sshtunnel e paramiko (Ponte SSH)
+Write-Host "      Verificando drivers (oracledb, sshtunnel, paramiko)..." -ForegroundColor Gray
+& $PyExe -c "import oracledb, sshtunnel, paramiko" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "      Instalando driver python-oracledb..." -ForegroundColor Yellow
-    & $PyExe -m pip install oracledb --quiet 2>$null
+    Write-Host "      Instalando dependencias (oracledb, sshtunnel, paramiko)..." -ForegroundColor Yellow
+    & $PyExe -m pip install oracledb sshtunnel paramiko --quiet 2>$null
     if ($LASTEXITCODE -ne 0) {
         & $PyExe -m ensurepip --default-pip 2>$null
-        & $PyExe -m pip install oracledb
+        & $PyExe -m pip install oracledb sshtunnel paramiko
     }
 }
-Write-Host "      ✔ Driver Oracle pronto!" -ForegroundColor Green
+Write-Host "      ✔ Drivers Oracle e Ponte SSH prontos!" -ForegroundColor Green
 
 # 7. Iniciar Servidor do Toad
 Write-Host "[3/3] Iniciando Traces Toad for Oracle na porta $Port..." -ForegroundColor Green

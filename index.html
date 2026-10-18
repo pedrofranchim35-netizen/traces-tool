@@ -7,14 +7,14 @@
   <meta name="description" content="Toad for Oracle authentic desktop layout and features powered by Traces.">
 
   <!-- Core Stylesheets -->
-  <link rel="stylesheet" href="css/tokens.css?v=20261018b">
-  <link rel="stylesheet" href="css/main.css?v=20261018b">
-  <link rel="stylesheet" href="css/toad-menus.css?v=20261018b">
-  <link rel="stylesheet" href="css/suite-tools.css?v=20261018b">
-  <link rel="stylesheet" href="css/editor.css?v=20261018b">
-  <link rel="stylesheet" href="css/browser.css?v=20261018b">
-  <link rel="stylesheet" href="css/grid.css?v=20261018b">
-  <link rel="stylesheet" href="css/explain.css?v=20261018b">
+  <link rel="stylesheet" href="css/tokens.css?v=20261018c">
+  <link rel="stylesheet" href="css/main.css?v=20261018c">
+  <link rel="stylesheet" href="css/toad-menus.css?v=20261018c">
+  <link rel="stylesheet" href="css/suite-tools.css?v=20261018c">
+  <link rel="stylesheet" href="css/editor.css?v=20261018c">
+  <link rel="stylesheet" href="css/browser.css?v=20261018c">
+  <link rel="stylesheet" href="css/grid.css?v=20261018c">
+  <link rel="stylesheet" href="css/explain.css?v=20261018c">
 </head>
 <body>
   <div id="app-container">
@@ -803,34 +803,25 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="js/data/mock-db.js?v=20261018b"></script>
-  <script src="js/data/rule-universe-data.js?v=20261018b"></script>
-  <script src="js/components/connection-manager.js?v=20261018b"></script>
-  <script src="js/components/toad-modals.js?v=20261018b"></script>
-  <script src="js/components/toad-menus.js?v=20261018b"></script>
-  <script src="js/components/schema-browser.js?v=20261018b"></script>
-  <script src="js/components/data-grid.js?v=20261018b"></script>
-  <script src="js/components/sql-editor.js?v=20261018b"></script>
-  <script src="js/components/explain-plan.js?v=20261018b"></script>
-  <script src="js/components/session-monitor.js?v=20261018b"></script>
-  <script src="js/components/rule-auditor.js?v=20261018b"></script>
-  <script src="js/components/database-probe.js?v=20261018b"></script>
-  <script src="js/components/traces-copilot.js?v=20261018b"></script>
-  <script src="js/components/spotlight-oracle.js?v=20261018b"></script>
-  <script src="js/components/data-modeler.js?v=20261018b"></script>
-  <script src="js/components/dba-tools.js?v=20261018b"></script>
-  <script src="js/components/code-quality.js?v=20261018b"></script>
-  <script src="js/components/automation-designer.js?v=20261018b"></script>
-  <script src="js/components/sql-optimizer.js?v=20261018b"></script>
-  <script>
-    // Self-healing: purge any stale legacy connection holding 10.100.10.39
-    try {
-      const s = localStorage.getItem('traces_oracle_saved_connections');
-      if (s && s.includes('10.100.10.39')) {
-        localStorage.removeItem('traces_oracle_saved_connections');
-      }
-    } catch (e) {}
-  </script>
-  <script src="js/app.js?v=20261018b"></script>
+  <script src="js/data/mock-db.js?v=20261018c"></script>
+  <script src="js/data/rule-universe-data.js?v=20261018c"></script>
+  <script src="js/components/connection-manager.js?v=20261018c"></script>
+  <script src="js/components/toad-modals.js?v=20261018c"></script>
+  <script src="js/components/toad-menus.js?v=20261018c"></script>
+  <script src="js/components/schema-browser.js?v=20261018c"></script>
+  <script src="js/components/data-grid.js?v=20261018c"></script>
+  <script src="js/components/sql-editor.js?v=20261018c"></script>
+  <script src="js/components/explain-plan.js?v=20261018c"></script>
+  <script src="js/components/session-monitor.js?v=20261018c"></script>
+  <script src="js/components/rule-auditor.js?v=20261018c"></script>
+  <script src="js/components/database-probe.js?v=20261018c"></script>
+  <script src="js/components/traces-copilot.js?v=20261018c"></script>
+  <script src="js/components/spotlight-oracle.js?v=20261018c"></script>
+  <script src="js/components/data-modeler.js?v=20261018c"></script>
+  <script src="js/components/dba-tools.js?v=20261018c"></script>
+  <script src="js/components/code-quality.js?v=20261018c"></script>
+  <script src="js/components/automation-designer.js?v=20261018c"></script>
+  <script src="js/components/sql-optimizer.js?v=20261018c"></script>
+  <script src="js/app.js?v=20261018c"></script>
 </body>
 </html>

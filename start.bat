@@ -23,11 +23,11 @@ if not exist ".git" (
 REM 3. Encerrar processo antigo rodando na porta 3033
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3033 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
 
-REM 4. Verificar python e oracledb
-python -c "import oracledb" 2>nul
+REM 4. Verificar python, oracledb e bibliotecas de ponte (sshtunnel / paramiko)
+python -c "import oracledb, sshtunnel, paramiko" 2>nul
 if %errorlevel% neq 0 (
-    echo [INFO] Instalando driver python-oracledb...
-    python -m pip install oracledb --quiet 2>nul || pip install oracledb
+    echo [INFO] Instalando dependencias (oracledb, sshtunnel, paramiko)...
+    python -m pip install oracledb sshtunnel paramiko --quiet 2>nul || pip install oracledb sshtunnel paramiko
 )
 
 REM 5. Abrir navegador sem cache

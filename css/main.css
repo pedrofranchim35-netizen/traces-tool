@@ -386,6 +386,100 @@
   background: #f7f7f7;
 }
 
+#connection-modal .modal-dialog {
+  max-width: 850px;
+  width: 95%;
+  height: 560px;
+  max-height: 94vh;
+}
+
+.conn-tabs-nav {
+  display: flex;
+  background: #ece9d8;
+  border-bottom: 1px solid #7f9db9;
+  padding: 0 4px;
+  gap: 3px;
+}
+
+.conn-tab-btn {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-family: var(--toad-font-ui);
+  background: #e3e0d2;
+  border: 1px solid #999;
+  border-bottom: none;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  cursor: pointer;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  position: relative;
+  bottom: -1px;
+}
+
+.conn-tab-btn:hover {
+  background: #f2efe4;
+}
+
+.conn-tab-btn.active {
+  background: #ffffff;
+  border-color: #7f9db9;
+  border-bottom: 1px solid #ffffff;
+  font-weight: 700;
+  color: #004080;
+  z-index: 2;
+}
+
+.conn-tab-pane {
+  display: none;
+  background: #ffffff;
+  border: 1px solid #7f9db9;
+  border-top: none;
+  padding: 14px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conn-tab-pane.active {
+  display: flex;
+  flex-direction: column;
+}
+
+.conn-route-banner {
+  background: #f0f7ff;
+  border: 1px solid #bae0ff;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #0050b3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conn-route-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.badge-bridge-active {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.badge-bridge-inactive {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+}
+
 .modal-footer {
   height: 40px;
   background: #f0f0f0;
