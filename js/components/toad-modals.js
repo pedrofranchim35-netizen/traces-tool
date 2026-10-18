@@ -849,11 +849,49 @@ ${ctl}
     `;
 
     const footer = `
+      <button class="btn" onclick="window.TracesApp.toadModals.generateDatagenScript();">Generate Script to Editor</button>
       <button class="btn btn-primary" onclick="window.TracesApp.toadModals.executeDataGeneration();">Generate &amp; Insert</button>
       <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
     `;
 
-    this.show('Generate Test Data (Data Generator)', body, footer, '500px');
+    this.show('Generate Test Data (Data Generator)', body, footer, '540px');
+  }
+
+  generateDatagenScript() {
+    const table = document.getElementById('gen-table')?.value || 'HR.EMPLOYEES';
+    const rows = document.getElementById('gen-rows')?.value || '1000';
+    const plsql = `-- Toad for Oracle 2026 R2 - Synthetic Data Generator Block
+-- Utilizing TOAD_DATAGEN (data_gen.pks/pkb) / DBMS_RANDOM engine specifications
+DECLARE
+  v_count NUMBER := ${rows};
+BEGIN
+  FOR i IN 1..v_count LOOP
+    INSERT INTO ${table} (
+      EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, SALARY, DEPARTMENT_ID, HIRE_DATE
+    ) VALUES (
+      20000 + i,
+      CASE MOD(i, 5) WHEN 0 THEN 'Carlos' WHEN 1 THEN 'Mariana' WHEN 2 THEN 'Rafael' WHEN 3 THEN 'Fernanda' ELSE 'Lucas' END,
+      CASE MOD(i, 4) WHEN 0 THEN 'Silva' WHEN 1 THEN 'Santos' WHEN 2 THEN 'Oliveira' ELSE 'Souza' END,
+      'user_' || i || '@empresa.com.br',
+      ROUND(DBMS_RANDOM.VALUE(3500, 18500), 2),
+      CASE MOD(i, 3) WHEN 0 THEN 10 WHEN 1 THEN 20 ELSE 30 END,
+      TRUNC(SYSDATE - DBMS_RANDOM.VALUE(30, 1800))
+    );
+    
+    IF MOD(i, 500) = 0 THEN
+      COMMIT;
+    END IF;
+  END LOOP;
+  COMMIT;
+  DBMS_OUTPUT.PUT_LINE('Successfully inserted ' || v_count || ' synthetic test records into ${table}.');
+END;
+/`;
+    if (window.TracesApp?.sqlEditor) {
+      window.TracesApp.switchDockView('editor');
+      window.TracesApp.sqlEditor.setQuery(plsql);
+      window.TracesApp.notify(`Script de geração de dados para ${table} inserido no Editor.`, 'success');
+      this.close();
+    }
   }
 
   executeDataGeneration() {
@@ -875,7 +913,7 @@ ${ctl}
             Connected Database: Oracle Database 23ai Enterprise Edition Release 23.4.0.24.05<br>
             Client Architecture: 64-bit Net8 Direct Connection (OCI.dll supported)<br>
             Rule Universe: Version 5.435 (XPath AST &amp; McCabe Engine)<br>
-            Status: Fully licensed with Diagnostic &amp; Tuning Packs.
+            Status: Unrestricted (Traces Edition) - Full DBA Suite &amp; Xpert Capabilities.
           </div>
         </div>
       </div>
@@ -1279,36 +1317,410 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
   }
 
   openCrontabManager() {
-    window.TracesApp.notify('Crontab Manager: Conectado via SSH ao host Oracle Linux.', 'info');
+    const jobs = [
+      { sched: '0 2 * * *', cmd: '/u01/app/oracle/scripts/daily_rman_lvl0.sh', desc: 'Daily Level 0 RMAN Backup (02:00)' },
+      { sched: '*/15 * * * *', cmd: '/u01/app/oracle/scripts/archive_gap_monitor.sh', desc: 'Data Guard Archive Log Gap Check (Every 15m)' },
+      { sched: '0 6 * * 0', cmd: '/u01/app/oracle/scripts/gather_system_stats.sh', desc: 'Weekly Oracle Dictionary Stats (Sun 06:00)' },
+      { sched: '30 23 * * *', cmd: '/u01/app/oracle/scripts/purge_audit_logs.sh', desc: 'Audit Trail Cleanup (> 90 days retention)' }
+    ];
+
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-weight: 700; color: #0078d7;">Linux / Unix Server Crontab Manager (Oracle Host)</div>
+          <span style="font-size: 10.5px; color: #666;">Host: sales-prod.oracle.corp (User: oracle)</span>
+        </div>
+        <div style="background: #fff; border: 1px solid #bfbfbf; max-height: 200px; overflow-y: auto;">
+          <table class="meta-table" style="width: 100%;">
+            <thead><tr><th style="width: 110px;">Schedule</th><th>Command Script</th><th>Description</th></tr></thead>
+            <tbody>
+              ${jobs.map(j => `
+                <tr>
+                  <td style="font-family: var(--toad-font-code); font-weight: 600; color: #0284c7;">${j.sched}</td>
+                  <td style="font-family: var(--toad-font-code);">${j.cmd}</td>
+                  <td>${j.desc}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; background: #f8fafc; padding: 6px; border: 1px solid #e2e8f0;">
+          <input id="new-cron-sched" type="text" placeholder="* * * * *" style="width: 90px; padding: 2px 4px; font-family: var(--toad-font-code); border: 1px solid #ccc;">
+          <input id="new-cron-cmd" type="text" placeholder="/path/to/script.sh" style="flex: 1; padding: 2px 4px; font-family: var(--toad-font-code); border: 1px solid #ccc;">
+          <button class="btn" onclick="window.TracesApp.notify('Novo cronjob registrado com sucesso no host.', 'success');">+ Adicionar Cron</button>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.notify('Crontab salvo e ativado no servidor Oracle Linux.', 'success'); window.TracesApp.toadModals.close();">Save Crontab to Host</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('Unix / Linux Crontab Manager - Toad for Oracle', body, footer, '680px');
   }
 
   openExternalTools() {
-    window.TracesApp.notify('External Tools: Mapeado PuTTY ($HOST:$PORT), VS Code ($FILEPATH) e Git Bash.', 'info');
+    const tools = [
+      { name: 'PuTTY / SSH Bastion', path: '/usr/bin/ssh', args: '$USER@$HOST -p $PORT' },
+      { name: 'Visual Studio Code', path: '/Applications/Visual Studio Code.app', args: '$FILE' },
+      { name: 'Git Bash / Terminal', path: '/bin/zsh', args: '--login' },
+      { name: 'SQL*Plus Interactive CLI', path: '$ORACLE_HOME/bin/sqlplus', args: '$USER/$PASS@$TNS' },
+      { name: 'Oracle SQL Developer', path: '/Applications/SQLDeveloper.app', args: '' }
+    ];
+
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 700; color: #0078d7;">Configure External Applications &amp; Command Line Tools</div>
+        <div style="background: #fff; border: 1px solid #bfbfbf; max-height: 180px; overflow-y: auto;">
+          <table class="meta-table" style="width: 100%;">
+            <thead><tr><th>Tool Name</th><th>Executable Path</th><th>Parameters / Macros</th></tr></thead>
+            <tbody>
+              ${tools.map(t => `
+                <tr>
+                  <td style="font-weight: 600;">${t.name}</td>
+                  <td style="font-family: var(--toad-font-code);">${t.path}</td>
+                  <td style="font-family: var(--toad-font-code); color: #0284c7;">${t.args}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size: 10px; color: #666; background: #e0f2fe; padding: 6px; border: 1px solid #bae6fd;">
+          Macros disponíveis: <code>$HOST</code>, <code>$PORT</code>, <code>$USER</code>, <code>$TNS</code>, <code>$FILE</code>, <code>$ORACLE_HOME</code>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.notify('Executando ferramenta externa selecionada...', 'info'); window.TracesApp.toadModals.close();">Launch Selected Tool</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Configure External Tools - Toad for Oracle', body, footer, '620px');
   }
 
   openShortcutsCheatsheet() {
-    alert('Toad for Oracle Essential Shortcuts:\n\nF9: Execute Statement (OCI Cursor Grid)\nF5: Execute as Script (SQL*Plus engine)\nCtrl+Enter: Execute statement at cursor\nCtrl+E: Explain Plan\nF4: Describe Object\nF8: SQL Recall (SavedSQL.dat)\nCtrl+Shift+F: Format Code (FmtPlus.opt)\nF11: Commit Transaction\nShift+F11: Rollback Transaction\nCtrl+B: Schema Browser');
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;">
+        <div style="font-weight: 700; color: #0078d7;">Toad for Oracle 2026 R2 - Keybindings &amp; Keyboard Shortcuts</div>
+        
+        <table class="meta-table" style="width: 100%; margin-bottom: 6px;">
+          <thead><tr><th colspan="2" style="background: #e2e8f0; color: #334155;">SQL Editor &amp; Query Execution</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight: 700; width: 140px; font-family: var(--toad-font-code);">F9</td><td>Execute current statement at cursor into Data Grid (OCI Cursor)</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">F5</td><td>Execute entire worksheet as SQL*Plus script (Script Output)</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + Enter</td><td>Execute statement at cursor</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + E</td><td>Visual Explain Plan &amp; Cost Analysis</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">F4</td><td>Describe Object (Popup table columns, indexes, DDL)</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">F8</td><td>SQL Recall history (SavedSQL.dat)</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + Shift + F</td><td>Format SQL Code (FmtPlus Beautifier)</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">F11</td><td>Commit Active Transaction</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Shift + F11</td><td>Rollback Active Transaction</td></tr>
+          </tbody>
+        </table>
+
+        <table class="meta-table" style="width: 100%;">
+          <thead><tr><th colspan="2" style="background: #e2e8f0; color: #334155;">Navigation &amp; Windows</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight: 700; width: 140px; font-family: var(--toad-font-code);">Ctrl + B</td><td>Open Schema Browser</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + T</td><td>New SQL Worksheet Tab</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + W</td><td>Close Current Tab</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + F</td><td>Find text in active worksheet</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">Ctrl + R</td><td>Find and Replace text</td></tr>
+            <tr><td style="font-weight: 700; font-family: var(--toad-font-code);">F1</td><td>Help Topics &amp; Reference</td></tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Toad Keyboard Shortcuts Cheatsheet', body, footer, '580px');
   }
 
   openHtmlDocGen() {
-    window.TracesApp.notify('HTML Schema Doc Generator: Construída documentação HTML completa do schema em /docs.', 'success');
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 700; color: #0078d7;">HTML Schema Documentation Generator</div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 110px;">Target Schemas:</label>
+          <input type="text" id="doc-schemas" value="HR, SALES_ADMIN" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="border: 1px solid #e2e8f0; padding: 8px; background: #f8fafc; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <label><input type="checkbox" checked> Tables &amp; Column Comments</label>
+          <label><input type="checkbox" checked> Primary &amp; Foreign Key Constraints</label>
+          <label><input type="checkbox" checked> B-Tree &amp; Bitmap Indexes</label>
+          <label><input type="checkbox" checked> Views &amp; Materialized Views</label>
+          <label><input type="checkbox" checked> Packages, Procedures &amp; Functions</label>
+          <label><input type="checkbox" checked> Interactive SVG ER Diagram</label>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <label style="width: 110px;">Output Path:</label>
+          <input type="text" value="./docs/schema_documentation.html" style="flex: 1; padding: 2px 4px; border: 1px solid #ccc;">
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="
+        const schemas = document.getElementById('doc-schemas').value;
+        const html = '<!DOCTYPE html><html><head><title>Oracle Schema Documentation - ' + schemas + '</title></head><body style=\\'font-family:sans-serif;padding:20px;\\'><h1>Schema Documentation: ' + schemas + '</h1><p>Gerado via Traces Toad for Oracle Engine.</p><h2>Tabelas</h2><ul><li>HR.EMPLOYEES (107 linhas, 11 colunas)</li><li>HR.DEPARTMENTS (27 linhas, 4 colunas)</li><li>SALES_ADMIN.CUSTOMERS (12.450 linhas, 8 colunas)</li></ul></body></html>';
+        const blob = new Blob([html], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'schema_documentation.html';
+        a.click();
+        window.TracesApp.notify('Documentação HTML gerada e baixada com sucesso!', 'success');
+        window.TracesApp.toadModals.close();
+      ">Generate &amp; Download HTML Doc</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('HTML Schema Documentation Wizard', body, footer, '540px');
   }
 
   openCopyData() {
-    window.TracesApp.notify('Copy Data: Transferência direta entre conexões inicializada sem DBLink.', 'info');
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 700; color: #0078d7;">Copy Table Data between Databases (No DBLink Required)</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div style="border: 1px solid #bfbfbf; padding: 8px; background: #fff;">
+            <div style="font-weight: 700; color: #166534; margin-bottom: 6px;">Source Connection:</div>
+            <select class="toad-conn-combobox" style="width: 100%; height: 22px; margin-bottom: 6px;">
+              <option>HR@sales_prod.db.corp (OCI Net8)</option>
+              <option>DEV@sandbox_db.corp</option>
+            </select>
+            <label>Source Table:</label>
+            <input type="text" id="copy-src-tbl" value="HR.EMPLOYEES" style="width: 100%; padding: 2px 4px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+          </div>
+          <div style="border: 1px solid #bfbfbf; padding: 8px; background: #fff;">
+            <div style="font-weight: 700; color: #0284c7; margin-bottom: 6px;">Target Connection:</div>
+            <select class="toad-conn-combobox" style="width: 100%; height: 22px; margin-bottom: 6px;">
+              <option>DEV@sandbox_db.corp (OCI Net8)</option>
+              <option>HR@sales_prod.db.corp</option>
+            </select>
+            <label>Target Table:</label>
+            <input type="text" id="copy-tgt-tbl" value="HR.EMPLOYEES_BACKUP" style="width: 100%; padding: 2px 4px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+          </div>
+        </div>
+        <div style="background: #f8fafc; padding: 8px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 4px;">
+          <label><input type="checkbox" id="copy-truncate" checked> Truncate target table before inserting</label>
+          <label><input type="checkbox" id="copy-disable-fk" checked> Disable Foreign Key constraints during transfer</label>
+          <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+            <label>Commit Frequency (Array Batching):</label>
+            <input type="number" id="copy-batch" value="5000" style="width: 80px; padding: 2px 4px; border: 1px solid #ccc;"> rows
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="
+        const src = document.getElementById('copy-src-tbl').value;
+        const tgt = document.getElementById('copy-tgt-tbl').value;
+        const batch = document.getElementById('copy-batch').value;
+        window.TracesApp.notify('Transferência em lote de ' + src + ' para ' + tgt + ' iniciada com batch de ' + batch + ' linhas.', 'success');
+        window.TracesApp.toadModals.close();
+      ">Start Data Transfer</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show('Copy Table Data - Toad for Oracle', body, footer, '580px');
   }
 
   openCodeTemplates() {
-    window.TracesApp.notify('Code Templates: cr_tab, cur_for, pkg_spec prontos. Digite a template e aperte Tab no editor.', 'info');
+    const templates = [
+      { token: 'cr_tab', name: 'Create Table with Identity', code: `CREATE TABLE table_name (\n  id NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,\n  name VARCHAR2(100) NOT NULL,\n  status VARCHAR2(20) DEFAULT 'ACTIVE',\n  created_at TIMESTAMP DEFAULT SYSTIMESTAMP\n);` },
+      { token: 'cur_for', name: 'Cursor FOR Loop', code: `FOR rec IN (SELECT * FROM my_table WHERE condition) LOOP\n  -- Process record\n  DBMS_OUTPUT.PUT_LINE('Record: ' || rec.id);\nEND LOOP;` },
+      { token: 'pkg_spec', name: 'Package Specification', code: `CREATE OR REPLACE PACKAGE my_pkg AS\n  PROCEDURE run_process(p_id IN NUMBER);\n  FUNCTION get_status(p_id IN NUMBER) RETURN VARCHAR2;\nEND my_pkg;\n/` },
+      { token: 'try_catch', name: 'Exception Block with Logging', code: `BEGIN\n  -- Execution logic\n  NULL;\nEXCEPTION\n  WHEN OTHERS THEN\n    DBMS_OUTPUT.PUT_LINE('Error ' || SQLCODE || ': ' || SQLERRM);\n    RAISE;\nEND;` },
+      { token: 'ins_sel', name: 'Insert into Select', code: `INSERT INTO target_table (col1, col2, col3)\nSELECT col1, col2, col3\nFROM source_table\nWHERE status = 'ACTIVE';` },
+      { token: 'dblink', name: 'Create Database Link', code: `CREATE DATABASE LINK remote_db_link\nCONNECT TO remote_user IDENTIFIED BY remote_password\nUSING 'sales_prod_tns';` }
+    ];
+
+    const body = `
+      <div style="font-size: 11px; display: flex; height: 320px; gap: 8px;">
+        <div style="width: 200px; border: 1px solid #bfbfbf; background: #fff; overflow-y: auto;">
+          ${templates.map((t, idx) => `
+            <div style="padding: 6px; cursor: pointer; border-bottom: 1px solid #f1f5f9; ${idx === 0 ? 'background: #e0f2fe; font-weight: 700;' : ''}"
+                 onclick="document.getElementById('tmpl-preview').textContent = ${JSON.stringify(t.code)}; document.querySelectorAll('.tmpl-item').forEach(e => e.style.background=''); this.style.background='#e0f2fe';"
+                 class="tmpl-item">
+              <span style="font-family: var(--toad-font-code); color: #0284c7;">${t.token}</span><br>
+              <small style="color: #64748b;">${t.name}</small>
+            </div>
+          `).join('')}
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <div style="font-weight: 600; margin-bottom: 4px;">Template Preview:</div>
+          <pre id="tmpl-preview" style="flex: 1; background: #1e1e1e; color: #f8fafc; padding: 10px; font-family: var(--toad-font-code); font-size: 11px; overflow: auto; border: 1px solid #334155; border-radius: 3px; margin: 0;">${templates[0].code}</pre>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="
+        if (window.TracesApp?.sqlEditor) {
+          window.TracesApp.switchDockView('editor');
+          const code = document.getElementById('tmpl-preview').textContent;
+          window.TracesApp.sqlEditor.insertTextAtCursor(code);
+          window.TracesApp.notify('Template inserida no Editor.', 'success');
+        }
+        window.TracesApp.toadModals.close();
+      ">Insert into Editor (Tab)</button>
+      <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('tmpl-preview').textContent); window.TracesApp.notify('Copiado para o clipboard.', 'info');">Copy Text</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Toad Code Templates Manager', body, footer, '620px');
   }
 
   openAutoReplace() {
-    window.TracesApp.notify('Auto-Replace: Atalhos ativos (ex.: df -> DELETE FROM, sf -> SELECT * FROM).', 'info');
+    const pairs = [
+      { token: 'sf', repl: 'SELECT * FROM ' },
+      { token: 'df', repl: 'DELETE FROM ' },
+      { token: 'sc', repl: 'SELECT COUNT(*) FROM ' },
+      { token: 'gb', repl: 'GROUP BY ' },
+      { token: 'ob', repl: 'ORDER BY ' },
+      { token: 'ii', repl: 'INSERT INTO ' },
+      { token: 'ut', repl: 'UPDATE target_table SET ' },
+      { token: 'nd', repl: 'SYSDATE' },
+      { token: 'nst', repl: 'SYSTIMESTAMP' }
+    ];
+
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div>Auto-Replace substitutes abbreviations into full SQL clauses when you press Space or Enter:</div>
+        <div style="background: #fff; border: 1px solid #bfbfbf; max-height: 220px; overflow-y: auto;">
+          <table class="meta-table" style="width: 100%;">
+            <thead><tr><th style="width: 120px;">Abbreviation</th><th>Expanded SQL Clause</th></tr></thead>
+            <tbody>
+              ${pairs.map(p => `
+                <tr>
+                  <td style="font-family: var(--toad-font-code); font-weight: 700; color: #0284c7;">${p.token}</td>
+                  <td style="font-family: var(--toad-font-code);">${p.repl}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center; background: #f8fafc; padding: 6px; border: 1px solid #e2e8f0;">
+          <input id="new-ar-token" type="text" placeholder="Abbreviation (ex: wf)" style="width: 110px; padding: 2px 4px; font-family: var(--toad-font-code); border: 1px solid #ccc;">
+          <input id="new-ar-repl" type="text" placeholder="Replacement (ex: WHERE )" style="flex: 1; padding: 2px 4px; font-family: var(--toad-font-code); border: 1px solid #ccc;">
+          <button class="btn" onclick="window.TracesApp.notify('Auto-replace token salvo.', 'success');">+ Add</button>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.notify('Configurações de Auto-Replace salvas.', 'success'); window.TracesApp.toadModals.close();">Apply</button>
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Toad Auto-Replace Manager', body, footer, '540px');
   }
 
   openFindDialog(replace = false) {
-    const term = prompt(replace ? 'Toad Replace: Buscar texto:' : 'Toad Find: Buscar texto:');
-    if (term) window.TracesApp.notify(`Buscando '${term}' na worksheet ativa.`, 'info');
+    const sel = window.TracesApp?.sqlEditor?.textarea?.value?.substring(
+      window.TracesApp.sqlEditor.textarea.selectionStart,
+      window.TracesApp.sqlEditor.textarea.selectionEnd
+    ) || '';
+
+    const body = `
+      <div style="font-size: 11px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="width: 90px; font-weight: 600;">Find what:</label>
+          <input id="find-query" type="text" value="${sel}" placeholder="Enter search text..." style="flex: 1; padding: 3px 6px; border: 1px solid #0078d7; font-family: var(--toad-font-code);">
+        </div>
+        ${replace ? `
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="width: 90px; font-weight: 600;">Replace with:</label>
+            <input id="replace-query" type="text" placeholder="Enter replacement text..." style="flex: 1; padding: 3px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);">
+          </div>
+        ` : ''}
+        <div style="display: flex; gap: 16px; margin-top: 4px; padding: 6px; background: #f8fafc; border: 1px solid #e2e8f0;">
+          <label><input type="checkbox" id="find-case"> Match Case</label>
+          <label><input type="checkbox" id="find-whole"> Whole Words</label>
+          <label><input type="checkbox" id="find-regex"> Regular Expression</label>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="
+        const term = document.getElementById('find-query').value;
+        if (!term) return;
+        const textarea = window.TracesApp?.sqlEditor?.textarea;
+        if (textarea) {
+          const idx = textarea.value.toLowerCase().indexOf(term.toLowerCase(), textarea.selectionEnd);
+          const pos = idx !== -1 ? idx : textarea.value.toLowerCase().indexOf(term.toLowerCase(), 0);
+          if (pos !== -1) {
+            textarea.focus();
+            textarea.setSelectionRange(pos, pos + term.length);
+            window.TracesApp.notify('Localizado em ' + pos, 'info');
+          } else {
+            window.TracesApp.notify('Texto não encontrado.', 'warning');
+          }
+        }
+      ">Find Next</button>
+      ${replace ? `
+        <button class="btn" onclick="
+          const term = document.getElementById('find-query').value;
+          const repl = document.getElementById('replace-query').value;
+          const textarea = window.TracesApp?.sqlEditor?.textarea;
+          if (textarea && term) {
+            textarea.value = textarea.value.split(term).join(repl);
+            window.TracesApp.sqlEditor.saveActiveTabContent();
+            window.TracesApp.sqlEditor.updateHighlighting();
+            window.TracesApp.notify('Todas as ocorrências foram substituídas.', 'success');
+            window.TracesApp.toadModals.close();
+          }
+        ">Replace All</button>
+      ` : ''}
+      <button class="btn" onclick="window.TracesApp.toadModals.close();">Cancel</button>
+    `;
+
+    this.show(replace ? 'Find and Replace Text - Toad' : 'Find Text - Toad', body, footer, '480px');
+  }
+
+  openProjectManager() {
+    const body = `
+      <div style="font-size: 11px; display: flex; height: 320px; gap: 8px;">
+        <div style="width: 220px; border: 1px solid #bfbfbf; background: #fff; overflow-y: auto; padding: 4px;">
+          <div style="font-weight: 700; color: #0078d7; padding: 4px;">📁 Sales ERP Project (.tpj)</div>
+          <div style="padding-left: 12px;">
+            <div style="padding: 2px 0;">🗄 <b>Connections</b></div>
+            <div style="padding-left: 14px; color: #166534;">• HR@sales_prod</div>
+            <div style="padding-left: 14px; color: #0284c7;">• DEV@sandbox_db</div>
+            <div style="padding: 2px 0; margin-top: 4px;">📝 <b>SQL Scripts</b></div>
+            <div style="padding-left: 14px; cursor: pointer; color: #0284c7;" onclick="window.TracesApp.sqlEditor.setQuery('SELECT * FROM hr.employees WHERE salary > 5000;'); window.TracesApp.notify('Carregado employee_audit.sql', 'info');">• employee_audit.sql</div>
+            <div style="padding-left: 14px; cursor: pointer; color: #0284c7;" onclick="window.TracesApp.sqlEditor.setQuery('ALTER INDEX hr.emp_dept_fk_idx REBUILD ONLINE;'); window.TracesApp.notify('Carregado index_rebuild.sql', 'info');">• index_rebuild.sql</div>
+            <div style="padding: 2px 0; margin-top: 4px;">📐 <b>Data Models</b></div>
+            <div style="padding-left: 14px;">• sales_core_erd.dmx</div>
+            <div style="padding: 2px 0; margin-top: 4px;">⚙ <b>Automations</b></div>
+            <div style="padding-left: 14px;">• nightly_datapump_job.tas</div>
+          </div>
+        </div>
+        <div style="flex: 1; border: 1px solid #bfbfbf; background: #f8fafc; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-weight: 700;">Project Details: Sales ERP Migration</div>
+          <div>Location: <code>/Users/pedrofranchim/ToadProjects/SalesERP/</code></div>
+          <div>Active Connection: <code>HR@sales_prod.db.corp</code></div>
+          <div>Saved Worksheets: 5 scripts</div>
+          <div style="margin-top: auto; display: flex; gap: 6px;">
+            <button class="btn btn-primary" onclick="window.TracesApp.notify('Projeto sincronizado.', 'success'); window.TracesApp.toadModals.close();">Save Project</button>
+            <button class="btn" onclick="window.TracesApp.notify('Novo script adicionado ao projeto.', 'info');">+ Add Current Script</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.close();">Close</button>
+    `;
+
+    this.show('Toad Project Manager', body, footer, '620px');
   }
 
   openOriginalExpImpWizard() {

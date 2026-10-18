@@ -11,7 +11,29 @@ class DatabaseProbe {
 
     this.initElements();
     this.bindEvents();
+    this.loadInitialRules();
     this.render();
+  }
+
+  async loadInitialRules() {
+    if (!this.alerts || this.alerts.length === 0) {
+      try {
+        const resp = await fetch('assets/probe_rules.json');
+        if (resp.ok) {
+          const rules = await resp.json();
+          this.alerts = rules.map(r => ({
+            category: r.name.includes('IO') ? 'Storage / IO' : (r.name.includes('Session') ? 'Sessions' : 'Configuration'),
+            check: r.name,
+            value: r.op === '=' ? r.right : 'Optimal',
+            status: (r.id === '1' || r.id === '22') ? 'WARN' : 'PASS',
+            advice: r.desc
+          }));
+          this.render();
+        }
+      } catch (e) {
+        console.warn('Could not load probe_rules.json', e);
+      }
+    }
   }
 
   initElements() {

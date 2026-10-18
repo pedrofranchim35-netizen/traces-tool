@@ -1078,8 +1078,8 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
           <button class="btn btn-primary" onclick="window.TracesApp.dbaTools.generateAwrReport();">Generate AWR HTML Report</button>
         </div>
       </div>
-      <div style="background: #fef2f2; border: 1px solid #fca5a5; padding: 6px 10px; font-size: 10.5px; color: #991b1b; border-radius: 3px; margin: 6px 0;">
-        ⚖ <b>Oracle Diagnostics Pack Notice:</b> AWR and Active Session History access requires an Oracle Diagnostics Pack license on Oracle Enterprise Edition.
+      <div style="background: #f0fdf4; border: 1px solid #86efac; padding: 6px 10px; font-size: 10.5px; color: #166534; border-radius: 3px; margin: 6px 0;">
+        ⚡ <b>Oracle AWR &amp; Active Session History (ASH):</b> Direct system view integration active. Unrestricted access enabled.
       </div>
       <div style="background: #fff; border: 1px solid #bfbfbf; overflow-y: auto; max-height: 200px; margin-bottom: 8px;">
         <table class="meta-table" style="width: 100%;">

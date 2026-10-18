@@ -66,7 +66,7 @@ The application matches the layout and behavior of **Toad for Oracle** desktop d
 - **Data Guard Manager**: Primary / Standby monitoring, Transport Lag, Apply Lag, Archive Gaps, MRP process status.
 - **RAC & ASM Diagnostics**: Multi-instance GV$ view switch, Global Cache latency, ASM Diskgroups (DATA, RECO) with rebalance power slider, Exadata Smart Scan and Flash Cache offloading metrics.
 - **Security**: Audit Manager (DBA_AUDIT_TRAIL, DBMS_FGA), Virtual Private Database (VPD / DBMS_RLS), Dynamic Data Redaction (`DBMS_REDACT`), Sensitive Column Search (LGPD/GDPR regex scan for `*CPF*`, `*CARD*`, `*SALARIO*`, `*EMAIL*`), Oracle Wallet / TDE Keystore, User/Role Clone (`Create Like`).
-- **AWR / ADDM / ASH Browser**: Snapshots, Top SQL, ADDM recommendations, and Oracle Diagnostics Pack licensing advisory.
+- **AWR / ADDM / ASH Browser**: Snapshots, Top SQL, ADDM recommendations, and Active Session History with direct dictionary access.
 
 ### 5. Otimização de Performance e Tuning
 - **Explain Plan (Ctrl+E)**: Plan tree, CBO cost, cardinality, I/O cost, CPU cost, and Bind Peeking caveat note.

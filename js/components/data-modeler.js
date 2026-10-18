@@ -64,8 +64,9 @@ class DataModeler {
             <div class="action-palette-item" onclick="window.TracesApp.notify('HR.JOBS already on canvas.', 'info');">📄 HR.JOBS</div>
             <div class="action-palette-item" onclick="window.TracesApp.notify('SALES_ADMIN.CUSTOMERS already on canvas.', 'info');">📄 SALES_ADMIN.CUSTOMERS</div>
             <div class="action-palette-item" onclick="window.TracesApp.notify('SALES_ADMIN.SALES_TRANSACTIONS already on canvas.', 'info');">📄 SALES_ADMIN.SALES_TRANSACTIONS</div>
-            <div class="action-palette-item" onclick="window.TracesApp.notify('Added HR.JOB_HISTORY to canvas.', 'success');">+ HR.JOB_HISTORY</div>
-            <div class="action-palette-item" onclick="window.TracesApp.notify('Added HR.LOCATIONS to canvas.', 'success');">+ HR.LOCATIONS</div>
+            <div class="action-palette-item" onclick="window.TracesApp.dataModeler.addTable('HR', 'JOB_HISTORY', 'jh', [{name:'EMPLOYEE_ID', pk:true, fk:true},{name:'START_DATE', pk:true, fk:false},{name:'END_DATE', pk:false, fk:false},{name:'JOB_ID', pk:false, fk:true},{name:'DEPARTMENT_ID', pk:false, fk:true}]);">+ HR.JOB_HISTORY</div>
+            <div class="action-palette-item" onclick="window.TracesApp.dataModeler.addTable('HR', 'LOCATIONS', 'l', [{name:'LOCATION_ID', pk:true, fk:false},{name:'STREET_ADDRESS', pk:false, fk:false},{name:'CITY', pk:false, fk:false},{name:'COUNTRY_ID', pk:false, fk:true}]);">+ HR.LOCATIONS</div>
+            <div class="action-palette-item" onclick="window.TracesApp.dataModeler.addTable('SALES_ADMIN', 'PRODUCTS', 'p', [{name:'PRODUCT_ID', pk:true, fk:false},{name:'PRODUCT_NAME', pk:false, fk:false},{name:'PRICE', pk:false, fk:false}]);">+ SALES_ADMIN.PRODUCTS</div>
           </div>
           <div style="padding: 8px; border-top: 1px solid #ccc; font-size: 10px; color: #666;">
             ER Diagrammer v2026.2<br>Reverse engineering active.
@@ -145,19 +146,71 @@ class DataModeler {
     if (pre) pre.textContent = this.generateSql();
   }
 
+  addTable(schema, name, alias, cols) {
+    if (this.tables.find(t => t.name === name)) {
+      window.TracesApp.notify(`Table ${schema}.${name} already on canvas.`, 'info');
+      return;
+    }
+    const newTbl = {
+      id: `tbl-${alias}`,
+      schema,
+      name,
+      alias,
+      x: 340,
+      y: 260,
+      cols: cols || [
+        { name: `${name.slice(0, 3)}_ID`, pk: true, fk: false },
+        { name: 'DESCRIPTION', pk: false, fk: false },
+        { name: 'CREATED_DATE', pk: false, fk: false }
+      ]
+    };
+    this.tables.push(newTbl);
+    this.render();
+    window.TracesApp.notify(`Tabela ${schema}.${name} adicionada ao canvas ER.`, 'success');
+  }
+
   generateSql() {
     const cols = Array.from(this.selectedColumns);
-    const selectList = cols.length > 0 ? cols.join(',\n    ') : 'e.*';
+    if (cols.length === 0) {
+      return `SELECT * FROM hr.employees e;`;
+    }
+
+    const selectList = cols.join(',\n    ');
+    const aliases = new Set(cols.map(c => c.split('.')[0]));
+
+    let fromClause = '';
+    const joins = [];
+    const whereClauses = [];
+
+    if (aliases.has('e')) {
+      fromClause = 'hr.employees e';
+      if (aliases.has('d')) joins.push('INNER JOIN hr.departments d ON e.department_id = d.department_id');
+      if (aliases.has('j')) joins.push('INNER JOIN hr.jobs j ON e.job_id = j.job_id');
+      if (aliases.has('jh')) joins.push('INNER JOIN hr.job_history jh ON e.employee_id = jh.employee_id');
+      whereClauses.push('e.salary >= 4000');
+    } else if (aliases.has('c')) {
+      fromClause = 'sales_admin.customers c';
+      if (aliases.has('t')) joins.push('INNER JOIN sales_admin.sales_transactions t ON c.customer_id = t.customer_id');
+      whereClauses.push("c.tier = 'PLATINUM'");
+    } else if (aliases.has('t')) {
+      fromClause = 'sales_admin.sales_transactions t';
+      whereClauses.push("t.status = 'COMPLETED'");
+    } else if (aliases.has('d')) {
+      fromClause = 'hr.departments d';
+      if (aliases.has('l')) joins.push('INNER JOIN hr.locations l ON d.location_id = l.location_id');
+    } else if (aliases.has('j')) {
+      fromClause = 'hr.jobs j';
+    } else {
+      fromClause = 'dual';
+    }
+
+    const joinClause = joins.length > 0 ? '\n    ' + joins.join('\n    ') : '';
+    const whereStr = whereClauses.length > 0 ? `\nWHERE \n    ${whereClauses.join(' AND ')}` : '';
+
     return `SELECT 
     ${selectList}
 FROM 
-    hr.employees e
-    INNER JOIN hr.departments d ON e.department_id = d.department_id
-    INNER JOIN hr.jobs j ON e.job_id = j.job_id
-WHERE 
-    e.salary >= 6000
-ORDER BY 
-    e.salary DESC;`;
+    ${fromClause}${joinClause}${whereStr};`;
   }
 
   sendToEditor() {

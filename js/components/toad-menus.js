@@ -24,8 +24,27 @@ class ToadMenus {
         { label: 'Reconnect', icon: '🔄', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
         { separator: true },
         { label: 'Open File...', icon: '📂', shortcut: 'Ctrl+O', action: () => window.TracesApp.sqlEditor.addNewTab() },
-        { label: 'Save Worksheet', icon: '💾', shortcut: 'Ctrl+S', action: () => window.TracesApp.notify('Saved query to local SQL file.', 'info') },
-        { label: 'Save As...', icon: '📄', shortcut: '', action: () => window.TracesApp.notify('Save As: Saved to User Files directory.', 'info') },
+        { label: 'Save Worksheet', icon: '💾', shortcut: 'Ctrl+S', action: () => {
+          const sql = window.TracesApp.sqlEditor?.getActiveQuery() || '';
+          const blob = new Blob([sql], { type: 'text/sql' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'worksheet.sql';
+          a.click();
+          window.TracesApp.notify('Worksheet salva como worksheet.sql.', 'success');
+        } },
+        { label: 'Save As...', icon: '📄', shortcut: '', action: () => {
+          const name = prompt('Nome do arquivo SQL para salvar:', 'query.sql');
+          if (name) {
+            const sql = window.TracesApp.sqlEditor?.getActiveQuery() || '';
+            const blob = new Blob([sql], { type: 'text/sql' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name.endsWith('.sql') ? name : name + '.sql';
+            a.click();
+            window.TracesApp.notify(`Worksheet salva como ${a.download}.`, 'success');
+          }
+        } },
         { separator: true },
         { label: 'Print...', icon: '🖨', shortcut: 'Ctrl+P', action: () => window.print() },
         { label: 'Exit', icon: '✕', shortcut: 'Alt+F4', action: () => window.TracesApp.notify('Toad session active.', 'info') }
@@ -197,10 +216,30 @@ class ToadMenus {
           label: 'SQL Trace (Event 10046)',
           icon: '🔬',
           submenu: [
-            { label: 'Level 1 (Standard SQL Trace)', action: () => window.TracesApp.notify('SQL Trace Event 10046 Level 1 enabled.', 'info') },
-            { label: 'Level 4 (With Bind Variables)', action: () => window.TracesApp.notify('SQL Trace Event 10046 Level 4 enabled.', 'info') },
-            { label: 'Level 8 (With Wait Events)', action: () => window.TracesApp.notify('SQL Trace Event 10046 Level 8 enabled.', 'info') },
-            { label: 'Level 12 (Binds + Wait Events)', action: () => window.TracesApp.notify('SQL Trace Event 10046 Level 12 enabled.', 'success') }
+            { label: 'Level 1 (Standard SQL Trace)', action: async () => {
+              if (window.TracesApp?.isRealDatabase) {
+                await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sql: "ALTER SESSION SET EVENTS '10046 trace name context forever, level 1';" }) });
+              }
+              window.TracesApp.notify('SQL Trace Event 10046 Level 1 ativado na sessão.', 'info');
+            } },
+            { label: 'Level 4 (With Bind Variables)', action: async () => {
+              if (window.TracesApp?.isRealDatabase) {
+                await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sql: "ALTER SESSION SET EVENTS '10046 trace name context forever, level 4';" }) });
+              }
+              window.TracesApp.notify('SQL Trace Event 10046 Level 4 ativado na sessão.', 'info');
+            } },
+            { label: 'Level 8 (With Wait Events)', action: async () => {
+              if (window.TracesApp?.isRealDatabase) {
+                await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sql: "ALTER SESSION SET EVENTS '10046 trace name context forever, level 8';" }) });
+              }
+              window.TracesApp.notify('SQL Trace Event 10046 Level 8 ativado na sessão.', 'info');
+            } },
+            { label: 'Level 12 (Binds + Wait Events)', action: async () => {
+              if (window.TracesApp?.isRealDatabase) {
+                await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sql: "ALTER SESSION SET EVENTS '10046 trace name context forever, level 12';" }) });
+              }
+              window.TracesApp.notify('SQL Trace Event 10046 Level 12 ativado na sessão (completo).', 'success');
+            } }
           ]
         },
         { label: 'View Session Lock Tree', icon: '🔒', shortcut: '', action: () => window.TracesApp.switchDockView('sessions') }
