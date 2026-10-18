@@ -2610,8 +2610,8 @@ TRAILING NULLCOLS
 
         try:
             req = urllib.request.Request(
-                "https://api.github.com/repos/pedrofranchim35-netizen/traces-tool/commits/main",
-                headers={"User-Agent": "TracesToad-Updater"}
+                f"https://api.github.com/repos/pedrofranchim35-netizen/traces-tool/commits/main?t={int(time.time())}",
+                headers={"User-Agent": "TracesToad-Updater", "Cache-Control": "no-cache"}
             )
             with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as response:
                 commit_data = json.loads(response.read().decode('utf-8'))
