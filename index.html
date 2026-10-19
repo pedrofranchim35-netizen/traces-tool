@@ -6,6 +6,23 @@
   <title>Toad for Oracle - [Desconectado]</title>
   <meta name="description" content="Toad for Oracle authentic desktop layout and features powered by Traces.">
 
+  <!-- Transparent API Resolver: garante que chamadas /api/ funcionem tanto em http:// quanto em file:// -->
+  <script>
+    (function() {
+      if (typeof window !== 'undefined' && window.fetch) {
+        const _origFetch = window.fetch;
+        window.fetch = function(input, init) {
+          if (typeof input === 'string' && input.startsWith('/api/')) {
+            if (window.location.protocol === 'file:' || !window.location.port) {
+              input = 'http://127.0.0.1:3033' + input;
+            }
+          }
+          return _origFetch.call(this, input, init);
+        };
+      }
+    })();
+  </script>
+
   <!-- Core Stylesheets -->
   <link rel="stylesheet" href="css/tokens.css?v=20261018c">
   <link rel="stylesheet" href="css/main.css?v=20261018c">

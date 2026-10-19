@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const net = require('net');
 const fs = require('fs');
 const os = require('os');
 const { spawn, exec } = require('child_process');
@@ -27,7 +28,7 @@ function getAppDirectory() {
 }
 
 // ------------------------------------------------------------------------------
-// 1. AUTO-UPDATER DIRETO DO GITHUB (SEM PRECISAR DE NOVO INSTALADOR)
+// 1. AUTO-UPDATER DIRETO DO GITHUB
 // ------------------------------------------------------------------------------
 
 function getLocalVersion() {
@@ -49,7 +50,6 @@ function setLocalVersion(v) {
   } catch (e) {}
 }
 
-// Checar commits no GitHub
 function checkGitHubUpdate() {
   return new Promise((resolve) => {
     const options = {
@@ -101,16 +101,15 @@ function checkGitHubUpdate() {
   });
 }
 
-// Download com suporte a redirecionamento (301/302)
 function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    
+
     function get(u) {
       https.get(u, { headers: { 'User-Agent': 'TRACES-Toad-AutoUpdater' } }, (response) => {
         if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307) {
           file.close();
-          fs.unlinkSync(dest);
+          try { fs.unlinkSync(dest); } catch (e) {}
           const newFile = fs.createWriteStream(dest);
           https.get(response.headers.location, { headers: { 'User-Agent': 'TRACES-Toad-AutoUpdater' } }, (res2) => {
             res2.pipe(newFile);
@@ -143,12 +142,11 @@ function downloadFile(url, dest) {
   });
 }
 
-// Aplicar atualização baixada do GitHub
 async function applyGitHubUpdate(event) {
   try {
     const check = await checkGitHubUpdate();
     if (!check.success || !check.updateAvailable) {
-      return { success: false, message: 'Nenhuma atualização disponível ou falha ao verificar.' };
+      return { success: false, message: 'Nenhuma atualização disponível.' };
     }
 
     const tempDir = os.tmpdir();
@@ -161,7 +159,6 @@ async function applyGitHubUpdate(event) {
 
     if (event) event.sender.send('update-progress', { stage: 'extracting', text: 'Extraindo arquivos atualizados...' });
 
-    // Extrair arquivo zip via PowerShell no Windows ou unzip no Mac
     await new Promise((resolve, reject) => {
       let cmd = '';
       if (process.platform === 'win32') {
@@ -177,11 +174,9 @@ async function applyGitHubUpdate(event) {
 
     if (event) event.sender.send('update-progress', { stage: 'copying', text: 'Aplicando arquivos ao aplicativo...' });
 
-    // Diretório de origem extraído
     const sourceFolder = path.join(extractDir, `${REPO_NAME}-${BRANCH}`);
     const appDir = getAppDirectory();
 
-    // Copiar arquivos recursivamente
     function copyFolderSync(from, to) {
       if (!fs.existsSync(to)) fs.mkdirSync(to, { recursive: true });
       const entries = fs.readdirSync(from, { withFileTypes: true });
@@ -200,7 +195,6 @@ async function applyGitHubUpdate(event) {
     copyFolderSync(sourceFolder, appDir);
     setLocalVersion(check.fullSha || check.latestVersion);
 
-    // Limpar temporários
     try {
       fs.unlinkSync(zipPath);
       fs.rmSync(extractDir, { recursive: true, force: true });
@@ -220,91 +214,81 @@ async function applyGitHubUpdate(event) {
 }
 
 // ------------------------------------------------------------------------------
-// 2. SERVIDOR HTTP EMBUTIDO (FALLBACK LOCAL PARA APIS)
+// 2. INICIALIZAR O BRIDGE ORACLE EM SEGUNDO PLANO
 // ------------------------------------------------------------------------------
 
-function startInternalHttpServer() {
-  const mimeTypes = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'application/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.ico': 'image/x-icon',
-    '.svg': 'image/svg+xml'
-  };
-
+function startOracleBridgeProcess() {
   const appDir = getAppDirectory();
+  const pyScript = path.join(appDir, 'bridge', 'oracle_server.py');
+  if (!fs.existsSync(pyScript)) {
+    console.log('[TRACES] Script oracle_server.py não encontrado em:', pyScript);
+    return false;
+  }
 
-  const server = http.createServer(async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // 1. Python Embutido no próprio app (zero instalação necessária!)
+  const embeddedPy = path.join(appDir, 'python', 'python.exe');
+  const pythonCandidates = [
+    embeddedPy,
+    'python',
+    'python3',
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+    'C:\\Program Files\\Python311\\python.exe',
+    'C:\\Program Files\\Python312\\python.exe'
+  ];
 
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    const url = new URL(req.url, `http://localhost:${PORT}`);
-    const pathname = url.pathname;
-
-    if (pathname === '/api/status') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        status: 'online',
-        mode: 'native-desktop-standalone',
-        version: getLocalVersion(),
-        python_bridge: pythonProcess ? 'active' : 'fallback-internal',
-        platform: process.platform
-      }));
-      return;
-    }
-
-    if (pathname === '/api/update/check') {
-      const check = await checkGitHubUpdate();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(check));
-      return;
-    }
-
-    if (pathname === '/api/update/apply' && req.method === 'POST') {
-      const result = await applyGitHubUpdate(null);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-      return;
-    }
-
-    let filePath = path.join(appDir, pathname === '/' ? 'index.html' : pathname);
-    fs.readFile(filePath, (err, data) => {
-      if (err) {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not Found');
-        return;
+  for (const py of pythonCandidates) {
+    if (py === embeddedPy && !fs.existsSync(embeddedPy)) continue;
+    try {
+      pythonProcess = spawn(py, [pyScript], {
+        cwd: appDir,
+        detached: false,
+        stdio: 'ignore',
+        windowsHide: true
+      });
+      pythonProcess.on('error', (err) => {
+        console.log(`[TRACES] Falha ao iniciar bridge com ${py}:`, err.message);
+        pythonProcess = null;
+      });
+      if (pythonProcess) {
+        console.log(`[TRACES] Servidor Oracle Bridge iniciado via: ${py}`);
+        return true;
       }
-      const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-      res.end(data);
-    });
-  });
+    } catch (e) {}
+  }
+  return false;
+}
 
-  server.listen(PORT, '127.0.0.1', () => {
-    console.log(`[TRACES NATIVE] Servidor interno ativo na porta ${PORT}`);
-  });
-
-  server.on('error', (err) => {
-    console.log('[TRACES NATIVE] Porta 3033 já em uso, continuando:', err.message);
+// Aguarda o servidor na porta 3033 responder
+function waitForPort(port, maxTries = 35) {
+  return new Promise((resolve) => {
+    let tries = 0;
+    const check = () => {
+      const sock = net.createConnection({ port, host: '127.0.0.1' });
+      sock.on('connect', () => {
+        sock.destroy();
+        resolve(true);
+      });
+      sock.on('error', () => {
+        sock.destroy();
+        tries++;
+        if (tries < maxTries) {
+          setTimeout(check, 100);
+        } else {
+          resolve(false);
+        }
+      });
+    };
+    check();
   });
 }
 
 // ------------------------------------------------------------------------------
-// 3. JANELA NATIVA DESKTOP
+// 3. JANELA PRINCIPAL NATIVA DO DESKTOP
 // ------------------------------------------------------------------------------
 
-function createMainWindow() {
-  Menu.setApplicationMenu(null); // Oculta barra padrão do navegador/electron
+async function createMainWindow() {
+  Menu.setApplicationMenu(null);
 
   const appDir = getAppDirectory();
   const iconPath = path.join(appDir, 'assets', 'traces.ico');
@@ -325,14 +309,25 @@ function createMainWindow() {
     }
   });
 
-  // Carrega direto do disco local (Instantâneo, zero falha de rede/localhost)
-  mainWindow.loadFile(path.join(appDir, 'index.html'));
+  // Tentar iniciar o bridge Oracle
+  startOracleBridgeProcess();
+
+  // Aguardar porta 3033 ficar ativa (até 3,5 segundos)
+  const isPortUp = await waitForPort(PORT, 35);
+
+  if (isPortUp) {
+    // Carregar via HTTP local (todas as rotas /api/ e banco real funcionam nativamente)
+    mainWindow.loadURL(`http://127.0.0.1:${PORT}/index.html`);
+  } else {
+    // Fallback: carregar arquivo local diretamente
+    mainWindow.loadFile(path.join(appDir, 'index.html'));
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Verificação automática e silenciosa em segundo plano após 4 segundos
+  // Checagem silenciosa de atualização em segundo plano após 4s
   setTimeout(async () => {
     try {
       const check = await checkGitHubUpdate();
@@ -343,7 +338,7 @@ function createMainWindow() {
   }, 4000);
 }
 
-// IPC Handlers para comunicação segura com a interface web
+// IPC Handlers
 ipcMain.handle('check-update', async () => {
   return await checkGitHubUpdate();
 });
@@ -357,9 +352,8 @@ ipcMain.handle('relaunch-app', () => {
   app.exit(0);
 });
 
-// Inicialização do Ciclo de Vida do App
+// Ciclo de vida
 app.whenReady().then(() => {
-  startInternalHttpServer();
   createMainWindow();
 
   app.on('activate', () => {
