@@ -22,3 +22,6 @@ ehthumbs.db
 # Logs & temp files
 *.log
 scratch/
+dist-win/
+dist/
+
