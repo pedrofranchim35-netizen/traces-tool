@@ -129,6 +129,62 @@ class SchemaBrowser {
   }
 
   getSchemaData() {
+    if (this.currentCategory === 'tablespaces') {
+      const tsList = (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces : [
+        { name: 'SYSTEM', status: 'ONLINE', totalMb: 2048, usedMb: 1740, autoextend: 'YES', datafiles: 1, pct: 85 },
+        { name: 'SYSAUX', status: 'ONLINE', totalMb: 4096, usedMb: 2867, autoextend: 'YES', datafiles: 2, pct: 70 },
+        { name: 'USERS', status: 'ONLINE', totalMb: 8192, usedMb: 3440, autoextend: 'YES', datafiles: 2, pct: 42 },
+        { name: 'SALES_2026', status: 'ONLINE', totalMb: 32768, usedMb: 28835, autoextend: 'YES', datafiles: 4, pct: 88 },
+        { name: 'UNDOTBS1', status: 'ONLINE', totalMb: 4096, usedMb: 940, autoextend: 'YES', datafiles: 1, pct: 23 },
+        { name: 'TEMP', status: 'ONLINE', totalMb: 8192, usedMb: 1230, autoextend: 'YES', datafiles: 1, pct: 15 }
+      ];
+      return {
+        tablespaces: tsList.map(t => ({
+          name: t.name,
+          status: t.status || 'ONLINE',
+          totalMb: t.totalMb,
+          usedMb: t.usedMb,
+          freeMb: t.totalMb - t.usedMb,
+          autoextend: t.autoextend || 'YES',
+          datafiles: t.datafiles || 1,
+          pct: t.pct || Math.round((t.usedMb / t.totalMb) * 100),
+          ddl: `-- DDL for Tablespace ${t.name}\nCREATE TABLESPACE "${t.name}"\n  DATAFILE '+DATA/${t.name.toLowerCase()}.dbf' SIZE ${t.totalMb}M\n  AUTOEXTEND ON NEXT 128M MAXSIZE UNLIMITED\n  EXTENT MANAGEMENT LOCAL AUTOALLOCATE\n  SEGMENT SPACE MANAGEMENT AUTO;`,
+          columns: [
+            { id: 1, name: 'TABLESPACE_NAME', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: t.name, pk: true, comments: 'Name of the tablespace' },
+            { id: 2, name: 'TOTAL_SPACE_MB', type: 'NUMBER', nullable: 'N', defaultVal: `${t.totalMb} MB`, pk: false, comments: 'Allocated storage on disk' },
+            { id: 3, name: 'USED_SPACE_MB', type: 'NUMBER', nullable: 'N', defaultVal: `${t.usedMb} MB`, pk: false, comments: 'Consumed storage by segments' },
+            { id: 4, name: 'FREE_SPACE_MB', type: 'NUMBER', nullable: 'N', defaultVal: `${t.totalMb - t.usedMb} MB`, pk: false, comments: 'Available free extents' },
+            { id: 5, name: 'AUTOEXTEND', type: 'VARCHAR2(3)', nullable: 'N', defaultVal: t.autoextend || 'YES', pk: false, comments: 'Autoextend enabled' },
+            { id: 6, name: 'DATAFILES_COUNT', type: 'NUMBER', nullable: 'N', defaultVal: `${t.datafiles || 1}`, pk: false, comments: 'Number of physical data files' }
+          ]
+        }))
+      };
+    }
+
+    if (this.currentCategory === 'users') {
+      const uList = [
+        { name: 'SYS', status: 'OPEN', defaultTs: 'SYSTEM', tempTs: 'TEMP' },
+        { name: 'SYSTEM', status: 'OPEN', defaultTs: 'SYSTEM', tempTs: 'TEMP' },
+        { name: 'HR', status: 'OPEN', defaultTs: 'USERS', tempTs: 'TEMP' },
+        { name: 'SALES_ADMIN', status: 'OPEN', defaultTs: 'SALES_2026', tempTs: 'TEMP' },
+        { name: 'SCOTT', status: 'OPEN', defaultTs: 'USERS', tempTs: 'TEMP' },
+        { name: 'APEX_PUBLIC_USER', status: 'LOCKED', defaultTs: 'SYSAUX', tempTs: 'TEMP' }
+      ];
+      return {
+        users: uList.map(u => ({
+          name: u.name,
+          status: u.status,
+          ddl: `-- User definition\nCREATE USER "${u.name}" IDENTIFIED BY VALUES '...'\n  DEFAULT TABLESPACE "${u.defaultTs}"\n  TEMPORARY TABLESPACE "${u.tempTs}"\n  ACCOUNT ${u.status};`,
+          columns: [
+            { id: 1, name: 'USERNAME', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: u.name, pk: true, comments: 'User or schema name' },
+            { id: 2, name: 'ACCOUNT_STATUS', type: 'VARCHAR2(32)', nullable: 'N', defaultVal: u.status, pk: false, comments: 'Account status' },
+            { id: 3, name: 'DEFAULT_TABLESPACE', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: u.defaultTs, pk: false, comments: 'Default tablespace' },
+            { id: 4, name: 'TEMPORARY_TABLESPACE', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: u.tempTs, pk: false, comments: 'Temp tablespace' }
+          ]
+        }))
+      };
+    }
+
     if (window.TracesApp && window.TracesApp.isRealDatabase && this.realObjects) {
       return this.realObjects;
     }
@@ -152,7 +208,9 @@ class SchemaBrowser {
       { key: 'synonyms', label: 'Synonyms', count: data.synonyms?.length || 0 },
       { key: 'triggers', label: 'Triggers', count: data.triggers?.length || 0 },
       { key: 'types', label: 'Types', count: data.types?.length || 0 },
-      { key: 'indexes', label: 'Indexes', count: data.indexes?.length || 0 }
+      { key: 'indexes', label: 'Indexes', count: data.indexes?.length || 0 },
+      { key: 'tablespaces', label: 'Tablespaces', count: (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces.length : 6 },
+      { key: 'users', label: 'Users', count: 6 }
     ];
 
     this.categoryScroller.innerHTML = categories.map(cat => `
@@ -173,6 +231,8 @@ class SchemaBrowser {
     // Contextual tab switching
     if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
       this.switchDetailTab('source');
+    } else if (categoryKey === 'tablespaces' || categoryKey === 'users') {
+      this.switchDetailTab('columns');
     } else if (this.currentDetailTab === 'source') {
       this.switchDetailTab('columns');
     }
@@ -237,6 +297,10 @@ class SchemaBrowser {
         return '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>';
       case 'indexes':
         return '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>';
+      case 'tablespaces':
+        return '<path d="M4 6h16M4 12h16M4 18h16"/><rect x="2" y="3" width="20" height="18" rx="2"/>';
+      case 'users':
+        return '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>';
       default:
         return '<circle cx="12" cy="12" r="10"/>';
     }

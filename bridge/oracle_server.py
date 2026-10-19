@@ -1301,6 +1301,172 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
+                # 5. Tablespaces & Temp Space Usage (Toad Parity)
+                details["tablespaces"] = {
+                    "tempUsage": [],
+                    "userTablespaces": {},
+                    "userQuotas": [],
+                    "databaseTablespaces": []
+                }
+
+                # 5a. Temp sort segment usage by session
+                try:
+                    cur.execute("""
+                        SELECT NVL(t.tablespace, 'TEMP'), NVL(t.segtype, 'SORT'), t.extents, t.blocks,
+                               ROUND((t.blocks * 8192) / (1024 * 1024), 2) AS mb_used,
+                               t.sql_id
+                        FROM v$sort_usage t
+                        JOIN v$session s ON t.session_addr = s.saddr
+                        WHERE s.sid = :1
+                    """, [sid])
+                    for r in cur.fetchall():
+                        details["tablespaces"]["tempUsage"].append({
+                            "tablespace": r[0],
+                            "segType": r[1],
+                            "extents": r[2],
+                            "blocks": r[3],
+                            "mbUsed": float(r[4] or 0),
+                            "sqlId": r[5] or ""
+                        })
+                except Exception:
+                    pass
+
+                # 5b. Default & Temporary Tablespaces of the Session Owner
+                try:
+                    cur.execute("""
+                        SELECT u.username, u.default_tablespace, u.temporary_tablespace, u.account_status
+                        FROM dba_users u
+                        WHERE u.username = (SELECT username FROM v$session WHERE sid = :1)
+                    """, [sid])
+                    urow = cur.fetchone()
+                    if urow:
+                        details["tablespaces"]["userTablespaces"] = {
+                            "username": urow[0],
+                            "defaultTablespace": urow[1],
+                            "temporaryTablespace": urow[2],
+                            "accountStatus": urow[3]
+                        }
+                except Exception:
+                    pass
+
+                # 5c. Quotas and Allocated Storage by Tablespace
+                try:
+                    cur.execute("""
+                        SELECT tablespace_name, ROUND(SUM(bytes)/(1024*1024), 2) AS mb_used, COUNT(*) AS segment_count
+                        FROM dba_segments
+                        WHERE owner = (SELECT username FROM v$session WHERE sid = :1)
+                        GROUP BY tablespace_name
+                    """, [sid])
+                    for r in cur.fetchall():
+                        details["tablespaces"]["userQuotas"].append({
+                            "tablespace": r[0],
+                            "mbUsed": float(r[1] or 0),
+                            "segmentCount": r[2]
+                        })
+                except Exception:
+                    pass
+
+                # 5d. General Database Tablespaces Overview (Status, Free Space & Pct Used)
+                try:
+                    cur.execute("""
+                        SELECT t.tablespace_name, t.status, t.contents, t.extent_management,
+                               NVL(ROUND(df.bytes / (1024*1024), 2), 0) AS total_mb,
+                               NVL(ROUND((df.bytes - NVL(fs.bytes, 0)) / (1024*1024), 2), 0) AS used_mb,
+                               NVL(ROUND(fs.bytes / (1024*1024), 2), 0) AS free_mb,
+                               ROUND(NVL((df.bytes - NVL(fs.bytes, 0)) / NULLIF(df.bytes, 0) * 100, 0), 1) AS pct_used
+                        FROM dba_tablespaces t
+                        LEFT JOIN (
+                            SELECT tablespace_name, SUM(bytes) AS bytes FROM dba_data_files GROUP BY tablespace_name
+                            UNION ALL
+                            SELECT tablespace_name, SUM(bytes) AS bytes FROM dba_temp_files GROUP BY tablespace_name
+                        ) df ON t.tablespace_name = df.tablespace_name
+                        LEFT JOIN (
+                            SELECT tablespace_name, SUM(bytes) AS bytes FROM dba_free_space GROUP BY tablespace_name
+                        ) fs ON t.tablespace_name = fs.tablespace_name
+                        ORDER BY t.tablespace_name
+                    """)
+                    for r in cur.fetchall():
+                        details["tablespaces"]["databaseTablespaces"].append({
+                            "tablespace": r[0],
+                            "status": r[1],
+                            "contents": r[2],
+                            "extentMgmt": r[3],
+                            "totalMb": float(r[4] or 0),
+                            "usedMb": float(r[5] or 0),
+                            "freeMb": float(r[6] or 0),
+                            "pctUsed": float(r[7] or 0)
+                        })
+                except Exception:
+                    pass
+
+                # 6. Open Cursors (V$OPEN_CURSOR)
+                details["openCursors"] = []
+                try:
+                    cur.execute("""
+                        SELECT c.sql_id, c.user_name, c.sql_text
+                        FROM v$open_cursor c
+                        WHERE c.sid = :1 AND ROWNUM <= 50
+                    """, [sid])
+                    for r in cur.fetchall():
+                        details["openCursors"].append({
+                            "sqlId": r[0],
+                            "user": r[1],
+                            "sqlText": r[2] or ""
+                        })
+                except Exception:
+                    pass
+
+                # 7. Undo & Active Transactions (V$TRANSACTION)
+                details["transactions"] = []
+                try:
+                    cur.execute("""
+                        SELECT t.xidusn, t.ubafil, t.ubablk, t.used_ublk, t.used_urec, t.start_time, t.status
+                        FROM v$transaction t
+                        JOIN v$session s ON t.addr = s.taddr
+                        WHERE s.sid = :1
+                    """, [sid])
+                    for r in cur.fetchall():
+                        details["transactions"].append({
+                            "xid": f"{r[0]}.{r[1]}.{r[2]}",
+                            "usedUblk": r[3],
+                            "usedUrec": r[4],
+                            "startTime": str(r[5]),
+                            "status": r[6]
+                        })
+                except Exception:
+                    pass
+
+                # 8. Full Session Info & Client Identifiers
+                details["info"] = {}
+                try:
+                    cur.execute("""
+                        SELECT s.sid, s.serial#, s.username, s.status, s.osuser, s.machine, s.terminal,
+                               s.program, s.module, s.action, s.client_info, s.server, s.logon_time, p.spid
+                        FROM v$session s
+                        LEFT JOIN v$process p ON s.paddr = p.addr
+                        WHERE s.sid = :1
+                    """, [sid])
+                    irow = cur.fetchone()
+                    if irow:
+                        details["info"] = {
+                            "sid": irow[0],
+                            "serial": irow[1],
+                            "username": irow[2] or "BACKGROUND",
+                            "status": irow[3],
+                            "osuser": irow[4] or "",
+                            "machine": irow[5] or "",
+                            "terminal": irow[6] or "",
+                            "program": irow[7] or "",
+                            "module": irow[8] or "",
+                            "action": irow[9] or "",
+                            "clientInfo": irow[10] or "",
+                            "server": irow[11] or "DEDICATED",
+                            "logonTime": str(irow[12]),
+                            "spid": irow[13] or ""
+                        }
+                except Exception:
+                    pass
+
                 self.send_api_response(details)
         except Exception as e:
             self.send_api_response({"error": str(e)}, status=400)
