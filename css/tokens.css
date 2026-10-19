@@ -1,66 +1,74 @@
 /* ==========================================================================
-   TOAD FOR ORACLE CLASSIC DESIGN SYSTEM - TOKENS & THEMING
-   Aesthetic: Authentic Toad for Oracle Desktop Interface
+   TOAD FOR ORACLE CLASSIC DESIGN SYSTEM - REFINED MODERN TOKENS
+   Aesthetic: Authentic Toad for Oracle Desktop Interface + Modern Clarity
    ========================================================================== */
 
 :root {
-  /* Classic Windows / Toad Desktop Palette */
+  /* Modernized Font Stack */
+  --toad-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --toad-font-code: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+
+  /* Classic Windows / Toad Desktop Palette with refined modern tones */
   --toad-window-bg: #ece9d8;
-  --toad-chrome-bg: #f0f0f0;
-  --toad-chrome-elevated: #f7f7f7;
-  --toad-toolbar-bg: #f5f5f5;
-  --toad-toolbar-border: #d4d4d4;
-  --toad-menu-hover: #e5f3ff;
-  --toad-menu-hover-border: #99d1ff;
+  --toad-chrome-bg: #f1f3f5;
+  --toad-chrome-elevated: #ffffff;
+  --toad-toolbar-bg: #f8fafc;
+  --toad-toolbar-border: #e2e8f0;
+  --toad-menu-hover: #e0f2fe;
+  --toad-menu-hover-border: #7dd3fc;
   
   --toad-border-light: #ffffff;
-  --toad-border-gray: #c0c0c0;
-  --toad-border-dark: #808080;
-  --toad-border-panel: #dcdcdc;
+  --toad-border-gray: #cbd5e1;
+  --toad-border-dark: #94a3b8;
+  --toad-border-panel: #e2e8f0;
 
   /* Content Surfaces */
   --toad-content-bg: #ffffff;
-  --toad-content-alt: #fbfbfb;
-  --toad-text-main: #000000;
-  --toad-text-secondary: #444444;
-  --toad-text-muted: #666666;
-  --toad-text-disabled: #888888;
+  --toad-content-alt: #f8fafc;
+  --toad-text-main: #0f172a;
+  --toad-text-secondary: #334155;
+  --toad-text-muted: #64748b;
+  --toad-text-disabled: #94a3b8;
 
   /* Universal Form Input Variables */
   --bg-input: #ffffff;
-  --text-primary: #111111;
+  --text-primary: #0f172a;
   --border-default: #cbd5e1;
-  --radius-sm: 3px;
+  --border-highlight: #0284c7;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 
   /* Toad Grid & Selection */
-  --toad-select-bg: #0078d7;
+  --toad-select-bg: #0284c7;
   --toad-select-text: #ffffff;
-  --toad-row-hover: #eaf2fb;
-  --toad-grid-header-bg: #e4e4e4;
-  --toad-grid-header-border: #bfbfbf;
-  --toad-grid-line: #d8d8d8;
+  --toad-row-hover: #f0f9ff;
+  --toad-grid-header-bg: #f1f5f9;
+  --toad-grid-header-border: #cbd5e1;
+  --toad-grid-line: #e2e8f0;
   
   /* Status & Accents */
-  --toad-green: #008000;
-  --toad-red: #c00000;
-  --toad-blue: #0000ff;
-  --toad-amber: #d97706;
+  --toad-green: #10b981;
+  --toad-red: #ef4444;
+  --toad-blue: #0284c7;
+  --toad-amber: #f59e0b;
 
   /* Traces Brand Accent */
   --traces-red: #ef4444;
 
   /* Classic Toad PL/SQL Syntax Highlighting */
-  --toad-syn-keyword: #0000ff;   /* Bold Blue */
-  --toad-syn-function: #000080;  /* Navy */
-  --toad-syn-string: #a31515;    /* Red / Crimson */
-  --toad-syn-number: #000000;    /* Black */
-  --toad-syn-comment: #008000;   /* Italic Green */
-  --toad-syn-variable: #800080;  /* Purple */
-  --toad-syn-type: #2b91af;      /* Teal / Blue-green */
+  --toad-syn-keyword: #2563eb;   /* Modern Royal Blue */
+  --toad-syn-function: #0369a1;  /* Modern Cyan/Navy */
+  --toad-syn-string: #dc2626;    /* Modern Crimson */
+  --toad-syn-number: #0f172a;    /* Slate Black */
+  --toad-syn-comment: #059669;   /* Emerald Green */
+  --toad-syn-variable: #9333ea;  /* Purple */
+  --toad-syn-type: #0891b2;      /* Cyan */
 
-  /* Fonts */
-  --toad-font-ui: -apple-system, 'Segoe UI', Tahoma, Arial, sans-serif;
-  --toad-font-code: 'Consolas', 'Courier New', 'JetBrains Mono', monospace;
+  /* Micro-interactions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
 }
 
 *, *::before, *::after {
@@ -77,8 +85,27 @@ html, body {
   color: var(--toad-text-main);
   font-family: var(--toad-font-ui);
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 1.35;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sleek Modern Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+  border: 1px solid #f8fafc;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Classic Windows Bevel Utilities */
@@ -90,8 +117,9 @@ html, body {
 }
 
 .toad-status-panel {
-  border: 1px solid;
-  border-color: var(--toad-border-dark) var(--toad-border-light) var(--toad-border-light) var(--toad-border-dark);
-  padding: 2px 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 3px;
+  padding: 2px 8px;
   font-size: 11px;
 }

@@ -12,6 +12,7 @@ class SchemaBrowser {
     this.realSchemas = [];
     this.realObjects = null;
     this.isLoadingDetails = false;
+    this.objectDetailsCache = new Map();
 
     this.initElements();
     this.bindEvents();
@@ -112,10 +113,16 @@ class SchemaBrowser {
         };
         this.renderCategoryPills();
         this.renderObjectList();
+
+        // Auto-select top item of active category immediately
+        const catItems = this.getSchemaData()[this.currentCategory] || [];
+        if (catItems.length > 0) {
+          this.selectObject(catItems[0].name);
+        }
       }
     } catch (e) {
       console.warn('Real objects load error', e);
-      this.objectList.innerHTML = `<div style="padding: 24px 16px; text-align: center; color: #c00000; font-size: 11px;">Erro ao carregar objetos: ${e.message}</div>`;
+      this.objectList.innerHTML = `<div style="padding: 24px 16px; text-align: center; color: #dc2626; font-size: 11px;">Erro ao carregar objetos: ${e.message}</div>`;
     }
   }
 
@@ -236,6 +243,14 @@ class SchemaBrowser {
     } else if (this.currentDetailTab === 'source') {
       this.switchDetailTab('columns');
     }
+
+    // Auto-select first item of newly selected category immediately (0ms)
+    const catItems = (this.getSchemaData()[this.currentCategory] || []).filter(obj => 
+      obj.name.toLowerCase().includes(this.searchQuery)
+    );
+    if (catItems.length > 0) {
+      this.selectObject(catItems[0].name);
+    }
   }
 
   renderObjectList() {
@@ -311,7 +326,7 @@ class SchemaBrowser {
     const items = data[this.currentCategory] || [];
     this.selectedObject = items.find(o => o.name === objectName) || { name: objectName };
 
-    // Update active highlight in list
+    // Update active highlight in list immediately
     const allItems = this.objectList.querySelectorAll('.object-item');
     allItems.forEach(el => el.classList.remove('active'));
     const matched = Array.from(allItems).find(el => el.textContent.includes(objectName));
@@ -321,8 +336,16 @@ class SchemaBrowser {
     this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
     this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
 
-    // If connected to real Oracle DB, fetch complete live object details
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+    // Check in-memory details cache (0ms instant response!)
+    const cacheKey = `${this.currentSchema}.${this.currentCategory}.${objectName}`;
+    if (this.objectDetailsCache && this.objectDetailsCache.has(cacheKey)) {
+      this.selectedObject = Object.assign(this.selectedObject, this.objectDetailsCache.get(cacheKey));
+      this.renderDetailContent();
+      return;
+    }
+
+    // If connected to real Oracle DB and not mock category, fetch live details
+    if (window.TracesApp && window.TracesApp.isRealDatabase && !['tablespaces', 'users'].includes(this.currentCategory)) {
       await this.fetchRealObjectDetails(this.currentSchema, objectName, this.currentCategory);
     } else {
       this.renderDetailContent();
@@ -364,6 +387,12 @@ class SchemaBrowser {
         window.TracesApp.notify(`Erro ao obter detalhes de ${name}: ${details.error}`, 'error');
         this.isLoadingDetails = false;
         return;
+      }
+
+      // Cache details in memory
+      const cacheKey = `${schema}.${category}.${name}`;
+      if (this.objectDetailsCache) {
+        this.objectDetailsCache.set(cacheKey, details);
       }
 
       // Merge into selectedObject

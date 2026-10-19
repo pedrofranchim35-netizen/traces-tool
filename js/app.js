@@ -151,9 +151,26 @@ class TracesApp {
       }
     }
 
-    // Component-specific hooks on switch
+    // Component-specific hooks on switch (instant auto-render & live reactivity)
     if (viewKey === 'sessions' && this.sessionMonitor) {
-      this.sessionMonitor.renderGauges();
+      this.sessionMonitor.render();
+      if (this.isRealDatabase) {
+        this.sessionMonitor.loadRealSessions();
+      }
+    } else if (viewKey === 'browser' && this.schemaBrowser) {
+      if (this.isRealDatabase && (!this.schemaBrowser.realObjects || Object.keys(this.schemaBrowser.realObjects).length === 0)) {
+        this.schemaBrowser.loadRealSchemas();
+      } else {
+        this.schemaBrowser.render();
+      }
+    } else if (viewKey === 'probe' && this.databaseProbe) {
+      if (this.isRealDatabase) this.databaseProbe.loadRealProbe();
+      else this.databaseProbe.render();
+    } else if (viewKey === 'spotlight' && this.spotlightOracle) {
+      this.spotlightOracle.render();
+    } else if (viewKey === 'dba' && this.dbaTools) {
+      if (this.isRealDatabase) this.dbaTools.loadRealData();
+      else this.dbaTools.render();
     }
   }
 

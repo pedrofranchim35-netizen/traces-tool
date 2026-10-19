@@ -10,6 +10,7 @@
    7. Undo & Transactions (V$TRANSACTION)
    8. I/O & Memory (V$SESS_IO)
    9. Session Info (Metadados do Processo & Cliente)
+   Optimized: Instant optimistic rendering, in-memory caching, zero manual refresh.
    ========================================================================== */
 
 class SessionMonitor {
@@ -28,7 +29,9 @@ class SessionMonitor {
     this.autoRefreshInterval = 5; // seconds
     this.autoRefreshTimer = null;
     this.currentDetailTab = 'sql'; // 'sql' | 'tablespaces' | 'waits' | 'locks' | 'locktree' | 'cursors' | 'transactions' | 'io' | 'info'
+    this.detailsCache = new Map(); // sid -> { data, ts }
     this.sessionDetails = this.getMockSessionDetails(this.selectedSid);
+    this.isLoadingDetails = false;
 
     this.initElements();
     this.bindEvents();
@@ -39,13 +42,13 @@ class SessionMonitor {
 
   initElements() {
     this.tableBody = document.getElementById('session-table-body');
+    this.tableWrapper = document.querySelector('.session-table-wrapper');
     this.detailPane = document.getElementById('session-detail-inspector');
     this.filterSelect = document.getElementById('session-native-filter-select');
     this.autoRefreshSelect = document.getElementById('session-autorefresh-select');
   }
 
   bindEvents() {
-    // Dropdown filters & auto-refresh interval
     if (this.filterSelect) {
       this.filterSelect.value = this.currentFilter;
     }
@@ -53,7 +56,7 @@ class SessionMonitor {
 
   initSplitter() {
     const splitter = document.getElementById('session-splitter');
-    const tableWrapper = document.querySelector('.session-table-wrapper');
+    const tableWrapper = this.tableWrapper || document.querySelector('.session-table-wrapper');
     if (!splitter || !tableWrapper) return;
 
     let isDragging = false;
@@ -105,20 +108,34 @@ class SessionMonitor {
     window.TracesApp.notify(`Auto-Refresh de sessões ajustado para ${this.autoRefreshInterval > 0 ? this.autoRefreshInterval + 's' : 'Desativado'}.`, 'info');
   }
 
-  onFilterChanged(filterId) {
+  async onFilterChanged(filterId) {
     this.currentFilter = filterId;
-    this.refresh();
+    await this.refresh(true);
   }
 
   async refresh(isSilent = false) {
+    // Preserve scroll position
+    const savedScrollTop = this.tableWrapper ? this.tableWrapper.scrollTop : 0;
+
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
       await this.loadRealSessions();
+      if (this.tableWrapper) this.tableWrapper.scrollTop = savedScrollTop;
       if (!isSilent) window.TracesApp.notify('Sessões atualizadas ao vivo do Oracle.', 'info');
       return;
     }
 
     this.sessions = window.TRACES_DB.sessions;
+    
+    // Auto-select first session if selectedSid is missing from current filtered set
+    const stillExists = this.sessions.some(s => s.sid === this.selectedSid);
+    if (!stillExists && this.sessions.length > 0) {
+      this.selectedSid = this.sessions[0].sid;
+      this.selectedSerial = this.sessions[0].serial;
+      this.sessionDetails = this.getMockSessionDetails(this.selectedSid);
+    }
+
     this.render();
+    if (this.tableWrapper) this.tableWrapper.scrollTop = savedScrollTop;
     if (!isSilent) window.TracesApp.notify('Sessões atualizadas (Modo Local).', 'info');
   }
 
@@ -129,13 +146,14 @@ class SessionMonitor {
       if (data.sessions) {
         this.sessions = data.sessions;
         
-        // Auto-select first session if none selected
-        if (!this.selectedSid && this.sessions.length > 0) {
+        // Auto-select first session if none selected or if selected session left the filter
+        const stillExists = this.sessions.some(s => s.sid === this.selectedSid);
+        if (!stillExists && this.sessions.length > 0) {
           this.selectedSid = this.sessions[0].sid;
           this.selectedSerial = this.sessions[0].serial;
         }
 
-        // Also refresh instance probe metrics
+        // Also refresh instance probe metrics silently
         try {
           const probeResp = await fetch('/api/probe');
           const probeData = await probeResp.json();
@@ -154,6 +172,7 @@ class SessionMonitor {
 
         this.renderTable();
         this.renderGauges();
+        
         if (this.selectedSid) {
           await this.loadSessionDetails(this.selectedSid);
         } else {
@@ -225,21 +244,21 @@ class SessionMonitor {
       return `
         <tr class="${rowClass}" onclick="window.TracesApp.sessionMonitor.selectSession(${s.sid}, ${s.serial})">
           <td style="font-weight: 700; color: ${isBlocking ? '#b91c1c' : 'inherit'};">${s.sid}</td>
-          <td style="color: #666;">${s.serial}</td>
+          <td style="color: #64748b;">${s.serial}</td>
           <td>
             <span class="session-status-badge ${s.status.toLowerCase()} ${isBlocked ? 'blocked' : ''}">
               ${isBlocked ? 'WAIT LOCK' : s.status}
             </span>
           </td>
-          <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${s.username || 'BACKGROUND'}</td>
+          <td style="font-weight: 600; color: #0284c7; font-family: var(--toad-font-code);">${s.username || 'BACKGROUND'}</td>
           <td>${s.osuser || '-'}</td>
-          <td style="color: #666;">${s.machine || '-'}</td>
+          <td style="color: #64748b;">${s.machine || '-'}</td>
           <td style="font-size: 11px;">${s.program || '-'}</td>
-          <td style="color: ${isBlocked ? '#dc2626' : '#444'}; font-size: 10px; font-family: var(--font-code);">
+          <td style="color: ${isBlocked ? '#dc2626' : '#334155'}; font-size: 10px; font-family: var(--toad-font-code);">
             ${s.event || 'None'}
           </td>
           <td style="font-size: 11px;">${s.logonTime || '-'}</td>
-          <td style="text-align: right; font-family: var(--font-code);">${s.pgaMb || 0} MB</td>
+          <td style="text-align: right; font-family: var(--toad-font-code); font-variant-numeric: tabular-nums;">${s.pgaMb || 0} MB</td>
           <td>
             ${isBlocking ? '<span style="color: #dc2626; font-weight: 700;">BLOCKER</span>' : ''}
             ${isBlocked ? '<span style="color: #d97706; font-weight: 700;">WAITING ON LOCK</span>' : ''}
@@ -253,30 +272,86 @@ class SessionMonitor {
   async selectSession(sid, serial) {
     this.selectedSid = sid;
     this.selectedSerial = serial;
-    this.renderTable();
+
+    // Instant visual update on table rows (0ms feedback)
+    if (this.tableBody) {
+      const rows = this.tableBody.querySelectorAll('tr');
+      rows.forEach(r => {
+        const firstCell = r.querySelector('td');
+        if (firstCell && firstCell.textContent.trim() === String(sid)) {
+          r.classList.add('selected');
+        } else {
+          r.classList.remove('selected');
+        }
+      });
+    }
+
+    // Check in-memory cache first (0ms latency!)
+    const cached = this.detailsCache.get(sid);
+    const now = Date.now();
+    if (cached && (now - cached.ts) < 20000) {
+      this.sessionDetails = cached.data;
+      this.renderDetail();
+      // Silently re-validate in background
+      if (window.TracesApp && window.TracesApp.isRealDatabase) {
+        this.fetchSessionDetailsInBackground(sid);
+      }
+      return;
+    }
 
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      // Optimistic instant render of header while fetching
+      this.renderOptimisticPreview(sid, serial);
       await this.loadSessionDetails(sid);
     } else {
       this.sessionDetails = this.getMockSessionDetails(sid);
+      this.detailsCache.set(sid, { data: this.sessionDetails, ts: now });
       this.renderDetail();
     }
   }
 
+  renderOptimisticPreview(sid, serial) {
+    const s = this.sessions.find(x => x.sid === sid) || { sid, serial, username: 'LOADING...', status: 'ACTIVE' };
+    this.isLoadingDetails = true;
+    this.sessionDetails = this.getMockSessionDetails(sid);
+    this.renderDetail();
+  }
+
   async loadSessionDetails(sid) {
     try {
+      this.isLoadingDetails = true;
       const resp = await fetch(`/api/session-details?sid=${sid}`);
       const data = await resp.json();
+      this.isLoadingDetails = false;
       if (data && !data.error) {
         this.sessionDetails = data;
+        this.detailsCache.set(sid, { data: this.sessionDetails, ts: Date.now() });
       } else {
         this.sessionDetails = this.getMockSessionDetails(sid);
       }
       this.renderDetail();
     } catch (e) {
+      this.isLoadingDetails = false;
       console.warn('Session details load error', e);
       this.sessionDetails = this.getMockSessionDetails(sid);
       this.renderDetail();
+    }
+  }
+
+  async fetchSessionDetailsInBackground(sid) {
+    try {
+      const resp = await fetch(`/api/session-details?sid=${sid}`);
+      const data = await resp.json();
+      if (data && !data.error) {
+        this.sessionDetails = data;
+        this.detailsCache.set(sid, { data: this.sessionDetails, ts: Date.now() });
+        // Re-render only if current sid is still this session
+        if (this.selectedSid === sid) {
+          this.renderDetail();
+        }
+      }
+    } catch (e) {
+      // Ignore background refresh errors
     }
   }
 
@@ -471,11 +546,11 @@ class SessionMonitor {
         <!-- Header Drawer Strip -->
         <div class="toad-drawer-header">
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span style="font-weight: 700; font-size: 12px; color: #111;">
-              Session Drawer: SID <span style="color: #0078d7;">${s.sid}</span>, Serial# ${s.serial} (${s.username || 'BACKGROUND'})
+            <span style="font-weight: 700; font-size: 12px; color: #0f172a;">
+              Session Drawer: SID <span style="color: #0284c7;">${s.sid}</span>, Serial# ${s.serial} (${s.username || 'BACKGROUND'})
             </span>
             <span class="session-status-badge ${s.status.toLowerCase()}">${s.status}</span>
-            <span style="font-size: 11px; color: #666;">
+            <span style="font-size: 11px; color: #64748b;">
               Client: ${s.osuser || '-'} @ ${s.machine || '-'} | Program: ${s.program || '-'} | SPID: ${s.spid || info.spid || '-'}
             </span>
           </div>
@@ -540,9 +615,9 @@ class SessionMonitor {
           
           <!-- TAB 1: CURRENT SQL -->
           <div style="display: ${this.currentDetailTab === 'sql' ? 'block' : 'none'};">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px;">
-              <span>SQL ID: <strong style="font-family: var(--font-code); color: #0078d7;">${sqlObj.sqlId || s.sqlId || '-'}</strong></span>
-              <span style="color: #555;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px;">
+              <span>SQL ID: <strong style="font-family: var(--toad-font-code); color: #0284c7;">${sqlObj.sqlId || s.sqlId || '-'}</strong></span>
+              <span style="color: #64748b;">
                 Execuções: <strong>${sqlObj.executions || 1}</strong> | 
                 Buffer Gets: <strong>${(sqlObj.bufferGets || 0).toLocaleString()}</strong> | 
                 Disk Reads: <strong>${(sqlObj.diskReads || 0).toLocaleString()}</strong> | 
@@ -550,7 +625,7 @@ class SessionMonitor {
                 Elapsed: <strong>${sqlObj.elapsedTime ? sqlObj.elapsedTime + 's' : '0.00s'}</strong>
               </span>
             </div>
-            <div style="background: #1e1e1e; color: #38bdf8; border: 1px solid #333; border-radius: 3px; padding: 12px; font-family: var(--font-code); font-size: 11px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; user-select: text;">${this.escapeHtml(sqlText)}</div>
+            <div style="background: #0f172a; color: #38bdf8; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; font-family: var(--toad-font-code); font-size: 11px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; user-select: text;">${this.escapeHtml(sqlText)}</div>
           </div>
 
           <!-- TAB 2: TABLESPACES & TEMP (TOAD PARITY) -->
@@ -560,7 +635,7 @@ class SessionMonitor {
             <div class="ts-cards-summary-row">
               <div class="ts-summary-card">
                 <span class="ts-card-label">Schema Owner</span>
-                <span class="ts-card-value" style="color: #0078d7;">${userTs.username || s.username || 'HR'}</span>
+                <span class="ts-card-value" style="color: #0284c7;">${userTs.username || s.username || 'HR'}</span>
               </div>
               <div class="ts-summary-card">
                 <span class="ts-card-label">Default Tablespace</span>
@@ -579,7 +654,7 @@ class SessionMonitor {
             <!-- Section 1: Session Temp / Sort Usage -->
             <div class="ts-section-title">
               <span>⚡ Session Sort &amp; Temp Segments Allocation (V$SORT_USAGE / V$TEMPSEG_USAGE)</span>
-              <span style="font-size: 10px; font-weight: normal; color: #666;">Temporary Tablespace Sort Extents</span>
+              <span style="font-size: 10px; font-weight: normal; color: #64748b;">Temporary Tablespace Sort Extents</span>
             </div>
             <table class="toad-grid-table">
               <thead>
@@ -595,12 +670,12 @@ class SessionMonitor {
               <tbody>
                 ${tempUsage.length > 0 ? tempUsage.map(t => `
                   <tr>
-                    <td style="font-weight: 700; color: #0078d7;">${t.tablespace}</td>
+                    <td style="font-weight: 700; color: #0284c7;">${t.tablespace}</td>
                     <td><span class="session-status-badge active">${t.segType}</span></td>
                     <td>${t.extents}</td>
                     <td>${t.blocks}</td>
-                    <td style="font-weight: 700; color: #111;">${t.mbUsed} MB</td>
-                    <td style="font-family: var(--font-code); color: #0078d7;">${t.sqlId || '-'}</td>
+                    <td style="font-weight: 700; color: #0f172a;">${t.mbUsed} MB</td>
+                    <td style="font-family: var(--toad-font-code); color: #0284c7;">${t.sqlId || '-'}</td>
                   </tr>
                 `).join('') : `
                   <tr>
@@ -615,7 +690,7 @@ class SessionMonitor {
             <!-- Section 2: User Storage Quotas & Allocations -->
             <div class="ts-section-title">
               <span>📊 User Schema Storage &amp; Quota Consumption (DBA_SEGMENTS)</span>
-              <span style="font-size: 10px; font-weight: normal; color: #666;">Allocated Segments by Schema Owner</span>
+              <span style="font-size: 10px; font-weight: normal; color: #64748b;">Allocated Segments by Schema Owner</span>
             </div>
             <table class="toad-grid-table">
               <thead>
@@ -630,13 +705,13 @@ class SessionMonitor {
                 ${userQuotas.length > 0 ? userQuotas.map(q => `
                   <tr>
                     <td style="font-weight: 700;">${q.tablespace}</td>
-                    <td style="font-weight: 700; color: #0078d7;">${(q.mbUsed || 0).toLocaleString()} MB</td>
+                    <td style="font-weight: 700; color: #0284c7;">${(q.mbUsed || 0).toLocaleString()} MB</td>
                     <td>${q.segmentCount || 0}</td>
                     <td><span class="session-status-badge active">UNLIMITED / OK</span></td>
                   </tr>
                 `).join('') : `
                   <tr>
-                    <td colspan="4" style="padding: 10px; text-align: center; color: #666; font-size: 11px;">
+                    <td colspan="4" style="padding: 10px; text-align: center; color: #64748b; font-size: 11px;">
                       Nenhum segmento físico alocado diretamente para este usuário.
                     </td>
                   </tr>
@@ -647,7 +722,7 @@ class SessionMonitor {
             <!-- Section 3: Database Tablespaces Health & Capacity -->
             <div class="ts-section-title">
               <span>💾 Database Tablespaces Capacity &amp; Storage Utilization (DBA_TABLESPACES)</span>
-              <span style="font-size: 10px; font-weight: normal; color: #666;">Real-time Datafiles &amp; Free Space Monitor</span>
+              <span style="font-size: 10px; font-weight: normal; color: #64748b;">Real-time Datafiles &amp; Free Space Monitor</span>
             </div>
             <table class="toad-grid-table">
               <thead>
@@ -671,9 +746,9 @@ class SessionMonitor {
 
                   return `
                     <tr>
-                      <td style="font-weight: 700; color: #111;">${ts.tablespace}</td>
+                      <td style="font-weight: 700; color: #0f172a;">${ts.tablespace}</td>
                       <td><span class="session-status-badge active">${ts.status}</span></td>
-                      <td style="color: #666;">${ts.contents || 'PERMANENT'}</td>
+                      <td style="color: #64748b;">${ts.contents || 'PERMANENT'}</td>
                       <td style="font-size: 10px;">${ts.extentMgmt || 'LOCAL'}</td>
                       <td style="text-align: right;">${(ts.totalMb || 0).toLocaleString()} MB</td>
                       <td style="text-align: right; font-weight: 600;">${(ts.usedMb || 0).toLocaleString()} MB</td>
@@ -742,13 +817,13 @@ class SessionMonitor {
                 ${locks.length > 0 ? locks.map(lk => `
                   <tr>
                     <td>${lk.owner}</td>
-                    <td style="font-weight: 700; color: #0078d7;">${lk.objectName}</td>
+                    <td style="font-weight: 700; color: #0284c7;">${lk.objectName}</td>
                     <td>${lk.objectType}</td>
                     <td style="color: #b91c1c; font-weight: 700;">${lk.lockMode}</td>
                     <td>${lk.osUser || '-'}</td>
                   </tr>
                 `).join('') : `
-                  <tr><td colspan="5" style="padding: 16px; text-align: center; color: #666; font-size: 11px;">Esta sessão não está retendo locks em objetos no momento.</td></tr>
+                  <tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b; font-size: 11px;">Esta sessão não está retendo locks em objetos no momento.</td></tr>
                 `}
               </tbody>
             </table>
@@ -762,7 +837,7 @@ class SessionMonitor {
               </div>
             ` : `
               <div class="lock-tree-in-tab">
-                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
                   Sessões bloqueadoras raízes e sessões em fila de espera (V$LOCK / V$SESSION):
                 </div>
                 ${blockers.map(b => `
@@ -771,7 +846,7 @@ class SessionMonitor {
                       ${b.blockingSession ? 'ROOT BLOCKER' : 'WAITING ON LOCK'}
                     </span>
                     <span style="font-size: 11px;">
-                      SID: <strong>${b.sid}</strong>, Serial: <strong>${b.serial}</strong> | User: <strong style="color: #0078d7;">${b.username}</strong> | Machine: ${b.machine}
+                      SID: <strong>${b.sid}</strong>, Serial: <strong>${b.serial}</strong> | User: <strong style="color: #0284c7;">${b.username}</strong> | Machine: ${b.machine}
                     </span>
                     <span style="color: #64748b; font-size: 10px; margin-left: auto;">
                       Wait Event: <strong>${b.event || 'enq: TX lock'}</strong>
@@ -798,12 +873,12 @@ class SessionMonitor {
               <tbody>
                 ${openCursors.length > 0 ? openCursors.map(c => `
                   <tr>
-                    <td style="font-family: var(--font-code); color: #0078d7; font-weight: 700;">${c.sqlId || '-'}</td>
+                    <td style="font-family: var(--toad-font-code); color: #0284c7; font-weight: 700;">${c.sqlId || '-'}</td>
                     <td>${c.user || s.username}</td>
-                    <td style="font-family: var(--font-code); font-size: 11px; white-space: pre-wrap; color: #222;">${this.escapeHtml(c.sqlText)}</td>
+                    <td style="font-family: var(--toad-font-code); font-size: 11px; white-space: pre-wrap; color: #0f172a;">${this.escapeHtml(c.sqlText)}</td>
                   </tr>
                 `).join('') : `
-                  <tr><td colspan="3" style="padding: 16px; text-align: center; color: #666; font-size: 11px;">Nenhum cursor aberto registrado em V$OPEN_CURSOR.</td></tr>
+                  <tr><td colspan="3" style="padding: 16px; text-align: center; color: #64748b; font-size: 11px;">Nenhum cursor aberto registrado em V$OPEN_CURSOR.</td></tr>
                 `}
               </tbody>
             </table>
@@ -824,14 +899,14 @@ class SessionMonitor {
               <tbody>
                 ${transactions.length > 0 ? transactions.map(tx => `
                   <tr>
-                    <td style="font-weight: 700; font-family: var(--font-code); color: #0078d7;">${tx.xid}</td>
+                    <td style="font-weight: 700; font-family: var(--toad-font-code); color: #0284c7;">${tx.xid}</td>
                     <td style="font-weight: 700;">${tx.usedUblk || 0} blks</td>
                     <td>${tx.usedUrec || 0} recs</td>
                     <td>${tx.startTime || '-'}</td>
                     <td><span class="session-status-badge active">${tx.status || 'ACTIVE'}</span></td>
                   </tr>
                 `).join('') : `
-                  <tr><td colspan="5" style="padding: 16px; text-align: center; color: #666; font-size: 11px;">Nenhuma transação ativa aberta (V$TRANSACTION) para esta sessão.</td></tr>
+                  <tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b; font-size: 11px;">Nenhuma transação ativa aberta (V$TRANSACTION) para esta sessão.</td></tr>
                 `}
               </tbody>
             </table>
@@ -850,7 +925,7 @@ class SessionMonitor {
               </div>
               <div class="ts-summary-card">
                 <span class="ts-card-label">Physical Reads</span>
-                <span class="ts-card-value" style="color: #0078d7;">${(io.physicalReads || s.physicalReads || 0).toLocaleString()}</span>
+                <span class="ts-card-value" style="color: #0284c7;">${(io.physicalReads || s.physicalReads || 0).toLocaleString()}</span>
               </div>
               <div class="ts-summary-card">
                 <span class="ts-card-label">Block Changes</span>
@@ -868,7 +943,7 @@ class SessionMonitor {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; font-size: 11px;">
               <div class="ts-summary-card"><span class="ts-card-label">SID / Serial#</span><span class="ts-card-value">${s.sid}, ${s.serial}</span></div>
               <div class="ts-summary-card"><span class="ts-card-label">Status</span><span class="ts-card-value">${s.status}</span></div>
-              <div class="ts-summary-card"><span class="ts-card-label">Database Username</span><span class="ts-card-value" style="color: #0078d7;">${s.username || 'BACKGROUND'}</span></div>
+              <div class="ts-summary-card"><span class="ts-card-label">Database Username</span><span class="ts-card-value" style="color: #0284c7;">${s.username || 'BACKGROUND'}</span></div>
               <div class="ts-summary-card"><span class="ts-card-label">OS User</span><span class="ts-card-value">${s.osuser || info.osuser || '-'}</span></div>
               <div class="ts-summary-card"><span class="ts-card-label">Machine / Host</span><span class="ts-card-value">${s.machine || info.machine || '-'}</span></div>
               <div class="ts-summary-card"><span class="ts-card-label">Client Program</span><span class="ts-card-value">${s.program || info.program || '-'}</span></div>
@@ -902,6 +977,7 @@ class SessionMonitor {
           window.TracesApp.notify(`Erro ao finalizar sessão: ${data.error}`, 'error');
         } else {
           window.TracesApp.notify(`Sessão ${sid},${serial} encerrada com sucesso no Oracle.`, 'success');
+          this.detailsCache.delete(sid);
           await this.refresh();
         }
       } catch (e) {
@@ -915,6 +991,7 @@ class SessionMonitor {
     if (idx !== -1) {
       this.sessions.splice(idx, 1);
     }
+    this.detailsCache.delete(sid);
     if (this.selectedSid === sid) {
       this.selectedSid = this.sessions.length > 0 ? this.sessions[0].sid : null;
       this.selectedSerial = this.sessions.length > 0 ? this.sessions[0].serial : null;
