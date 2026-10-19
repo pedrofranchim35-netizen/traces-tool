@@ -1901,8 +1901,13 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
 
   async checkForUpdates() {
     try {
-      const resp = await fetch('/api/update/check');
-      const data = await resp.json();
+      let data;
+      if (window.electronAPI && typeof window.electronAPI.checkUpdate === 'function') {
+        data = await window.electronAPI.checkUpdate();
+      } else {
+        const resp = await fetch('/api/update/check');
+        data = await resp.json();
+      }
 
       const statusBox = document.getElementById('update-status-box');
       const actionContainer = document.getElementById('update-action-container');
@@ -1918,18 +1923,22 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
         if (statusBox) statusBox.innerHTML = `<span style="color:#b45309; font-weight:700; font-size:12px;">🎉 Nova versão disponível no GitHub!</span>`;
         if (detailsBox) {
           detailsBox.innerHTML = `
-            <div>Versão Atual Instalada: <b style="color:#666;">${data.currentCommit}</b></div>
-            <div>Versão Mais Recente (GitHub): <b style="color:#008000;">${data.latestCommit}</b></div>
+            <div>Versão Atual Instalada: <b style="color:#666;">${data.currentVersion || data.currentCommit}</b></div>
+            <div>Versão Mais Recente (GitHub): <b style="color:#008000;">${data.latestVersion || data.latestCommit}</b></div>
             <div style="margin-top: 4px; color:#333;">Commit: <i>"${data.commitMessage}"</i></div>
             <div style="font-size:10px; color:#888;">Data: ${data.commitDate}</div>
           `;
+        }
+        if (applyBtn) {
+          applyBtn.textContent = '⬇️ Atualizar Automaticamente pelo GitHub';
+          applyBtn.style.background = '#008000';
         }
         if (actionContainer) actionContainer.style.display = 'flex';
       } else {
         if (statusBox) statusBox.innerHTML = `<span style="color:#008000; font-weight:700; font-size:12px;">✔ O seu aplicativo já está atualizado na versão mais recente!</span>`;
         if (detailsBox) {
           detailsBox.innerHTML = `
-            <div>Versão Atual (Commit): <b style="color:#0078d7;">${data.currentCommit}</b></div>
+            <div>Versão Atual: <b style="color:#0078d7;">${data.currentVersion || data.currentCommit}</b></div>
             <div style="margin-top: 4px; color:#555;">Último commit no GitHub: <i>"${data.commitMessage}"</i></div>
           `;
         }
@@ -1941,7 +1950,7 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
       }
     } catch (e) {
       const statusBox = document.getElementById('update-status-box');
-      if (statusBox) statusBox.innerHTML = `<span style="color:#c00000;">Erro ao consultar servidor local: ${e.message}</span>`;
+      if (statusBox) statusBox.innerHTML = `<span style="color:#c00000;">Erro ao verificar atualizações: ${e.message}</span>`;
     }
   }
 
@@ -1950,13 +1959,35 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
     const statusBox = document.getElementById('update-status-box');
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '⏳ Baixando e aplicando atualização do Git...';
+      btn.textContent = '⏳ Baixando e aplicando atualização...';
     }
     if (statusBox) {
-      statusBox.innerHTML = `<span style="color:#0078d7; font-weight:700;">Baixando e sincronizando arquivos atualizados do GitHub...</span>`;
+      statusBox.innerHTML = `<span style="color:#0078d7; font-weight:700;">Iniciando atualização automática via GitHub...</span>`;
     }
 
     try {
+      if (window.electronAPI && typeof window.electronAPI.applyUpdate === 'function') {
+        window.electronAPI.onUpdateProgress((prog) => {
+          if (statusBox) {
+            statusBox.innerHTML = `<span style="color:#0078d7; font-weight:700;">${prog.text || 'Atualizando...'}</span>`;
+          }
+        });
+
+        const res = await window.electronAPI.applyUpdate();
+        if (res.success) {
+          if (statusBox) statusBox.innerHTML = `<span style="color:#008000; font-weight:700;">✔ Aplicativo atualizado com sucesso! Reiniciando...</span>`;
+          window.TracesApp.notify('Aplicativo atualizado com sucesso! Reiniciando...', 'success');
+        } else {
+          if (statusBox) statusBox.innerHTML = `<span style="color:#c00000; font-weight:700;">Erro: ${res.error || res.message}</span>`;
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Tentar Novamente';
+          }
+        }
+        return;
+      }
+
+      // Fallback para quando executado via navegador/servidor HTTP
       const resp = await fetch('/api/update/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const res = await resp.json();
 

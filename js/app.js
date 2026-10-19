@@ -384,4 +384,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
 window.addEventListener('DOMContentLoaded', () => {
   window.TracesApp = new TracesApp();
+
+  if (window.electronAPI && typeof window.electronAPI.onUpdateAvailable === 'function') {
+    window.electronAPI.onUpdateAvailable((info) => {
+      window.TracesApp.notify(`🎉 Nova atualização disponível no GitHub: "${info.commitMessage}". Clique em [Atualizar App] no topo para aplicar.`, 'info');
+    });
+  }
 });
+
