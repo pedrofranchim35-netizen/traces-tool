@@ -11,7 +11,7 @@ Unicode True
 
 ; Informações do Produto
 !define PRODUCT_NAME "TRACES Toad for Oracle"
-!define PRODUCT_VERSION "2026.2.0"
+!define PRODUCT_VERSION "2026.3.0"
 !define PRODUCT_PUBLISHER "TRACES Group"
 !define PRODUCT_WEB_SITE "https://github.com/pedrofranchim35-netizen/traces-tool"
 !define PRODUCT_DIR_REGKEY "Software\TracesToad"

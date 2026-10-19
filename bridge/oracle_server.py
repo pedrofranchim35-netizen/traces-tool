@@ -148,6 +148,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_sessions(parsed.query)
         elif parsed.path == "/api/session-details":
             self.handle_get_session_details(parsed.query)
+        elif parsed.path == "/api/instance-overview":
+            self.handle_get_instance_overview()
         elif parsed.path == "/api/tablespaces":
             self.handle_get_tablespaces()
         elif parsed.path == "/api/tablespaces-details":
@@ -1468,6 +1470,282 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     pass
 
                 self.send_api_response(details)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_get_instance_overview(self):
+        """Returns instance-wide diagnostic data across all sessions: Locks, Waits, Top SQL, Transactions, I/O, Tablespaces"""
+        conn = ACTIVE_CONNECTION.get("conn")
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+
+        overview = {
+            "allLocks": [],
+            "allWaits": [],
+            "activeSessionWaits": [],
+            "allTopSql": [],
+            "allTransactions": [],
+            "allTopIo": [],
+            "allCursors": [],
+            "databaseTablespaces": [],
+            "allTempSortUsage": []
+        }
+
+        try:
+            with conn.cursor() as cur:
+                # 1. All Database Locks & Locked Objects
+                try:
+                    cur.execute("""
+                        SELECT s.sid, s.serial#, NVL(s.username, 'BACKGROUND') AS username,
+                               s.osuser, s.machine, s.program,
+                               o.owner, o.object_name, o.object_type,
+                               lo.locked_mode,
+                               CASE lo.locked_mode
+                                   WHEN 1 THEN 'Null'
+                                   WHEN 2 THEN 'Sub-Share (SS)'
+                                   WHEN 3 THEN 'Sub-Exclusive (SX)'
+                                   WHEN 4 THEN 'Share (S)'
+                                   WHEN 5 THEN 'Share-Sub-Exclusive (SSX)'
+                                   WHEN 6 THEN 'Exclusive (X)'
+                                   ELSE TO_CHAR(lo.locked_mode)
+                               END AS lock_mode_desc
+                        FROM v$locked_object lo
+                        JOIN all_objects o ON lo.object_id = o.object_id
+                        JOIN v$session s ON lo.session_id = s.sid
+                        ORDER BY s.sid
+                    """)
+                    for r in cur.fetchall():
+                        overview["allLocks"].append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "osuser": r[3] or "",
+                            "machine": r[4] or "",
+                            "program": r[5] or "",
+                            "owner": r[6] or "",
+                            "objectName": r[7] or "",
+                            "objectType": r[8] or "",
+                            "lockMode": r[10] or str(r[9])
+                        })
+                except Exception:
+                    pass
+
+                # 2. Top Non-Idle Wait Events in Instance
+                try:
+                    cur.execute("""
+                        SELECT event, wait_class, total_waits,
+                               ROUND(time_waited_micro / 1000, 1) AS time_waited_ms,
+                               ROUND((time_waited_micro / 1000) / NULLIF(total_waits, 0), 2) AS avg_wait_ms
+                        FROM v$system_event
+                        WHERE wait_class != 'Idle'
+                        ORDER BY time_waited_micro DESC
+                    """)
+                    for r in cur.fetchmany(35):
+                        overview["allWaits"].append({
+                            "event": r[0],
+                            "waitClass": r[1],
+                            "totalWaits": r[2],
+                            "timeWaitedMs": float(r[3] or 0),
+                            "avgWaitMs": float(r[4] or 0)
+                        })
+                except Exception:
+                    pass
+
+                # 3. Active Session Waits
+                try:
+                    cur.execute("""
+                        SELECT w.sid, s.serial#, NVL(s.username, 'BACKGROUND') AS username,
+                               s.osuser, s.machine, s.program,
+                               w.event, w.wait_time, w.seconds_in_wait, w.state,
+                               w.p1text, w.p1, w.p2text, w.p2
+                        FROM v$session_wait w
+                        JOIN v$session s ON w.sid = s.sid
+                        WHERE w.wait_class != 'Idle' AND s.type != 'BACKGROUND'
+                        ORDER BY w.seconds_in_wait DESC
+                    """)
+                    for r in cur.fetchmany(35):
+                        overview["activeSessionWaits"].append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "osuser": r[3] or "",
+                            "machine": r[4] or "",
+                            "program": r[5] or "",
+                            "event": r[6],
+                            "waitTime": r[7],
+                            "secondsInWait": r[8],
+                            "state": r[9],
+                            "p1Text": r[10],
+                            "p1": r[11],
+                            "p2Text": r[12],
+                            "p2": r[13]
+                        })
+                except Exception:
+                    pass
+
+                # 4. Top SQL Statements by Buffer Gets & Elapsed Time
+                try:
+                    cur.execute("""
+                        SELECT sql_id, parsing_schema_name, executions, buffer_gets, disk_reads,
+                               ROUND(cpu_time / 1000000, 2) AS cpu_sec,
+                               ROUND(elapsed_time / 1000000, 2) AS elapsed_sec,
+                               ROUND(buffer_gets / NULLIF(executions, 0), 1) AS gets_per_exec,
+                               SUBSTR(sql_text, 1, 400) AS sql_text
+                        FROM v$sql
+                        WHERE executions > 0
+                        ORDER BY buffer_gets DESC
+                    """)
+                    for r in cur.fetchmany(35):
+                        overview["allTopSql"].append({
+                            "sqlId": r[0],
+                            "schema": r[1] or "SYS",
+                            "executions": r[2] or 1,
+                            "bufferGets": r[3] or 0,
+                            "diskReads": r[4] or 0,
+                            "cpuSec": float(r[5] or 0),
+                            "elapsedSec": float(r[6] or 0),
+                            "getsPerExec": float(r[7] or 0),
+                            "sqlText": r[8] or ""
+                        })
+                except Exception:
+                    pass
+
+                # 5. All Active Transactions (V$TRANSACTION)
+                try:
+                    cur.execute("""
+                        SELECT s.sid, s.serial#, NVL(s.username, 'BACKGROUND') AS username,
+                               s.osuser, s.machine,
+                               t.xidusn || '.' || t.ubafil || '.' || t.ubablk AS xid,
+                               t.used_ublk, t.used_urec, t.start_time, t.status
+                        FROM v$transaction t
+                        JOIN v$session s ON t.addr = s.taddr
+                        ORDER BY t.start_time
+                    """)
+                    for r in cur.fetchall():
+                        overview["allTransactions"].append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "osuser": r[3] or "",
+                            "machine": r[4] or "",
+                            "xid": r[5],
+                            "usedUblk": r[6],
+                            "usedUrec": r[7],
+                            "startTime": str(r[8]),
+                            "status": r[9]
+                        })
+                except Exception:
+                    pass
+
+                # 6. Top I/O & PGA Consumers
+                try:
+                    cur.execute("""
+                        SELECT s.sid, s.serial#, NVL(s.username, 'BACKGROUND') AS username,
+                               s.program, s.osuser, s.machine,
+                               io.block_gets, io.consistent_gets, io.physical_reads, io.block_changes,
+                               ROUND(NVL(p.pga_alloc_mem, 0) / (1024 * 1024), 2) AS pga_mb
+                        FROM v$sess_io io
+                        JOIN v$session s ON io.sid = s.sid
+                        LEFT JOIN v$process p ON s.paddr = p.addr
+                        WHERE s.type != 'BACKGROUND'
+                        ORDER BY (io.physical_reads + io.consistent_gets) DESC
+                    """)
+                    for r in cur.fetchmany(35):
+                        overview["allTopIo"].append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "program": r[3] or "",
+                            "osuser": r[4] or "",
+                            "machine": r[5] or "",
+                            "blockGets": r[6] or 0,
+                            "consistentGets": r[7] or 0,
+                            "physicalReads": r[8] or 0,
+                            "blockChanges": r[9] or 0,
+                            "pgaMb": float(r[10] or 0)
+                        })
+                except Exception:
+                    pass
+
+                # 7. Open Cursors across Sessions
+                try:
+                    cur.execute("""
+                        SELECT c.sid, NVL(s.username, c.user_name) AS username, c.sql_id, c.sql_text
+                        FROM v$open_cursor c
+                        JOIN v$session s ON c.sid = s.sid
+                        WHERE s.type != 'BACKGROUND' AND ROWNUM <= 60
+                    """)
+                    for r in cur.fetchall():
+                        overview["allCursors"].append({
+                            "sid": r[0],
+                            "user": r[1],
+                            "sqlId": r[2],
+                            "sqlText": r[3] or ""
+                        })
+                except Exception:
+                    pass
+
+                # 8. All Tablespaces Overview
+                try:
+                    cur.execute("""
+                        SELECT t.tablespace_name, t.status, t.contents, t.extent_management,
+                               NVL(ROUND(df.bytes / (1024*1024), 2), 0) AS total_mb,
+                               NVL(ROUND((df.bytes - NVL(fs.bytes, 0)) / (1024*1024), 2), 0) AS used_mb,
+                               NVL(ROUND(fs.bytes / (1024*1024), 2), 0) AS free_mb,
+                               ROUND(NVL((df.bytes - NVL(fs.bytes, 0)) / NULLIF(df.bytes, 0) * 100, 0), 1) AS pct_used,
+                               NVL(df.df_count, 1) AS datafiles_count
+                        FROM dba_tablespaces t
+                        LEFT JOIN (
+                            SELECT tablespace_name, SUM(bytes) AS bytes, COUNT(*) AS df_count FROM dba_data_files GROUP BY tablespace_name
+                            UNION ALL
+                            SELECT tablespace_name, SUM(bytes) AS bytes, COUNT(*) AS df_count FROM dba_temp_files GROUP BY tablespace_name
+                        ) df ON t.tablespace_name = df.tablespace_name
+                        LEFT JOIN (
+                            SELECT tablespace_name, SUM(bytes) AS bytes FROM dba_free_space GROUP BY tablespace_name
+                        ) fs ON t.tablespace_name = fs.tablespace_name
+                        ORDER BY t.tablespace_name
+                    """)
+                    for r in cur.fetchall():
+                        overview["databaseTablespaces"].append({
+                            "tablespace": r[0],
+                            "status": r[1],
+                            "contents": r[2],
+                            "extentMgmt": r[3],
+                            "totalMb": float(r[4] or 0),
+                            "usedMb": float(r[5] or 0),
+                            "freeMb": float(r[6] or 0),
+                            "pctUsed": float(r[7] or 0),
+                            "datafiles": int(r[8] or 1)
+                        })
+                except Exception:
+                    pass
+
+                # 9. All Temp Sort Usage
+                try:
+                    cur.execute("""
+                        SELECT s.sid, s.username, NVL(t.tablespace, 'TEMP') AS tablespace,
+                               NVL(t.segtype, 'SORT') AS segtype, t.extents, t.blocks,
+                               ROUND((t.blocks * 8192) / (1024 * 1024), 2) AS mb_used, t.sql_id
+                        FROM v$sort_usage t
+                        JOIN v$session s ON t.session_addr = s.saddr
+                        ORDER BY mb_used DESC
+                    """)
+                    for r in cur.fetchall():
+                        overview["allTempSortUsage"].append({
+                            "sid": r[0],
+                            "username": r[1],
+                            "tablespace": r[2],
+                            "segType": r[3],
+                            "extents": r[4],
+                            "blocks": r[5],
+                            "mbUsed": float(r[6] or 0),
+                            "sqlId": r[7] or ""
+                        })
+                except Exception:
+                    pass
+
+            self.send_api_response(overview)
         except Exception as e:
             self.send_api_response({"error": str(e)}, status=400)
 
