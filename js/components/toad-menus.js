@@ -273,6 +273,8 @@ class ToadMenus {
         { label: 'Keyboard Shortcuts Cheatsheet', icon: '⌨', shortcut: '', action: () => window.TracesApp.toadModals.openShortcutsCheatsheet() },
         { separator: true },
         { label: 'Check for Updates from GitHub...', icon: '🔄', shortcut: '', action: () => window.TracesApp.toadModals.openUpdateDialog() },
+        { label: 'Baixar Instalador & Atualizador Windows (.exe)', icon: '💾', shortcut: '', action: () => { window.location.href = 'TracesToad-Setup.exe'; } },
+        { label: 'Baixar Executável Portátil (TracesToad.exe)', icon: '⚡', shortcut: '', action: () => { window.location.href = 'TracesToad.exe'; } },
         { separator: true },
         { label: 'About Toad for Oracle', icon: 'ℹ', shortcut: '', action: () => window.TracesApp.toadModals.openAboutDialog() }
       ]

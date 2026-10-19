@@ -1870,8 +1870,23 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
           <div id="update-details-box" style="font-size: 11px; background: #fff; border: 1px solid #bfbfbf; padding: 8px; border-radius: 3px; line-height: 1.5;">
           </div>
           <button id="btn-apply-update" class="btn btn-primary" style="height: 30px; font-weight: 700; background: #008000;" onclick="window.TracesApp.toadModals.applyUpdateNow();">
-            ⬇️ Baixar e Atualizar Aplicativo Agora
+            ⬇️ Baixar e Atualizar Aplicativo Agora (GitHub)
           </button>
+        </div>
+
+        <div style="margin-top: 6px; padding-top: 10px; border-top: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-weight: 700; color: #374151;">Instalador e Executável Windows (.EXE):</div>
+          <div style="font-size: 11px; color: #6b7280;">O instalador oficial também atualiza instalações existentes sem perder nenhum workspace ou conexão:</div>
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <a href="TracesToad-Setup.exe" download="TracesToad-Setup.exe" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: #0078d7; color: white;">
+              <span>💾</span>
+              <span style="font-weight: 600;">Baixar Instalador / Atualizador (.exe)</span>
+            </a>
+            <a href="TracesToad.exe" download="TracesToad.exe" class="btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db;">
+              <span>⚡</span>
+              <span style="font-weight: 600;">Executável Portátil (TracesToad.exe)</span>
+            </a>
+          </div>
         </div>
       </div>
     `;
