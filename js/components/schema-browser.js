@@ -27,6 +27,8 @@ class SchemaBrowser {
     this.detailTitle = document.getElementById('browser-detail-title');
     this.detailTypePill = document.getElementById('browser-detail-type');
     this.detailTabs = document.querySelectorAll('.detail-tab');
+    this.categoryDropdown = document.getElementById('browser-category-dropdown');
+    this.isCategoryDrawerOpen = true;
   }
 
   bindEvents() {
@@ -229,9 +231,23 @@ class SchemaBrowser {
     `).join('');
   }
 
+  toggleCategoryDrawer() {
+    if (!this.categoryScroller) return;
+    this.isCategoryDrawerOpen = !this.isCategoryDrawerOpen;
+    this.categoryScroller.classList.toggle('drawer-hidden', !this.isCategoryDrawerOpen);
+    const btn = document.getElementById('btn-toggle-cat-drawer');
+    if (btn) {
+      btn.style.background = this.isCategoryDrawerOpen ? '#0284c7' : '';
+      btn.style.color = this.isCategoryDrawerOpen ? '#ffffff' : '';
+    }
+  }
+
   selectCategory(categoryKey) {
     this.currentCategory = categoryKey;
     this.selectedObject = null;
+    if (this.categoryDropdown && this.categoryDropdown.value !== categoryKey) {
+      this.categoryDropdown.value = categoryKey;
+    }
     this.renderCategoryPills();
     this.renderObjectList();
 

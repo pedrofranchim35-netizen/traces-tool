@@ -46,15 +46,23 @@
   letter-spacing: 0.3px;
 }
 
-/* Object Categories Scroller / Tab Strip */
+/* Object Categories Scroller / Drawer (Zero Horizontal Scrolling) */
 .category-tabs-scroller {
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* No horizontal scrollbar! Fits in drawer cleanly */
   background: #e2e8f0;
   border-bottom: 1px solid #cbd5e1;
-  overflow-x: auto;
-  padding: 3px 4px 0 4px;
-  gap: 2px;
+  padding: 4px;
+  gap: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: all var(--transition-fast);
+}
+
+.category-tabs-scroller.drawer-hidden {
+  display: none !important;
 }
 
 .category-tab-pill {

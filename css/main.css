@@ -212,21 +212,22 @@
    TOAD MDI WINDOW TABS (DIRECTLY UNDER TOOLBAR)
    -------------------------------------------------------------------------- */
 .toad-window-tabs-bar {
-  height: 27px;
+  min-height: 27px;
   background: #e4e4e4;
   border-bottom: 1px solid var(--toad-border-gray);
   display: flex;
   align-items: flex-end;
   padding: 0 6px;
   gap: 2px;
+  flex-wrap: wrap;
 }
 
 .toad-window-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 24px;
-  padding: 0 12px;
+  padding: 0 8px;
   background: #cbd5e1;
   border: 1px solid #94a3b8;
   border-bottom: none;

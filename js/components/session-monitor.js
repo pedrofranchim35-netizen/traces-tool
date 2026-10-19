@@ -575,6 +575,21 @@ class SessionMonitor {
     this.renderDetail();
   }
 
+  toggleDrawerState(state) {
+    const split = document.querySelector('.session-body-split');
+    if (!split) return;
+    this.drawerState = state;
+    split.classList.remove('drawer-minimized', 'drawer-maximized');
+    if (state === 'minimize') {
+      split.classList.add('drawer-minimized');
+    } else if (state === 'maximize') {
+      split.classList.add('drawer-maximized');
+    } else {
+      const tableWrapper = split.querySelector('.session-table-wrapper');
+      if (tableWrapper) tableWrapper.style.flex = '';
+    }
+  }
+
   getMockInstanceOverview() {
     const dbTablespaces = (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces.map(ts => ({
       tablespace: ts.name,
@@ -712,6 +727,11 @@ class SessionMonitor {
               <button class="btn" style="height: 22px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.sessionMonitor.refresh()">
                 🔄 Atualizar Todos
               </button>
+              <div style="display: flex; align-items: center; gap: 2px; margin-left: 6px; border-left: 1px solid #cbd5e1; padding-left: 6px;">
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; font-weight: bold;" onclick="window.TracesApp.sessionMonitor.toggleDrawerState('minimize')" title="Minimizar Gaveta (expandir tabela de sessões)">⚊</button>
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.toggleDrawerState('normal')" title="Restaurar Divisão 50/50">🗗</button>
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.toggleDrawerState('maximize')" title="Maximizar Gaveta">🗖</button>
+              </div>
             </div>
           ` : `
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -730,6 +750,11 @@ class SessionMonitor {
               <button class="btn" style="height: 22px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.sessionMonitor.loadSessionDetails(${s.sid})">
                 🔄 Refresh Details
               </button>
+              <div style="display: flex; align-items: center; gap: 2px; margin-left: 6px; border-left: 1px solid #cbd5e1; padding-left: 6px;">
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; font-weight: bold;" onclick="window.TracesApp.sessionMonitor.toggleDrawerState('minimize')" title="Minimizar Gaveta (expandir tabela de sessões)">⚊</button>
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.toggleDrawerState('normal')" title="Restaurar Divisão 50/50">🗗</button>
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.toggleDrawerState('maximize')" title="Maximizar Gaveta">🗖</button>
+              </div>
             </div>
           `}
         </div>

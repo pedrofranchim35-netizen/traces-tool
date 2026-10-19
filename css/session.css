@@ -273,8 +273,31 @@
   border-bottom: 1px solid #cbd5e1;
   padding: 3px 6px 0 6px;
   gap: 3px;
-  overflow-x: auto;
+  flex-wrap: wrap; /* Zero horizontal scrolling - tabs wrap cleanly */
   flex-shrink: 0;
+}
+
+/* Drawer State Controls (Minimizar / Restaurar / Maximizar) */
+.session-body-split.drawer-minimized .session-table-wrapper {
+  flex: 1 1 100% !important;
+}
+.session-body-split.drawer-minimized #session-detail-inspector {
+  flex: 0 0 32px !important;
+  min-height: 32px !important;
+  overflow: hidden !important;
+}
+.session-body-split.drawer-minimized .toad-scope-bar,
+.session-body-split.drawer-minimized .toad-drawer-tabs-strip,
+.session-body-split.drawer-minimized .toad-drawer-content {
+  display: none !important;
+}
+
+.session-body-split.drawer-maximized .session-table-wrapper {
+  flex: 0 0 110px !important;
+  min-height: 110px !important;
+}
+.session-body-split.drawer-maximized #session-detail-inspector {
+  flex: 1 1 calc(100% - 115px) !important;
 }
 
 .toad-drawer-tab-btn {

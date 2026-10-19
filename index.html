@@ -445,9 +445,31 @@
                   🔄
                 </button>
               </div>
+
+              <!-- TOAD Object Type Dropdown Selector (Zero Horizontal Scrolling) -->
+              <div class="schema-select-row" style="margin-top: 4px;">
+                <span class="schema-badge">Objeto:</span>
+                <select class="toad-conn-combobox" id="browser-category-dropdown" style="flex: 1; height: 22px; margin: 0; font-weight: 600;" onchange="window.TracesApp.schemaBrowser.selectCategory(this.value)">
+                  <option value="tables" selected>📋 Tables (Tabelas)</option>
+                  <option value="views">👁 Views (Visões)</option>
+                  <option value="packages">📦 Packages (Pacotes)</option>
+                  <option value="procedures">⚙ Procedures (Procedimentos)</option>
+                  <option value="functions">ƒ Functions (Funções)</option>
+                  <option value="sequences">🔢 Sequences (Sequências)</option>
+                  <option value="synonyms">🔗 Synonyms (Sinônimos)</option>
+                  <option value="triggers">⚡ Triggers (Gatilhos)</option>
+                  <option value="types">🏷 Types (Tipos)</option>
+                  <option value="indexes">🗂 Indexes (Índices)</option>
+                  <option value="tablespaces">💾 Tablespaces (Todas)</option>
+                  <option value="users">👥 Users (Todos os Usuários)</option>
+                </select>
+                <button class="btn" id="btn-toggle-cat-drawer" style="height: 22px; padding: 0 6px;" title="Expandir/Recolher Gaveta de Categorias" onclick="window.TracesApp.schemaBrowser.toggleCategoryDrawer()">
+                  📑
+                </button>
+              </div>
             </div>
 
-            <!-- Categories Scroller -->
+            <!-- Categories Scroller / Drawer -->
             <div class="category-tabs-scroller" id="browser-category-pills"></div>
 
             <!-- Filter Box -->
