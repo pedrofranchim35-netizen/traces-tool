@@ -17,8 +17,8 @@
    -------------------------------------------------------------------------- */
 .toad-menubar {
   height: 26px;
-  background: var(--toad-chrome-bg);
-  border-bottom: 1px solid var(--toad-toolbar-border);
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   padding: 0 4px;
@@ -32,7 +32,7 @@
   display: inline-flex;
   align-items: center;
   padding: 0 6px 0 2px;
-  border-right: 1px solid #dcdcdc;
+  border-right: 1px solid #e2e8f0;
   margin-right: 4px;
 }
 
@@ -46,9 +46,10 @@
   padding: 2px 7px;
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: 2px;
-  color: #222;
+  border-radius: 3px;
+  color: #1e293b;
   position: relative;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .toad-menu-item:hover {
@@ -71,14 +72,15 @@
   align-items: center;
   gap: 5px;
   padding: 2px 8px;
-  border-radius: 3px;
-  background: rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 4px;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.1);
   transition: all 150ms ease;
 }
 
 .toad-conn-pill:hover {
-  background: rgba(0,0,0,0.09);
+  background: rgba(0,0,0,0.08);
+  border-color: rgba(0,0,0,0.16);
 }
 
 .toad-conn-indicator {
@@ -87,25 +89,29 @@
   border-radius: 50%;
   background: #9ca3af;
   display: inline-block;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
 }
 
 .toad-menubar-action-btn {
   height: 20px;
   font-size: 10.5px;
-  padding: 0 6px;
+  padding: 0 7px;
   background: #e0f2fe;
   color: #0369a1;
   border: 1px solid #7dd3fc;
-  border-radius: 2px;
+  border-radius: 3px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   font-weight: 600;
+  transition: all 120ms ease;
 }
 
 .toad-menubar-action-btn:hover {
   background: #bae6fd;
+  border-color: #38bdf8;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.15);
 }
 
 /* --------------------------------------------------------------------------
@@ -114,9 +120,9 @@
 .toad-toolbars-container {
   display: flex;
   flex-direction: column;
-  background: var(--toad-toolbar-bg);
-  border-bottom: 1px solid var(--toad-border-gray);
-  box-shadow: inset 0 1px 0 #fff;
+  background: linear-gradient(180deg, #fcfdfe 0%, #edf2f7 100%);
+  border-bottom: 1px solid #cbd5e1;
+  box-shadow: inset 0 1px 0 #ffffff;
 }
 
 .toad-toolbar-row {
@@ -125,7 +131,7 @@
   align-items: center;
   padding: 0 6px;
   gap: 2px;
-  border-bottom: 1px solid #e2e2e2;
+  border-bottom: 1px solid #e2e8f0;
   position: relative;
 }
 
@@ -135,9 +141,10 @@
 
 /* Toolbar Drag Grip Handle */
 .toolbar-grip {
-  width: 6px;
-  height: 20px;
-  border-left: 2px dotted #a0a0a0;
+  width: 7px;
+  height: 18px;
+  border-left: 2px dotted #94a3b8;
+  border-right: 2px dotted #e2e8f0;
   margin-right: 4px;
 }
 
@@ -149,34 +156,36 @@
   padding: 0 6px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 2px;
-  color: #333333;
+  border-radius: 3px;
+  color: #334155;
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 120ms ease;
 }
 
 .toad-btn:hover {
-  background: #fdfdfd;
-  border-color: #b5b5b5;
+  background: #ffffff;
+  border-color: #cbd5e1;
   box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 
 .toad-btn:active {
-  background: #e5e5e5;
-  border-color: #888888;
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
 }
 
 .toad-btn.btn-commit {
-  color: #008000;
+  color: #16a34a;
   font-weight: 600;
 }
 .toad-btn.btn-rollback {
-  color: #c00000;
+  color: #dc2626;
   font-weight: 600;
 }
 .toad-btn.btn-run-sql {
-  color: #008000;
+  color: #16a34a;
   font-weight: 700;
 }
 
@@ -192,7 +201,7 @@
 .toad-separator {
   width: 1px;
   height: 18px;
-  background: #c8c8c8;
+  background: #cbd5e1;
   margin: 0 4px;
 }
 
@@ -202,14 +211,20 @@
   padding: 0 8px;
   background: #ffffff;
   border: 1px solid #7f9db9;
-  border-radius: 2px;
+  border-radius: 3px;
   font-size: 11px;
   font-family: var(--toad-font-ui);
-  color: #000;
+  color: #0f172a;
   outline: none;
   font-weight: 600;
   margin: 0 4px;
   cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.toad-conn-combobox:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
 }
 
 /* --------------------------------------------------------------------------
@@ -217,8 +232,8 @@
    -------------------------------------------------------------------------- */
 .toad-window-tabs-bar {
   height: 27px;
-  background: #e4e4e4;
-  border-bottom: 1px solid var(--toad-border-gray);
+  background: #e2e8f0;
+  border-bottom: 1px solid #cbd5e1;
   display: flex;
   align-items: flex-end;
   padding: 0 6px;
@@ -231,30 +246,32 @@
   gap: 6px;
   height: 24px;
   padding: 0 12px;
-  background: #d8d8d8;
-  border: 1px solid #ababab;
+  background: #dbe4ee;
+  border: 1px solid #cbd5e1;
   border-bottom: none;
-  border-radius: 3px 3px 0 0;
+  border-radius: 4px 4px 0 0;
   font-size: 11px;
-  color: #444;
+  color: #475569;
   cursor: pointer;
   margin-bottom: -1px;
   position: relative;
+  transition: all 120ms ease;
 }
 
 .toad-window-tab:hover {
-  background: #eaeaea;
-  color: #000;
+  background: #edf2f7;
+  color: #0f172a;
 }
 
 .toad-window-tab.active {
   background: #ffffff;
-  border-color: #8c8c8c;
-  border-bottom: 1px solid #ffffff;
-  color: #000;
+  border-top: 2px solid #0284c7;
+  border-color: #cbd5e1 #cbd5e1 #ffffff #cbd5e1;
+  color: #0f172a;
   font-weight: 600;
   height: 25px;
   z-index: 2;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.05);
 }
 
 /* --------------------------------------------------------------------------
@@ -275,6 +292,7 @@
   height: 100%;
   flex-direction: column;
   overflow: hidden;
+  contain: content;
 }
 
 .workspace-view.active {
@@ -286,21 +304,22 @@
    -------------------------------------------------------------------------- */
 .toad-statusbar {
   height: 24px;
-  background: var(--toad-chrome-bg);
-  border-top: 1px solid #bfbfbf;
+  background: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
+  border-top: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   padding: 0 4px;
   gap: 3px;
   font-size: 11px;
-  color: #222;
+  color: #334155;
 }
 
 .status-cell {
   height: 18px;
   background: #ffffff;
-  border: 1px solid;
-  border-color: #888 #fff #fff #888;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
   display: flex;
   align-items: center;
   padding: 0 6px;
@@ -311,11 +330,12 @@
 
 .status-cell.cell-tx {
   font-weight: 600;
-  color: #008000;
+  color: #16a34a;
 }
 
 .status-cell.cell-tx.active {
-  color: #c00000;
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .status-cell.cell-grow {

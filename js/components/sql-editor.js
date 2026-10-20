@@ -76,8 +76,7 @@ END;`
     if (this.textarea) {
       this.textarea.addEventListener('input', () => {
         this.saveActiveTabContent();
-        this.updateHighlighting();
-        this.updateGutter();
+        this.scheduleGutterUpdate();
         this.updateCursorPosition();
       });
 
@@ -203,12 +202,25 @@ END;`
     if (!tab) return;
 
     this.textarea.value = tab.content;
+    this._lastLineCount = null;
     this.updateHighlighting();
     this.updateGutter();
   }
 
+  scheduleGutterUpdate() {
+    if (this._rafGutter) cancelAnimationFrame(this._rafGutter);
+    this._rafGutter = requestAnimationFrame(() => {
+      this.updateGutter();
+      this.updateHighlighting();
+    });
+  }
+
   updateGutter() {
+    if (!this.gutterEl || !this.textarea) return;
     const lineCount = this.textarea.value.split('\n').length;
+    if (this._lastLineCount === lineCount) return;
+    this._lastLineCount = lineCount;
+
     let html = '';
     for (let i = 1; i <= lineCount; i++) {
       html += `<div class="gutter-line">${i}</div>`;

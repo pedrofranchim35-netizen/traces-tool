@@ -68,13 +68,17 @@ class SchemaBrowser {
     }
 
     if (this.searchInput) {
+      let searchDebounceTimer = null;
       this.searchInput.addEventListener('input', (e) => {
-        this.searchQuery = e.target.value.toLowerCase().trim();
-        if (this.viewMode === 'tree') {
-          this.renderTreeView();
-        } else {
-          this.renderObjectList();
-        }
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+          this.searchQuery = e.target.value.toLowerCase().trim();
+          if (this.viewMode === 'tree') {
+            this.renderTreeView();
+          } else {
+            this.renderObjectList();
+          }
+        }, 120);
       });
     }
 

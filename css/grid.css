@@ -58,11 +58,18 @@
   align-items: center;
   gap: 4px;
   background: #ffffff;
-  border: 1px solid #7f9db9;
-  height: 20px;
-  padding: 0 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  height: 22px;
+  padding: 0 6px;
   margin-left: 8px;
   width: 220px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.grid-filter-box:focus-within {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
 }
 
 .grid-filter-box input {
@@ -72,7 +79,7 @@
   font-family: var(--toad-font-ui);
   outline: none;
   width: 100%;
-  color: #000;
+  color: #0f172a;
 }
 
 .grid-actions-right {
@@ -80,7 +87,7 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: #333;
+  color: #334155;
 }
 
 /* Table Area */
@@ -88,13 +95,14 @@
   flex: 1;
   overflow: auto;
   background: #ffffff;
+  contain: content;
 }
 
 .oracle-data-table {
   border-collapse: collapse;
   width: 100%;
   font-family: var(--toad-font-code);
-  font-size: 11px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -105,20 +113,22 @@
 }
 
 .oracle-data-table th {
-  background: #ececec;
-  color: #000000;
+  background: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
+  color: #334155;
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 5px 8px;
   text-align: left;
-  border-right: 1px solid #bfbfbf;
-  border-bottom: 2px solid #a6a6a6;
+  border-right: 1px solid #cbd5e1;
+  border-bottom: 2px solid #cbd5e1;
   border-top: 1px solid #ffffff;
   cursor: pointer;
   user-select: none;
+  transition: background 100ms ease;
 }
 
 .oracle-data-table th:hover {
-  background: #e0e0e0;
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 .th-content {
@@ -130,53 +140,63 @@
 
 .sort-icon {
   font-size: 9px;
-  color: #0000ff;
+  color: #0284c7;
 }
 
 .oracle-data-table td {
   padding: 3px 8px;
-  border-right: 1px solid #e0e0e0;
-  border-bottom: 1px solid #e0e0e0;
-  color: #000000;
-  height: 20px;
+  border-right: 1px solid #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  color: #0f172a;
+  height: 22px;
 }
 
-.oracle-data-table tr:hover td {
-  background: #f0f7ff;
+/* Zebra row striping for enhanced legibility */
+.oracle-data-table tbody tr:nth-child(even) td {
+  background-color: #f8fafc;
+}
+
+.oracle-data-table tbody tr:nth-child(odd) td {
+  background-color: #ffffff;
+}
+
+.oracle-data-table tbody tr:hover td {
+  background-color: #e0f2fe !important;
 }
 
 .oracle-data-table tr.selected td {
-  background: #3399ff !important;
+  background: #0284c7 !important;
   color: #ffffff !important;
 }
 
 .row-num-cell {
-  background: #ebebeb !important;
-  color: #444444 !important;
+  background: #edf2f7 !important;
+  color: #64748b !important;
   text-align: center;
-  font-size: 10px;
-  width: 38px;
+  font-size: 10.5px;
+  width: 44px;
   user-select: none;
-  border-right: 1px solid #b5b5b5 !important;
+  border-right: 1px solid #cbd5e1 !important;
   font-family: var(--toad-font-ui);
+  font-weight: 600;
 }
 
 .oracle-data-table tr.selected .row-num-cell {
-  background: #d4d4d4 !important;
-  color: #000 !important;
+  background: #0369a1 !important;
+  color: #ffffff !important;
 }
 
 .cell-null {
-  color: #999999;
+  color: #94a3b8;
   font-style: italic;
 }
 
 .oracle-data-table tr.selected .cell-null {
-  color: #dbeafe !important;
+  color: #e0f2fe !important;
 }
 
 .cell-modified {
-  background: #fff8db !important;
+  background: #fef3c7 !important;
 }
 
 /* Pagination Bar */

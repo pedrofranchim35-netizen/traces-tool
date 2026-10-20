@@ -45,10 +45,14 @@ class DataGrid {
 
   bindEvents() {
     if (this.searchInput) {
+      let filterDebounceTimer = null;
       this.searchInput.addEventListener('input', (e) => {
-        this.filterText = e.target.value.toLowerCase().trim();
-        this.page = 1;
-        this.render();
+        clearTimeout(filterDebounceTimer);
+        filterDebounceTimer = setTimeout(() => {
+          this.filterText = e.target.value.toLowerCase().trim();
+          this.page = 1;
+          this.render();
+        }, 120);
       });
     }
 
