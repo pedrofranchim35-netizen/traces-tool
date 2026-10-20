@@ -125,6 +125,30 @@
   padding: 2px 0;
   display: none;
   z-index: 2010;
+  color: #111111;
+}
+
+.toad-submenu .toad-menu-entry {
+  background: transparent;
+  color: #111111 !important;
+}
+
+.toad-submenu .toad-menu-entry .menu-label {
+  color: #111111 !important;
+}
+
+.toad-submenu .toad-menu-entry .menu-shortcut {
+  color: #555555 !important;
+}
+
+.toad-submenu .toad-menu-entry:hover {
+  background: #2b78e4 !important;
+  color: #ffffff !important;
+}
+
+.toad-submenu .toad-menu-entry:hover .menu-label,
+.toad-submenu .toad-menu-entry:hover .menu-shortcut {
+  color: #ffffff !important;
 }
 
 .toad-menu-entry:hover > .toad-submenu {

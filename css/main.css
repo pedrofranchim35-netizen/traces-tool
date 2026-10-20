@@ -332,7 +332,8 @@
 /* --------------------------------------------------------------------------
    TOAD CLASSIC MODALS & DIALOGS
    -------------------------------------------------------------------------- */
-.modal-backdrop {
+.modal-backdrop,
+.toad-modal {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
@@ -342,11 +343,13 @@
   z-index: 9999;
 }
 
-.modal-backdrop.open {
+.modal-backdrop.open,
+.toad-modal.open {
   display: flex;
 }
 
-.modal-dialog {
+.modal-dialog,
+.toad-modal-dialog {
   background: #f0f0f0;
   border: 1px solid #7f9db9;
   box-shadow: 2px 2px 15px rgba(0, 0, 0, 0.4);
@@ -356,6 +359,17 @@
   display: flex;
   flex-direction: column;
   z-index: 10000;
+}
+
+.toad-modal-close {
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 8px;
+  color: #fff;
+  line-height: 1;
+}
+.toad-modal-close:hover {
+  background: #c00000;
 }
 
 .modal-header {

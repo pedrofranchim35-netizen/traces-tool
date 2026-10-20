@@ -81,6 +81,32 @@ class TracesApp {
         mbStatus.className = 'toad-menubar-status connected';
         mbStatus.innerHTML = `<span class="mb-status-dot"></span><span>${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}</span>`;
       }
+      const startBadge = document.getElementById('start-header-status-badge');
+      if (startBadge) {
+        startBadge.innerHTML = `
+          <span style="background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #86efac; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block;"></span>
+            Conectado: ${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}
+          </span>
+        `;
+      }
+      const startAlert = document.getElementById('start-alert-box');
+      if (startAlert) {
+        startAlert.className = 'start-alert-banner connected';
+        startAlert.style.borderColor = '#16a34a';
+        startAlert.style.background = '#f0fdf4';
+        startAlert.innerHTML = `
+          <div>
+            <div style="font-weight: 700; font-size: 13px; margin-bottom: 2px; color: #15803d;">⚡ Conectado ao Banco Real Oracle</div>
+            <div style="font-size: 11.5px; color: #374151;">
+              Sessão ativa como <b>${conn.user}</b> em <b>${conn.serviceName || conn.service_name || 'ORCL'}</b>. Execute consultas na Worksheet ou inspecione objetos no Schema Browser.
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="window.TracesApp.openWindow('editor')" style="padding: 6px 14px; font-weight: 700; background: #15803d; border-color: #166534; white-space: nowrap;">
+            📝 Abrir SQL Editor
+          </button>
+        `;
+      }
     } else {
       document.title = 'Toad for Oracle - [Desconectado]';
       const titleEl = document.getElementById('toad-window-title');
@@ -97,6 +123,33 @@ class TracesApp {
       if (userEl) userEl.textContent = '[Desconectado]';
       if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
       if (latEl) latEl.textContent = '-- ms';
+
+      const startBadge = document.getElementById('start-header-status-badge');
+      if (startBadge) {
+        startBadge.innerHTML = `
+          <span style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block;"></span>
+            Desconectado do Banco
+          </span>
+        `;
+      }
+      const startAlert = document.getElementById('start-alert-box');
+      if (startAlert) {
+        startAlert.className = 'start-alert-banner disconnected';
+        startAlert.style.borderColor = '';
+        startAlert.style.background = '';
+        startAlert.innerHTML = `
+          <div>
+            <div style="font-weight: 700; font-size: 13px; margin-bottom: 2px;">⚡ Modo Offline / Desconectado</div>
+            <div style="font-size: 11.5px; opacity: 0.9;">
+              Conecte-se a uma instância Oracle para executar queries na Worksheet, carregar schemas, inspecionar planos CBO e monitorar sessões em tempo real.
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="window.TracesApp.connectionManager.openModal()" style="padding: 6px 14px; font-weight: 700; background: #0284c7; border-color: #0369a1; white-space: nowrap;">
+            ⚡ Conectar ao Banco de Dados...
+          </button>
+        `;
+      }
     }
 
     // 2. Enable or Disable Execution and Transaction Controls
@@ -319,6 +372,14 @@ class TracesApp {
         this.isRealDatabase = true;
         this.realDatabaseConfig = data.connection.config;
         this.updateConnectionState();
+
+        // If currently on Start Page, switch to SQL Editor automatically (authentic Toad behavior)
+        if (this.currentView === 'start') {
+          this.openWindow('editor');
+          setTimeout(() => {
+            if (this.sqlEditor?.textarea) this.sqlEditor.textarea.focus();
+          }, 150);
+        }
 
         // Automatically sync live components with Oracle Database
         if (this.schemaBrowser && typeof this.schemaBrowser.loadRealSchemas === 'function') {

@@ -688,6 +688,16 @@ class ConnectionManager {
         if (window.TracesApp && typeof window.TracesApp.updateConnectionState === 'function') {
           window.TracesApp.updateConnectionState();
         }
+
+        // Open SQL Editor & Worksheet automatically after connection (authentic Toad behavior)
+        if (window.TracesApp && typeof window.TracesApp.openWindow === 'function') {
+          window.TracesApp.openWindow('editor');
+          setTimeout(() => {
+            if (window.TracesApp.sqlEditor?.textarea) {
+              window.TracesApp.sqlEditor.textarea.focus();
+            }
+          }, 150);
+        }
       } else {
         window.TracesApp.notify(`Falha na conexão: ${data.error}`, 'error');
       }
@@ -697,22 +707,25 @@ class ConnectionManager {
   }
 
   renderHeaderPill() {
-    if (!this.headerPill) return;
-    if (!this.activeConn) {
-      this.headerPill.innerHTML = `
+    const pill = this.headerPill || document.getElementById('header-connection-pill');
+    if (!pill) return;
+    this.headerPill = pill;
+    const isConn = window.TracesApp?.isConnected?.() || Boolean(this.activeConn);
+    const c = this.activeConn || window.TracesApp?.realDatabaseConfig;
+    if (!isConn || !c) {
+      pill.innerHTML = `
         <span class="toad-conn-indicator" style="background: #9ca3af;"></span>
         <span style="font-weight: 700; color: #555;">Desconectado</span>
         <span style="color: #888; font-size: 10px;">(Clique para Conectar)</span>
       `;
       return;
     }
-    const c = this.activeConn;
     const bridgeBadge = c.useBridge && c.bridgeHost ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0284c7; padding: 1px 4px; border-radius: 3px; border: 1px solid #bae6fd;">🌉 ${c.bridgeHost}</span>` : '';
-    this.headerPill.innerHTML = `
-      <span class="toad-conn-indicator" style="background: ${c.color || '#0078d7'};"></span>
-      <span style="font-weight: 700; color: #111;">${c.user}@${c.serviceName}</span>
+    pill.innerHTML = `
+      <span class="toad-conn-indicator" style="background: ${c.color || '#16a34a'};"></span>
+      <span style="font-weight: 700; color: #15803d;">${c.user}@${c.serviceName || c.service_name || 'ORCL'}</span>
       ${bridgeBadge}
-      <span style="color: #666; font-size: 10px;">(${c.role})</span>
+      <span style="color: #4b5563; font-size: 10px;">(${c.role || 'NORMAL'})</span>
     `;
   }
 
