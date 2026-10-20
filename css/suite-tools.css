@@ -1,0 +1,803 @@
+/* ==========================================================================
+   TOAD SUITE TOOLS & ADVANCED MODULES STYLESHEET
+   Includes: Spotlight on Oracle, Data Modeler, DBA Hub, SQL Optimizer, 
+   Automation Designer, Profiler, and Technical Dialogs
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. SPOTLIGHT ON ORACLE (NOC ARCHITECTURE TOPOLOGY)
+   -------------------------------------------------------------------------- */
+.spotlight-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #111827;
+  color: #f3f4f6;
+  font-family: var(--toad-font-ui);
+  position: relative;
+  overflow: hidden;
+}
+
+.spotlight-toolbar {
+  height: 38px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.spotlight-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #60a5fa;
+}
+
+.spotlight-badge {
+  font-size: 10px;
+  background: #065f46;
+  color: #34d399;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.spotlight-canvas {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 240px 1fr 280px;
+  gap: 16px;
+  padding: 16px;
+  position: relative;
+  overflow: auto;
+}
+
+.spotlight-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.spotlight-panel {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+}
+
+.spotlight-panel-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Background processes grid */
+.processes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.process-node {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  padding: 8px 4px;
+  text-align: center;
+  position: relative;
+}
+
+.process-node.healthy {
+  border-color: #059669;
+}
+
+.process-node.warn {
+  border-color: #d97706;
+}
+
+.process-name {
+  font-weight: 700;
+  font-size: 11px;
+  color: #e5e7eb;
+}
+
+.process-status {
+  font-size: 9px;
+  color: #10b981;
+}
+
+/* Memory Buffers in Spotlight */
+.sga-box {
+  background: #111827;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sga-pool-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 4px 6px;
+  background: #1f2937;
+  border-radius: 4px;
+}
+
+.animated-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  display: inline-block;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* --------------------------------------------------------------------------
+   2. DATA MODELER & QUERY BUILDER
+   -------------------------------------------------------------------------- */
+.modeler-view-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+.modeler-sidebar {
+  width: 240px;
+  border-right: 1px solid var(--toad-border-gray);
+  background: #f7f7f7;
+  display: flex;
+  flex-direction: column;
+}
+
+.modeler-canvas-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fdfdfd;
+  position: relative;
+  overflow: auto;
+}
+
+.modeler-canvas {
+  flex: 1;
+  position: relative;
+  min-height: 500px;
+  background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+  background-size: 16px 16px;
+  padding: 20px;
+  overflow: auto;
+}
+
+.erd-table-card {
+  position: absolute;
+  width: 220px;
+  background: #ffffff;
+  border: 1px solid #0078d7;
+  border-radius: 4px;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+  font-size: 11px;
+  z-index: 10;
+  cursor: move;
+}
+
+.erd-table-header {
+  background: #0078d7;
+  color: #ffffff;
+  padding: 4px 8px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+}
+
+.erd-column-list {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.erd-column-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.erd-column-row:hover {
+  background: #e5f1fb;
+}
+
+.erd-pk-badge {
+  font-size: 9px;
+  background: #f59e0b;
+  color: #fff;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+.erd-fk-badge {
+  font-size: 9px;
+  background: #10b981;
+  color: #fff;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+.query-builder-bottom-panel {
+  height: 180px;
+  border-top: 2px solid var(--toad-border-gray);
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+}
+
+.query-builder-tabs {
+  height: 26px;
+  display: flex;
+  border-bottom: 1px solid #d4d4d4;
+  background: #ededed;
+}
+
+.qb-tab {
+  padding: 4px 12px;
+  cursor: pointer;
+  border-right: 1px solid #d4d4d4;
+  font-size: 11px;
+}
+
+.qb-tab.active {
+  background: #fafafa;
+  font-weight: 600;
+  border-bottom: 2px solid #0078d7;
+}
+
+/* --------------------------------------------------------------------------
+   3. DATABASE ADMINISTRATION HUB (DBA MODULE)
+   -------------------------------------------------------------------------- */
+.dba-hub-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+.dba-header-bar {
+  height: 32px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #c0c0c0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  flex-shrink: 0;
+}
+
+.dba-workspace-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.dba-sidebar-nav {
+  width: 240px;
+  background: #f8fafc;
+  border-right: 1px solid #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.dba-nav-group {
+  padding: 6px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dba-nav-group-title {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dba-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 11px;
+  color: #334155;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 120ms ease;
+  user-select: none;
+}
+
+.dba-nav-item:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.dba-nav-item.active {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 700;
+  border-left-color: #0284c7;
+}
+
+.dba-main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.dba-content-pane {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  display: none;
+}
+
+.dba-content-pane.active {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* DBA Hub Filter Bars & Quick Search Controls */
+.dba-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.dba-filter-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  padding: 0 6px;
+  height: 24px;
+  flex: 1;
+  min-width: 180px;
+  max-width: 360px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.dba-filter-input-wrap:focus-within {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.dba-filter-input-wrap input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 11px;
+  font-family: var(--toad-font-ui);
+  width: 100%;
+  color: #0f172a;
+}
+
+.dba-filter-count-badge {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Tablespace Map Extent Block Grid */
+.extent-map-canvas {
+  width: 100%;
+  height: 160px;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.extent-block {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 100ms ease;
+}
+
+.extent-block:hover {
+  transform: scale(1.4);
+  z-index: 10;
+}
+
+.extent-allocated { background: #3b82f6; }
+.extent-free { background: #10b981; }
+.extent-hwm-line { background: #ef4444; }
+
+/* --------------------------------------------------------------------------
+   4. QUEST SQL OPTIMIZER
+   -------------------------------------------------------------------------- */
+.optimizer-suite-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  padding: 12px;
+  gap: 12px;
+  overflow: auto;
+}
+
+.rewrite-alternatives-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.rewrite-alternatives-table th {
+  background: #e4e4e4;
+  border: 1px solid #bfbfbf;
+  padding: 6px;
+  text-align: left;
+}
+
+.rewrite-alternatives-table td {
+  border: 1px solid #e0e0e0;
+  padding: 6px;
+}
+
+.rewrite-alternatives-table tr.winner-row {
+  background: #ecfdf5;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   5. AUTOMATION DESIGNER (APP DESIGNER)
+   -------------------------------------------------------------------------- */
+.automation-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+.automation-palette {
+  width: 220px;
+  border-right: 1px solid var(--toad-border-gray);
+  background: #f7f7f7;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-palette-item {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.action-palette-item:hover {
+  border-color: #0078d7;
+  background: #f0f7ff;
+}
+
+.automation-workflow-canvas {
+  flex: 1;
+  background: #f8fafc;
+  padding: 20px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-node {
+  width: 320px;
+  background: #ffffff;
+  border: 1px solid #0078d7;
+  border-left: 5px solid #0078d7;
+  border-radius: 4px;
+  padding: 10px 14px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  position: relative;
+}
+
+.workflow-arrow-down {
+  width: 2px;
+  height: 20px;
+  background: #94a3b8;
+  position: relative;
+}
+
+.workflow-arrow-down::after {
+  content: '▼';
+  position: absolute;
+  bottom: -6px;
+  left: -4px;
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+/* --------------------------------------------------------------------------
+   6. TECHNICAL DIALOGS (DESCRIBE F4, SQL RECALL F8, BIND VARIABLES, OPTIONS)
+   -------------------------------------------------------------------------- */
+.toad-dialog-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+}
+
+.toad-dialog-backdrop.active {
+  display: flex;
+}
+
+.toad-dialog {
+  background: #ece9d8;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  max-width: 90vw;
+  max-height: 90vh;
+  min-width: 480px;
+  font-family: var(--toad-font-ui);
+}
+
+.toad-dialog-header {
+  height: 26px;
+  background: linear-gradient(90deg, #0a246a 0%, #a6caf0 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+.toad-dialog-close {
+  width: 18px;
+  height: 18px;
+  background: #ece9d8;
+  border: 1px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.toad-dialog-body {
+  padding: 12px;
+  background: #f0f0f0;
+  flex: 1;
+  overflow: auto;
+}
+
+.toad-dialog-footer {
+  height: 38px;
+  background: #ece9d8;
+  border-top: 1px solid #c0c0c0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+/* Master Detail Grids */
+.master-detail-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  gap: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   8. OPERATING SYSTEM IDENTIFICATION & ADAPTATION BADGES (LINUX / WIN / AIX)
+   -------------------------------------------------------------------------- */
+.toad-os-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+.toad-os-badge.os-linux {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+.toad-os-badge.os-windows {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+.toad-os-badge.os-aix {
+  background: #faf5ff;
+  border-color: #d8b4fe;
+  color: #6b21a8;
+}
+.toad-os-badge.os-unknown {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.os-cmd-banner {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.os-cmd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.os-cmd-code {
+  font-family: var(--toad-font-mono, 'Consolas', monospace);
+  font-size: 11px;
+  color: #38bdf8;
+  background: #1e293b;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid #334155;
+  user-select: all;
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.os-cmd-copy-btn {
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.os-cmd-copy-btn:hover {
+  background: #1d4ed8;
+}
+.os-cmd-hint {
+  font-size: 10.5px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.os-platform-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+.os-platform-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #475569;
+  transition: all 0.15s ease;
+}
+.os-platform-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.os-platform-btn.active.os-linux {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #15803d;
+  font-weight: 700;
+}
+.os-platform-btn.active.os-windows {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.os-platform-btn.active.os-aix {
+  background: #f3e8ff;
+  border-color: #a855f7;
+  color: #7e22ce;
+  font-weight: 700;
+}
+

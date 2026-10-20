@@ -1,0 +1,2009 @@
+{
+  "Categories": [
+    {
+      "Category": "Single Row Character Functions",
+      "Snippets": [
+        {
+          "Description": "Returns the character having the binary equivalent to N in the database character set.",
+          "DisplayName": "CHR(n)",
+          "Text": "CHR(n)"
+        },
+        {
+          "Description": "Returns Char1 concatenated with Char2.",
+          "DisplayName": "CONCAT(char1, char2)",
+          "Text": "CONCAT(char1, char2)"
+        },
+        {
+          "Description": "Returns Char, with the first letter of each word in uppercase, all other letters in lowercase. Words are delimited by white space or characters that are not alphanumeric.",
+          "DisplayName": "INITCAP(char)",
+          "Text": "INITCAP(char)"
+        },
+        {
+          "Description": "Returns Char, with all letters lowercase.",
+          "DisplayName": "LOWER(char)",
+          "Text": "LOWER(char)"
+        },
+        {
+          "Description": "Returns Char1, left-padded to length N with the sequence of characters in Char2. Char2 defaults to a single blank.",
+          "DisplayName": "LPAD(char1, n [,char2])",
+          "Text": "LPAD(char1, n [,char2])"
+        },
+        {
+          "Description": "Removes characters from the left of Char, with all the leftmost characters that appear in Set removed. Set defaults to a single blank. Oracle begins scanning Char from its first character and removes all characters that appear in Set until reaching a character not in set and then returns the result.",
+          "DisplayName": "LTRIM(char [,set])",
+          "Text": "LTRIM(char [,set])"
+        },
+        {
+          "Description": "Returns Char, with the first letter of each word in uppercase, and all other letters in lowercase. Words are delimited by white space or characters that are not alphanumeric. The value of NLSPARAMS can have this form: 'NLS_SORT = sort' where sort is either a linguistic sort sequence or BINARY.",
+          "DisplayName": "NLS_INITCAP(char [, 'nlsparams'])",
+          "Text": "NLS_INITCAP(char [, 'nlsparams'])"
+        },
+        {
+          "Description": "Returns Char, with all letters lowercase. The 'nlsparams' can have the same form and serve the same purpose as in the NLS_INITCAP function.",
+          "DisplayName": "NLS_LOWER(char [, 'nlsparams'])",
+          "Text": "NLS_LOWER(char [, 'nlsparams'])"
+        },
+        {
+          "Description": "Returns the string of bytes used to sort Char.",
+          "DisplayName": "NLSSORT(char [, 'nlsparams'])",
+          "Text": "NLSSORT(char [, 'nlsparams'])"
+        },
+        {
+          "Description": "Returns Char, with all letters uppercase. The 'nlsparams' can have the same form and serve the same purpose as in the NLS_INITCAP function.",
+          "DisplayName": "NLS_UPPER(char [, 'nlsparams'])",
+          "Text": "NLS_UPPER(char [, 'nlsparams'])"
+        },
+        {
+          "Description": "Returns Char with every occurrence of search_string replaced with replacement_string.",
+          "DisplayName": "REPLACE(char, search_string [,replacement_string])",
+          "Text": "REPLACE(char, search_string [,replacement_string])"
+        },
+        {
+          "Description": "Returns Char1, right-padded to length N with Char2, replicated as many times as necessary.  Char2 defaults to a single blank.",
+          "DisplayName": "RPAD(char1, n [,char2])",
+          "Text": "RPAD(char1, n [,char2])"
+        },
+        {
+          "Description": "Returns char, with all the rightmost characters that appear in Set removed. Set defaults to a single blank.",
+          "DisplayName": "RTRIM(char [,set])",
+          "Text": "RTRIM(char [,set])"
+        },
+        {
+          "Description": "Returns a character string containing the phonetic representation of Char. This function allows you to compare words that are spelled differently, but sound alike in English.",
+          "DisplayName": "SOUNDEX(char)",
+          "Text": "SOUNDEX(char)"
+        },
+        {
+          "Description": "Returns a portion of Char, beginning at character M, N characters long.\nIf M is positive, Oracle counts from the beginning of Char to find the first character.\nif M is negative, Oracle counts backwards from the end of Char.\nIf N is omitted, Oracle returns all characters to the end of Char.",
+          "DisplayName": "SUBSTR(char, m [, n])",
+          "Text": "SUBSTR(char, m [, n])"
+        },
+        {
+          "Description": "The same as SUBSTR, except that the arguments M and N are expressed in bytes, rather than in characters.",
+          "DisplayName": "SUBSTRB(char, m [, n])",
+          "Text": "SUBSTRB(char, m [, n])"
+        },
+        {
+          "Description": "Returns Char with all occurrences of each character in From replaced by its corresponding character in To. Characters in Char that are not in From are not replaced. E.g., Translate (colName, 'i', 'a') replaces all 'i's with 'a's",
+          "DisplayName": "TRANSLATE(char, from, to)",
+          "Text": "TRANSLATE(char, from, to)"
+        },
+        {
+          "Description": "Use the TREAT function to change the declared type of an expression.",
+          "DisplayName": "TREAT(expr AS REF schema.type)",
+          "Text": "TREAT(expr AS REF schema.type)"
+        },
+        {
+          "Description": "TRIM enables you to trim leading or trailing characters (or both) from a character string. If trim_character or trim_source is a character literal, you must enclose it in single quotes.\nIf you specify LEADING, Oracle removes any leading characters equal to trim_character. \nIf you specify TRAILING, Oracle removes any trailing characters equal to trim_character. \nIf you specify BOTH or none of the three, Oracle removes leading and trailing characters equal to trim_character. \nIf you do not specify trim_character, the default value is a blank space. \nIf you specify only trim_source, Oracle removes leading and trailing blank spaces. \nThe function returns a value with datatype VARCHAR2. The maximum length of the value is the length of trim_source. \nIf either trim_source or trim_character is a null value, then the TRIM function returns a null value.",
+          "DisplayName": "TRIM(LEADING|TRAILING|BOTH trim_char FROM trim_source)",
+          "Text": "TRIM(LEADING|TRAILING|BOTH trim_char FROM trim_source)"
+        },
+        {
+          "Description": "Returns Char, with all letters uppercase.",
+          "DisplayName": "UPPER(char)",
+          "Text": "UPPER(char)"
+        },
+        {
+          "Description": "Returns the decimal representation in the database character set of the first byte of Char.",
+          "DisplayName": "ASCII(char)",
+          "Text": "ASCII(char)"
+        },
+        {
+          "Description": "Searches Char1 beginning with its Nth character for the Mth occurrence of Char2 and returns the position of the character in Char1 that is the first character of this occurrence.\nIf N is negative, Oracle counts and searches backward from the end of Char1.  N and M default to 1.",
+          "DisplayName": "INSTR(char1, char2 [,n [,m]])",
+          "Text": "INSTR(char1, char2 [,n [,m]])"
+        },
+        {
+          "Description": "The same as INSTR, except that N and the return value are expressed in bytes, rather than in characters.",
+          "DisplayName": "INSTRB(char1, char2 [,n [,m]])",
+          "Text": "INSTRB(char1, char2 [,n [,m]])"
+        },
+        {
+          "Description": "Returns the length of Char in characters.\nIf Char has datatype CHAR, then length includes all trailing blanks.",
+          "DisplayName": "LENGTH(char)",
+          "Text": "LENGTH(char)"
+        },
+        {
+          "Description": "Returns the length of Char in bytes.",
+          "DisplayName": "LENGTHB(char)",
+          "Text": "LENGTHB(char)"
+        }
+      ]
+    },
+    {
+      "Category": "Single Row Number Functions",
+      "Snippets": [
+        {
+          "Description": "Returns the absolute value of N.",
+          "DisplayName": "ABS(n)",
+          "Text": "ABS(n)"
+        },
+        {
+          "Description": "Returns the arc cosine of N. Inputs are in the range of -1 to 1, and outputs are in the range of 0 to pi and are expressed in radians.",
+          "DisplayName": "ACOS(n)",
+          "Text": "ACOS(n)"
+        },
+        {
+          "Description": "ADD_MONTHS returns the date d plus n months. The argument n can be any integer. If d is the last day of the month or if the resulting month has fewer days than the day component of d, then the result is the last day of the resulting month. Otherwise, the result has the same day component as d.",
+          "DisplayName": "ADD_MONTHS(d,n)",
+          "Text": "ADD_MONTHS(d,n)"
+        },
+        {
+          "Description": "Returns the arc sine of N. Inputs are in the range of -1 to 1, and outputs are in the range of -pi/2 to pi/2 and are expressed in radians.",
+          "DisplayName": "ASIN(n)",
+          "Text": "ASIN(n)"
+        },
+        {
+          "Description": "Returns the arc tangent of N. Inputs are in an unbounded range, and outputs are in the range of -pi/2 to pi/2 and are expressed in radians.",
+          "DisplayName": "ATAN(n)",
+          "Text": "ATAN(n)"
+        },
+        {
+          "Description": "Returns the arc tangent of N and M. Inputs are in an unbounded range, and outputs are in the range of -pi to pi, depending on the signs of x and y, and are expressed in radians.  Atan2(x,y) is the same as Atan2(x/y).",
+          "DisplayName": "ATAN2(n,m)",
+          "Text": "ATAN2(n,m)"
+        },
+        {
+          "Description": "BITAND computes an AND operation on the bits of argument1 and argument2, both of which must resolve to nonnegative integers, and returns an integer. This function is commonly used with the DECODE expression, as illustrated in the example that follows.",
+          "DisplayName": "BITAND(argument1, argument2)",
+          "Text": "BITAND(argument1, argument2)"
+        },
+        {
+          "Description": "Returns the smallest integer greater than or equal to N.  (see FLOOR)",
+          "DisplayName": "CEIL(n)",
+          "Text": "CEIL(n)"
+        },
+        {
+          "Description": "Returns the cosine of N (an angle expressed in radians).",
+          "DisplayName": "COS(n)",
+          "Text": "COS(n)"
+        },
+        {
+          "Description": "Returns the hyperbolic cosine of N.",
+          "DisplayName": "COSH(n)",
+          "Text": "COSH(n)"
+        },
+        {
+          "Description": "Returns e raised to the Nth power, where e = 2.71828183...",
+          "DisplayName": "EXP(n)",
+          "Text": "EXP(n)"
+        },
+        {
+          "Description": "Returns largest integer equal to or less than N.  (see CEIL)",
+          "DisplayName": "FLOOR(n)",
+          "Text": "FLOOR(n)"
+        },
+        {
+          "Description": "Returns the natural logarithm of N where N > 0",
+          "DisplayName": "LN(n)",
+          "Text": "LN(n)"
+        },
+        {
+          "Description": "Returns the logarithm, base M, of N. The base M can be any positive number other than 0 or 1 and N can be any positive number.",
+          "DisplayName": "LOG(m,n)",
+          "Text": "LOG(m,n)"
+        },
+        {
+          "Description": "Returns remainder of M divided by N.  Returns M if N is 0.",
+          "DisplayName": "MOD(m,n)",
+          "Text": "MOD(m,n)"
+        },
+        {
+          "Description": "Returns M raised to the Nth power. The base M and the exponent N can by any numbers, but if M is negative, N must be an integer.",
+          "DisplayName": "POWER(m,n)",
+          "Text": "POWER(m,n)"
+        },
+        {
+          "Description": "Returns N rounded to M places right of the decimal point.  M defaults to 0. M can be negative to round off digits left of the decimal point.  M must be an integer.",
+          "DisplayName": "ROUND(n [,m])",
+          "Text": "ROUND(n [,m])"
+        },
+        {
+          "Description": "if N < 0 then -1;  if N = 0 then 0;  if N > 0 then 1",
+          "DisplayName": "SIGN(n)",
+          "Text": "SIGN(n)"
+        },
+        {
+          "Description": "Returns the sine of N (an angle expressed in radians).",
+          "DisplayName": "SIN(n)",
+          "Text": "SIN(n)"
+        },
+        {
+          "Description": "Returns the hyperbolic sine of N.",
+          "DisplayName": "SINH(n)",
+          "Text": "SINH(n)"
+        },
+        {
+          "Description": "Returns square root of N;  if N < 0 then NULL",
+          "DisplayName": "SQRT(n)",
+          "Text": "SQRT(n)"
+        },
+        {
+          "Description": "Returns the tangent of N (an angle expressed in radians).",
+          "DisplayName": "TAN(n)",
+          "Text": "TAN(n)"
+        },
+        {
+          "Description": "Returns the hyperbolic tangent of N.",
+          "DisplayName": "TANH(n)",
+          "Text": "TANH(n)"
+        },
+        {
+          "Description": "Returns N truncated to M decimal places;  M defaults to 0. M can be negative to truncate (make zero) M digits left of the decimal point.",
+          "DisplayName": "TRUNC(n [,m])",
+          "Text": "TRUNC(n [,m])"
+        },
+        {
+          "Description": "The WIDTH_BUCKET function lets you construct equiwidth histograms. For a given expression, it returns the bucket number into which the value of this expression would fall after being evaluated.",
+          "DisplayName": "WIDTH_BUCKET(expr,min_value,max_value,num_buckets)",
+          "Text": "WIDTH_BUCKET(expr,min_value,max_value,num_buckets)"
+        }
+      ]
+    },
+    {
+      "Category": "Group Functions",
+      "Snippets": [
+        {
+          "Description": "Calculates the arithmetic average of the values in a column.",
+          "DisplayName": "AVG([DISTINCT | ALL] n)",
+          "Text": "AVG([DISTINCT | ALL] n)"
+        },
+        {
+          "Description": "CORR returns the coefficient of correlation of a set of number pairs. You can use it as an aggregate or analytic function.",
+          "DisplayName": "CORR(expr1, expr2) OVER(analytic_clause)",
+          "Text": "CORR(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "Counts the number of values in a column or the number of rows in a table.\nCOUNT(*) returns the number of rows in a table.\nCOUNT(DISTINCT ColName) returns the number of unique values for column ColName.\nCOUNT(ColName) returns the number of rows that have a non null value for ColName.",
+          "DisplayName": "COUNT(*)",
+          "Text": "COUNT(*)"
+        },
+        {
+          "Description": "COVAR_POP returns the population covariance of a set of number pairs. You can use it as an aggregate or analytic function.",
+          "DisplayName": "COVAR_POP(expr1, expr2) OVER(analytic_clause)",
+          "Text": "COVAR_POP(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "COVAR_SAMP returns the sample covariance of a set of number pairs. You can use it as an aggregate or analytic function.",
+          "DisplayName": "COVAR_SMP(expr1, expr2) OVER(analytic_clause)",
+          "Text": "COVAR_SMP(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "CUME_DIST calculates the cumulative distribution of a value in a group of values. The range of values returned by CUME_DIST is >0 to <=1. Tie values always evaluate to the same cumulative distribution value.",
+          "DisplayName": "CUME_DIST(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)",
+          "Text": "CUME_DIST(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)"
+        },
+        {
+          "Description": "The DENSE_RANK function computes the rank of a row in an ordered group of rows. The ranks are consecutive integers beginning with 1. The largest rank value is the number of unique values returned by the query. Rank values are not skipped in the event of ties. Rows with equal values for the ranking criteria receive the same rank.",
+          "DisplayName": "DENSE_RANK(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)",
+          "Text": "DENSE_RANK(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)"
+        },
+        {
+          "Description": "The FIRST and LAST functions are very similar. Both are aggregate and analytic functions that operate on a set of values from a set of rows that rank as the FIRST or LAST with respect to a given sorting specification. If only one row ranks as FIRST or LAST, the aggregate operates on the set with only one element.",
+          "DisplayName": "KEEP(DENSE_RANK FIRST ORDER BY expr ASC|DESC NULLS FIRST|LAST)",
+          "Text": "KEEP(DENSE_RANK FIRST ORDER BY expr ASC|DESC NULLS FIRST|LAST)"
+        },
+        {
+          "Description": "The GROUP_ID function distinguishes duplicate groups resulting from a GROUP BY specification. It is therefore useful in filtering out duplicate groupings from the query result. It returns an Oracle NUMBER to uniquely identify duplicate groups. This function is applicable only in a SELECT statement that contains a GROUP BY clause.",
+          "DisplayName": "GROUP_ID()",
+          "Text": "GROUP_ID()"
+        },
+        {
+          "Description": "The GROUPING function distinguishes superaggregate rows from regular grouped rows. GROUP BY extensions such as ROLLUP and CUBE produce superaggregate rows where the set of all values is represented by null. Using the GROUPING function, you can distinguish a null representing the set of all values in a superaggregate row from a null in a regular row.",
+          "DisplayName": "GROUPING(expr)",
+          "Text": "GROUPING(expr)"
+        },
+        {
+          "Description": "The GROUPING_ID function returns a number corresponding to the GROUPING bit vector associated with a row. GROUPING_ID is applicable only in a SELECT statement that contains a GROUP BY extension, such as ROLLUP or CUBE, and a GROUPING function. In queries with many GROUP BY expressions, it is difficult to determine the GROUP BY level of a particular row. GROUPING_ID is useful in these cases.",
+          "DisplayName": "GROUPING_ID(expr)",
+          "Text": "GROUPING_ID(expr)"
+        },
+        {
+          "Description": "Determines the largest value in a column. See COUNT for usage of DISTINCT",
+          "DisplayName": "MAX([DISTINCT | ALL]  n)",
+          "Text": "MAX([DISTINCT | ALL]  n)"
+        },
+        {
+          "Description": "Determines the smallest value in a column. See COUNT for usage of DISTINCT",
+          "DisplayName": "MIN([DISTINCT | ALL] n)",
+          "Text": "MIN([DISTINCT | ALL] n)"
+        },
+        {
+          "Description": "The PERCENTILE_CONT function is an inverse distribution function that assumes a continuous distribution model. It takes a percentile value and a sort specification, and returns an interpolated value that would fall into that percentile value with respect to the sort specification. Nulls are ignored in the calculation.",
+          "DisplayName": "PERCENTILE_CONT(expr) WITHIN GROUP(ORDER BY expr ASC|DESC)",
+          "Text": "PERCENTILE_CONT(expr) WITHIN GROUP(ORDER BY expr ASC|DESC)"
+        },
+        {
+          "Description": "The PERCENTILE_DISC function is an inverse distribution function that assumes a discrete distribution model. It takes a percentile value and a sort specification and returns an element from the set. Nulls are ignored in the calculation.",
+          "DisplayName": "PERCENTILE_DISC(expr) WITHIN GROUP(ORDER BY expr ASC|DESC)",
+          "Text": "PERCENTILE_DISC(expr) WITHIN GROUP(ORDER BY expr ASC|DESC)"
+        },
+        {
+          "Description": "The PERCENT_RANK function is similar to the CUME_DIST (cumulative distribution) function. The range of values returned by PERCENT_RANK is 0 to 1, inclusive. The first row in any set has a PERCENT_RANK of 0.",
+          "DisplayName": "PERCENT_RANK(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)",
+          "Text": "PERCENT_RANK(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)"
+        },
+        {
+          "Description": "RANK calculates the rank of a value in a group of values. Rows with equal values for the ranking criteria receive the same rank. Oracle then adds the number of tied rows to the tied rank to calculate the next rank. Therefore, the ranks may not be consecutive numbers.",
+          "DisplayName": "RANK(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)",
+          "Text": "RANK(expr) WITHIN GROUP(ORDER BY expr ASC|DESC NULLS FIRST|LAST)"
+        },
+        {
+          "Description": "REGR_SLOPE returns the slope of the line. The return value is a number and can be null. After the elimination of null (expr1, expr2) pairs, it makes the following computation: COVAR_POP(expr1, expr2) / VAR_POP(expr2)",
+          "DisplayName": "REGR_SLOPE(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_SLOPE(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_INTERCEPT returns the y-intercept of the regression line. The return value is a number and can be null. After the elimination of null (expr1, expr2) pairs, it makes the following computation: AVG(expr1) - REGR_SLOPE(expr1, expr2) * AVG(expr2)",
+          "DisplayName": "REGR_INTERCEPT(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_INTERCEPT(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_COUNT returns an integer that is the number of non-null number pairs used to fit the regression line.",
+          "DisplayName": "REGR_COUNT(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_COUNT(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_R2 returns the coefficient of determination (also called \"R-squared\" or \"goodness of fit\") for the regression. The return value is a number and can be null. VAR_POP(expr1) and VAR_POP(expr2) are evaluated after the elimination of null pairs.",
+          "DisplayName": "REGR_R2(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_R2(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_AVGX evaluates the average of the independent variable (expr2) of the regression line. It makes the following computation after the elimination of null (expr1, expr2) pairs: AVG(expr2)",
+          "DisplayName": "REGR_AVGX(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_AVGX(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_AVGY evaluates the average of the dependent variable (expr1) of the regression line. It makes the following computation after the elimination of null (expr1, expr2) pairs: AVG(expr1)",
+          "DisplayName": "REGR_AVGY(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_AVGY(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_SXX makes the following computation after the elimination of null (expr1, expr2) pairs: REGR_COUNT(expr1, expr2) * VAR_POP(expr2)",
+          "DisplayName": "REGR_SXX(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_SXX(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_SYY makes the following computation after the elimination of null (expr1, expr2) pairs: REGR_COUNT(expr1, expr2) * VAR_POP(expr1)",
+          "DisplayName": "REGR_SYY(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_SYY(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "REGR_SXY makes the following computation after the elimination of null (expr1, expr2) pairs: REGR_COUNT(expr1, expr2) * COVAR_POP(expr1, expr2)",
+          "DisplayName": "REGR_SXY(expr1, expr2) OVER(analytic_clause)",
+          "Text": "REGR_SXY(expr1, expr2) OVER(analytic_clause)"
+        },
+        {
+          "Description": "Determines the standard deviation, the square root of the variance, of the values in a column. See COUNT for usage of DISTINCT",
+          "DisplayName": "STDDEV([DISTINCT | ALL] n)",
+          "Text": "STDDEV([DISTINCT | ALL] n)"
+        },
+        {
+          "Description": "STDDEV_POP computes the population standard deviation and returns the square root of the population variance. You can use it as both an aggregate and analytic function.",
+          "DisplayName": "STDDEV_POP(expr) OVER(analytic_clause)",
+          "Text": "STDDEV_POP(expr) OVER(analytic_clause)"
+        },
+        {
+          "Description": "STDDEV_SAMP computes the cumulative sample standard deviation and returns the square root of the sample variance. You can use it as both an aggregate and analytic function.",
+          "DisplayName": "STDDEV_SAMP(expr) OVER(analytic_clause)",
+          "Text": "STDDEV_SAMP(expr) OVER(analytic_clause)"
+        },
+        {
+          "Description": "Calculates the sum of all values in a column. See COUNT for usage of DISTINCT",
+          "DisplayName": "SUM([DISTINCT | ALL] n)",
+          "Text": "SUM([DISTINCT | ALL] n)"
+        },
+        {
+          "Description": "Aggregates all the XML documents or fragments represented by expr into one XML document, enclosed by an element with default name ROWSET. The fmt parameter is of type SYS.XMLGenFormatType.",
+          "DisplayName": "SYS_XMLAGG(expr[,fmt])",
+          "Text": "SYS_XMLAGG(expr[,fmt])"
+        },
+        {
+          "Description": "VAR_POP returns the population variance of a set of numbers after discarding the nulls in this set. You can use it as both an aggregate and analytic function.",
+          "DisplayName": "VAR_POP(expr) OVER(analytic_clause)",
+          "Text": "VAR_POP(expr) OVER(analytic_clause)"
+        },
+        {
+          "Description": "VAR_SAMP returns the sample variance of a set of numbers after discarding the nulls in this set. You can use it as both an aggregate and analytic function.",
+          "DisplayName": "VAR_SAMP(expr) OVER(analytic_clause)",
+          "Text": "VAR_SAMP(expr) OVER(analytic_clause)"
+        },
+        {
+          "Description": "Determines the variance of the values in a column. See COUNT for usage of DISTINCT",
+          "DisplayName": "VARIANCE( [DISTINCT | ALL] n)",
+          "Text": "VARIANCE( [DISTINCT | ALL] n)"
+        }
+      ]
+    },
+    {
+      "Category": "Date Functions",
+      "Snippets": [
+        {
+          "Description": "Returns the date D plus N months.  N can be any integer.",
+          "DisplayName": "ADD_MONTHS(d,n)",
+          "Text": "ADD_MONTHS(d,n)"
+        },
+        {
+          "Description": "CURRENT_DATE returns the current date in the session time zone, in a value in the Gregorian calendar of datatype DATE.",
+          "DisplayName": "CURRENT_DATE",
+          "Text": "CURRENT_DATE"
+        },
+        {
+          "Description": "CURRENT_TIMESTAMP returns the current date and time in the session time zone, in a value of datatype TIMESTAMP WITH TIME ZONE. The time zone displacement reflects the current local time of the SQL session. If you omit precision, the default is 6. The difference between this function and LOCALTIMESTAMP is that CURRENT_TIMESTAMP returns a TIMESTAMP WITH TIME ZONE value while LOCALTIMESTAMP returns a TIMESTAMP value.",
+          "DisplayName": "CURRENT_TIMESTAMP(precision)",
+          "Text": "CURRENT_TIMESTAMP(precision)"
+        },
+        {
+          "Description": "The DBTIMEZONE function returns the value of the database time zone. The return type is a time zone offset (a character type in the format '[+|-]TZH:TZM') or a time zone region name, depending on how the user specified the database time zone value in the most recent CREATE DATABASE or ALTER DATABASE statement.",
+          "DisplayName": "DBTIMEZONE",
+          "Text": "DBTIMEZONE"
+        },
+        {
+          "Description": "The FROM_TZ function converts a timestamp value at a time zone to a TIMESTAMP WITH TIME ZONE value. time_zone_value is a character string in the format 'TZH:TZM' or a character expression that returns a string in TZR with optional TZD format.",
+          "DisplayName": "FROM_TZ(timestamp_value,time_zone_value)",
+          "Text": "FROM_TZ(timestamp_value,time_zone_value)"
+        },
+        {
+          "Description": "Returns the date of the last day of the month that contains D.",
+          "DisplayName": "LAST_DAY(d)",
+          "Text": "LAST_DAY(d)"
+        },
+        {
+          "Description": "The LOCALTIMESTAMP function returns the current date and time in the session time zone in a value of datatype TIMESTAMP. The difference between this function and CURRENT_TIMESTAMP is that LOCALTIMESTAMP returns a TIMESTAMP value while CURRENT_TIMESTAMP returns a TIMESTAMP WITH TIME ZONE value.",
+          "DisplayName": "LOCALTIMESTAMP(timestamp_precision)",
+          "Text": "LOCALTIMESTAMP(timestamp_precision)"
+        },
+        {
+          "Description": "Returns the number of months between dates d1 and d2.\nIf d1 is later than d2, result is positive; if earlier, than negative.",
+          "DisplayName": "MONTHS_BETWEEN(d1, d2)",
+          "Text": "MONTHS_BETWEEN(d1, d2)"
+        },
+        {
+          "Description": "Returns the date and time in time zone z2 when date and time in time zone z1 are d.",
+          "DisplayName": "NEW_TIME(d, z1, z2)",
+          "Text": "NEW_TIME(d, z1, z2)"
+        },
+        {
+          "Description": "Returns the date of the first weekday named by Char that is later than the date d. E.g., next_day ('15-MAR-92', 'Tuesday') returns 17-MAR-92",
+          "DisplayName": "NEXT_DAY(d, char)",
+          "Text": "NEXT_DAY(d, char)"
+        },
+        {
+          "Description": "NUMTODSINTERVAL converts n to an INTERVAL DAY TO SECOND literal. n can be a number or an expression resolving to a number. char_expr can be of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype. The value for char_expr specifies the unit of n and must resolve to one of the following string values: 'DAY', 'HOUR', 'MINUTE', 'SECOND' - char_expr is case insensitive. Leading and trailing values within the parentheses are ignored. By default, precision of the return is 9.",
+          "DisplayName": "NUMTODSINTERVAL(n,'char_expr')",
+          "Text": "NUMTODSINTERVAL(n,'char_expr')"
+        },
+        {
+          "Description": "NUMTOYMINTERVAL converts number n to an INTERVAL YEAR TO MONTH literal. n can be a number or an expression resolving to a number. char_expr can be of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype. The value for char_expr specifies the unit of n, and must resolve to one of the following string values: 'YEAR', 'MONTH' - char_expr is case insensitive. Leading and trailing values within the parentheses are ignored. By default, precision of the return is 9.",
+          "DisplayName": "NUMTOYMINTERVAL(n,'char_expr')",
+          "Text": "NUMTOYMINTERVAL(n,'char_expr')"
+        },
+        {
+          "Description": "Returns d rounded to the unit specified by the format model fmt.\nIf you omit fmt, d is rounded to the nearest day.\nIf fmt is 'YYYY' the year of the date is rounded Up/Down as determined by the day of the year.\nIf fmt is 'MM' the month is rounded Up/Down determined by the day of the month.",
+          "DisplayName": "ROUND(d [,fmt])",
+          "Text": "ROUND(d [,fmt])"
+        },
+        {
+          "Description": "The SESSIONTIMEZONE function returns the value of the current session's time zone. The return type is a time zone offset (a character type in the format '[+|]TZH:TZM') or a time zone region name, depending on how the user specified the session time zone value in the most recent ALTER SESSION statement.",
+          "DisplayName": "SESSIONTIMEZONE",
+          "Text": "SESSIONTIMEZONE"
+        },
+        {
+          "Description": "The SYS_EXTRACT_UTC function extracts the UTC (Coordinated Universal Time--formerly Greenwich Mean Time) from a datetime with time zone displacement.",
+          "DisplayName": "SYS_EXTRACT_UTC(datetime_with_timezone)",
+          "Text": "SYS_EXTRACT_UTC(datetime_with_timezone)"
+        },
+        {
+          "Description": "The SYSTIMESTAMP function returns the system date, including fractional seconds and time zone of the database. The return type is TIMESTAMP WITH TIME ZONE.",
+          "DisplayName": "SYSTIMESTAMP",
+          "Text": "SYSTIMESTAMP"
+        },
+        {
+          "Description": "Returns the current system date and time of the database server.",
+          "DisplayName": "SYSDATE",
+          "Text": "SYSDATE"
+        },
+        {
+          "Description": "TO_DSINTERVAL converts a character string of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype to an INTERVAL DAY TO SECOND type. char is the character string to be converted. The only valid NLS parameter you can specify in this function is NLS_NUMERIC_CHARACTERS. This argument can have the form: NLS_NUMERIC_CHARACTERS = \"dg\" where d and g represent the decimal character and group separator respectively.",
+          "DisplayName": "TO_DSINTERVAL(char 'nlsparam')",
+          "Text": "TO_DSINTERVAL(char 'nlsparam')"
+        },
+        {
+          "Description": "TO_TIMESTAMP converts char of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype to a value of TIMESTAMP datatype. The optional fmt specifies the format of char. If you omit fmt, char must be in the default format of the TIMESTAMP datatype. The optional nlsparam has the same purpose in this function as in the TO_CHAR function for date conversion.",
+          "DisplayName": "TO_TIMESTAMP(char,fmt 'nlsparam')",
+          "Text": "TO_TIMESTAMP(char,fmt 'nlsparam')"
+        },
+        {
+          "Description": "TO_TIMESTAMP_TZ converts char of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype to a value of TIMESTAMP WITH TIME ZONE datatype.",
+          "DisplayName": "TO_TIMESTAMP_TZ(char,fmt 'nlsparams')",
+          "Text": "TO_TIMESTAMP_TZ(char,fmt 'nlsparams')"
+        },
+        {
+          "Description": "The TO_YMINTERVAL function converts a character string of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype to an INTERVAL YEAR TO MONTH type, where char is the character string to be converted.",
+          "DisplayName": "TO_YMINTERVAL(char)",
+          "Text": "TO_YMINTERVAL(char)"
+        },
+        {
+          "Description": "Returns D with the time portion of the day truncated to the unit specified by the format model fmt.\nIf you omit fmt, d is truncated to the nearest day.",
+          "DisplayName": "TRUNC(d [,fmt])",
+          "Text": "TRUNC(d [,fmt])"
+        },
+        {
+          "Description": "TZ_OFFSET returns the time zone offset corresponding to the value entered based on the date the statement is executed. You can enter a valid time zone name, a time zone offset from UTC (which simply returns itself), or the keyword SESSIONTIMEZONE or DBTIMEZONE. For a listing of valid values, query the V$TIMEZONE_NAMES dynamic performance view.",
+          "DisplayName": "TZ_OFFSET(time_zone_name|SESSIONTIMEZONE|DBTIMEZONE)",
+          "Text": "TZ_OFFSET(time_zone_name|SESSIONTIMEZONE|DBTIMEZONE)"
+        },
+        {
+          "Description": "Date1 is converted to CHAR data type in the format specified by fmt.",
+          "DisplayName": "TO_CHAR(date1 [,fmt])",
+          "Text": "TO_CHAR(date1 [,fmt])"
+        },
+        {
+          "Description": "Given a current date of 2/25/97, returns '27-FEB-97'",
+          "DisplayName": "TO_CHAR(sysdate)",
+          "Text": "TO_CHAR(sysdate)"
+        },
+        {
+          "Description": "Given a current date of 2/25/97, returns '02/27/97'",
+          "DisplayName": "TO_CHAR(sysdate, 'MM/DD/YY')",
+          "Text": "TO_CHAR(sysdate, 'MM/DD/YY')"
+        },
+        {
+          "Description": "Given a current date of 2/25/97, returns the Julian date '2450507'",
+          "DisplayName": "TO_CHAR(sysdate, 'J')",
+          "Text": "TO_CHAR(sysdate, 'J')"
+        },
+        {
+          "Description": "Given a current date of 2/25/97, returns the short Month name 'Feb'",
+          "DisplayName": "TO_CHAR(sysdate,'Mon')",
+          "Text": "TO_CHAR(sysdate,'Mon')"
+        },
+        {
+          "Description": "Given a current date of 2/25/97, returns the long Month name 'February'",
+          "DisplayName": "TO_CHAR(sysdate, 'Month')",
+          "Text": "TO_CHAR(sysdate, 'Month')"
+        },
+        {
+          "Description": "Given a current date of 2/25/97, returns the 3 digit day of the year 058",
+          "DisplayName": "TO_CHAR(sysdate, 'DDD')",
+          "Text": "TO_CHAR(sysdate, 'DDD')"
+        }
+      ]
+    },
+    {
+      "Category": "Date Format Options",
+      "Snippets": [
+        {
+          "Description": "AD indicator with or without periods.",
+          "DisplayName": "AD or A.D.",
+          "Text": "AD or A.D."
+        },
+        {
+          "Description": "Meridian indicator with or without periods.",
+          "DisplayName": "AM or A.M.",
+          "Text": "AM or A.M."
+        },
+        {
+          "Description": "BC indicator with or without periods.",
+          "DisplayName": "BC or B.C.",
+          "Text": "BC or B.C."
+        },
+        {
+          "Description": "One greater than the first two digits of a four-digit year; \"S\" prefixes BC dates with \"-\". For example, '20' from '1900'.",
+          "DisplayName": "CC or SCC",
+          "Text": "CC or SCC"
+        },
+        {
+          "Description": "Day of week (1-7).",
+          "DisplayName": "D",
+          "Text": "D"
+        },
+        {
+          "Description": "Name of day, padded with blanks to length of 9 characters.",
+          "DisplayName": "DAY",
+          "Text": "DAY"
+        },
+        {
+          "Description": "Day of month (1-31).",
+          "DisplayName": "DD",
+          "Text": "DD"
+        },
+        {
+          "Description": "Day of year (1-366).",
+          "DisplayName": "DDD",
+          "Text": "DDD"
+        },
+        {
+          "Description": "Abbreviated name of day.",
+          "DisplayName": "DY",
+          "Text": "DY"
+        },
+        {
+          "Description": "Abbreviated era name (Japanese Imperial, ROC Official, and Thai Buddha calendars).",
+          "DisplayName": "E",
+          "Text": "E"
+        },
+        {
+          "Description": "Full era name (Japanese Imperial, ROC Official, and Thai Buddha calendars).",
+          "DisplayName": "EE",
+          "Text": "EE"
+        },
+        {
+          "Description": "Fractional seconds; no radix printed (see X format element below). Example: 'HH:MI:SS.FF'.",
+          "DisplayName": "FF",
+          "Text": "FF"
+        },
+        {
+          "Description": "Hour of day (1-12).",
+          "DisplayName": "HH",
+          "Text": "HH"
+        },
+        {
+          "Description": "Hour of day (1-12).",
+          "DisplayName": "HH12",
+          "Text": "HH12"
+        },
+        {
+          "Description": "Hour of day (0-23).",
+          "DisplayName": "HH24",
+          "Text": "HH24"
+        },
+        {
+          "Description": "Week of year (1-52 or 1-53) based on the ISO standard.",
+          "DisplayName": "IW",
+          "Text": "IW"
+        },
+        {
+          "Description": "Last 3, 2, or 1 digit(s) of ISO year.",
+          "DisplayName": "IYY or IY or I",
+          "Text": "IYY or IY or I"
+        },
+        {
+          "Description": "4-digit year based on the ISO standard.",
+          "DisplayName": "IYYY",
+          "Text": "IYYY"
+        },
+        {
+          "Description": "Julian day; the number of days since January 1, 4712 BC. Number specified with 'J' must be integers.",
+          "DisplayName": "J",
+          "Text": "J"
+        },
+        {
+          "Description": "Minute (0-59).",
+          "DisplayName": "MI",
+          "Text": "MI"
+        },
+        {
+          "Description": "Month (01-12; JAN = 01).",
+          "DisplayName": "MM",
+          "Text": "MM"
+        },
+        {
+          "Description": "Abbreviated name of month.",
+          "DisplayName": "MON",
+          "Text": "MON"
+        },
+        {
+          "Description": "Name of month, padded with blanks to length of 9 characters.",
+          "DisplayName": "MONTH",
+          "Text": "MONTH"
+        },
+        {
+          "Description": "Meridian indicator with or without periods.",
+          "DisplayName": "PM or P.M.",
+          "Text": "PM or P.M."
+        },
+        {
+          "Description": "Quarter of year (1, 2, 3, 4; JAN-MAR = 1).",
+          "DisplayName": "Q",
+          "Text": "Q"
+        },
+        {
+          "Description": "Roman numeral month (I-XII; JAN = I).",
+          "DisplayName": "RM",
+          "Text": "RM"
+        },
+        {
+          "Description": "Given a year with 2 digits:\nIf the year is <50 and the last 2 digits of the current year are >=50, the first 2 digits of the returned year are 1 greater than the first 2 digits of the current year.\nIf the year is >=50 and the last 2 digits of the current year are <50, the first 2 digits of the returned year are 1 less than the first 2 digits of the current year.",
+          "DisplayName": "RR",
+          "Text": "RR"
+        },
+        {
+          "Description": "Round year. Accepts either 4-digit or 2-digit input. If 2-digit, provides the same return as RR. If you don't want this functionality, simply enter the 4-digit year.",
+          "DisplayName": "RRRR",
+          "Text": "RRRR"
+        },
+        {
+          "Description": "Second (0-59).",
+          "DisplayName": "SS",
+          "Text": "SS"
+        },
+        {
+          "Description": "Seconds past midnight (0-86399).",
+          "DisplayName": "SSSSS",
+          "Text": "SSSSS"
+        },
+        {
+          "Description": "Daylight savings information. The TZD value is an abbreviated time zone string with daylight savings information. It must correspond with the region specified in TZR.\nExample: PST (for US/Pacific standard time); PDT (for US/Pacific daylight time).",
+          "DisplayName": "TZD",
+          "Text": "TZD"
+        },
+        {
+          "Description": "Time zone hour. (See TZM format element below.) Example: 'HH:MI:SS.FFTZH:TZM'.",
+          "DisplayName": "TZH",
+          "Text": "TZH"
+        },
+        {
+          "Description": "Time zone minute. (See TZH format element above.) Example: 'HH:MI:SS.FFTZH:TZM'.",
+          "DisplayName": "TZM",
+          "Text": "TZM"
+        },
+        {
+          "Description": "Time zone region information. The value must be one of the time zone regions supported in the database. Example: US/Pacific",
+          "DisplayName": "TZR",
+          "Text": "TZR"
+        },
+        {
+          "Description": "Week of year (1-53) where week 1 starts on the first day of the year and continues to the seventh day of the year.",
+          "DisplayName": "WW",
+          "Text": "WW"
+        },
+        {
+          "Description": "Week of month (1-5) where week 1 starts on the first day of the month and ends on the seventh.",
+          "DisplayName": "W",
+          "Text": "W"
+        },
+        {
+          "Description": "Local radix character. Example: 'HH:MI:SSXFF'.",
+          "DisplayName": "X",
+          "Text": "X"
+        },
+        {
+          "Description": "Year with comma in this position.",
+          "DisplayName": "Y,YYY",
+          "Text": "Y,YYY"
+        },
+        {
+          "Description": "Year, spelled out; \"S\" prefixes BC dates with \"-\".",
+          "DisplayName": "YEAR or SYEAR",
+          "Text": "YEAR or SYEAR"
+        },
+        {
+          "Description": "4-digit year; \"S\" prefixes BC dates with \"-\".",
+          "DisplayName": "YYYY or SYYYY",
+          "Text": "YYYY or SYYYY"
+        },
+        {
+          "Description": "Last 3, 2, or 1 digit(s) of year.",
+          "DisplayName": "YYY or YY or Y",
+          "Text": "YYY or YY or Y"
+        }
+      ]
+    },
+    {
+      "Category": "Data Conversion Functions",
+      "Snippets": [
+        {
+          "Description": "ASCIISTR takes as its argument a string in any character set and returns an ASCII string in the database character set. The value returned contains only characters that appear in SQL, plus the forward slash (/).",
+          "DisplayName": "ASCIISTR('string')",
+          "Text": "ASCIISTR('string')"
+        },
+        {
+          "Description": "BIN_TO_NUM converts a bit vector to its equivalent number. Each argument to this function represents a bit in the bit vector. Each expr must evaluate to 0 or 1. This function returns Oracle NUMBER. BIN_TO_NUM is useful in data warehousing applications for selecting groups of interest from a materialized view using grouping sets.",
+          "DisplayName": "BIN_TO_NUM(expr)",
+          "Text": "BIN_TO_NUM(expr)"
+        },
+        {
+          "Description": "Converts expression into the specified datatype.  Example: convert data from a NUMBER to a CHAR, or from a nested table to a varray.",
+          "DisplayName": "CAST(expr AS typename)",
+          "Text": "CAST(expr AS typename)"
+        },
+        {
+          "Description": "Converts the results of the subquery into the collection type specified by typename",
+          "DisplayName": "CAST(MULTISET(subquery)AS typename)",
+          "Text": "CAST(MULTISET(subquery)AS typename)"
+        },
+        {
+          "Description": "Converts a CHAR value to ROWID datatype. Used to reverse a rowid that was converted to CHAR via ROWIDTOCHAR function.",
+          "DisplayName": "CHARTOROWID(char)",
+          "Text": "CHARTOROWID(char)"
+        },
+        {
+          "Description": "COMPOSE takes as its argument a string in any datatype, and returns a unicode string in its fully normalized form in the same character set as the input. For example, an \"o\" codepoint qualified by an umlaut codepoint will be returned as the o-umlaut codepoint.",
+          "DisplayName": "COMPOSE('string')",
+          "Text": "COMPOSE('string')"
+        },
+        {
+          "Description": "Returns Char1 converted to dest_char_set.  Source_char_set defaults to the current char set. E.g.:  Convert('sample', 'US7ASCII', 'WE8DEC')",
+          "DisplayName": "CONVERT(char1, dest_char_set [,source_char_set)",
+          "Text": "CONVERT(char1, dest_char_set [,source_char_set)"
+        },
+        {
+          "Description": "DECOMPOSE takes as its argument a string in any datatype, and returns a unicode string after canonical decomposition in the same character set as the input. For example, an o-umlaut codepoint will be returned as the \"o\" codepoint followed by an umlaut codepoint.",
+          "DisplayName": "DECOMPOSE('string')",
+          "Text": "DECOMPOSE('string')"
+        },
+        {
+          "Description": "Converts a TIMESTAMP to a TIMESTAMP WITH TIME ZONE",
+          "DisplayName": "FROM_TZ(timestamp, timezone)",
+          "Text": "FROM_TZ(timestamp, timezone)"
+        },
+        {
+          "Description": "HEXTORAW converts char containing hexadecimal digits in the CHAR, VARCHAR2, NCHAR, or NVARCHAR2 character set to a raw value.",
+          "DisplayName": "HEXTORAW(char)",
+          "Text": "HEXTORAW(char)"
+        },
+        {
+          "Description": "NUMTODSINTERVAL converts n to an INTERVAL DAY TO SECOND literal. n can be a number or an expression resolving to a number. char_expr can be of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype. The value for char_expr specifies the unit of n and must resolve to one of the following string values: 'DAY', 'HOUR', 'MINUTE', 'SECOND' - char_expr is case insensitive. Leading and trailing values within the parentheses are ignored. By default, precision of the return is 9.",
+          "DisplayName": "NUMTODSINTERVAL(n, 'char_expr')",
+          "Text": "NUMTODSINTERVAL(n, 'char_expr')"
+        },
+        {
+          "Description": "NUMTOYMINTERVAL converts number n to an INTERVAL YEAR TO MONTH literal. n can be a number or an expression resolving to a number. char_expr can be of CHAR, VARCHAR2, NCHAR, or NVARCHAR2 datatype. The value for char_expr specifies the unit of n, and must resolve to one of the following string values: 'YEAR', 'MONTH' - char_expr is case insensitive. Leading and trailing values within the parentheses are ignored. By default, precision of the return is 9.",
+          "DisplayName": "NUMTOYMINTERVAL(n, 'char_expr')",
+          "Text": "NUMTOYMINTERVAL(n, 'char_expr')"
+        },
+        {
+          "Description": "RAWTOHEX converts raw to a character value containing its hexadecimal equivalent. The raw argument can be either RAW or BLOB datatype.",
+          "DisplayName": "RAWTOHEX(raw)",
+          "Text": "RAWTOHEX(raw)"
+        },
+        {
+          "Description": "The RAWTONHEX function converts raw to an NVARCHAR2 character value containing its hexadecimal equivalent.",
+          "DisplayName": "RAWTONHEX(raw)",
+          "Text": "RAWTONHEX(raw)"
+        },
+        {
+          "Description": "ROWIDTOCHAR converts a rowid value to VARCHAR2 datatype. The result of this conversion is always 18 characters long.",
+          "DisplayName": "ROWIDTOCHAR(rowid)",
+          "Text": "ROWIDTOCHAR(rowid)"
+        },
+        {
+          "Description": "The ROWIDTONCHAR function converts a rowid value to NVARCHAR2 datatype. The result of this conversion is always 18 characters long.",
+          "DisplayName": "ROWIDTONCHAR(rowid)",
+          "Text": "ROWIDTONCHAR(rowid)"
+        },
+        {
+          "Description": "Returns the approximate timestamp associated with the specified SCN (system change number). The returned value is of TIMESTAMP datatype. It can be used to associate a timestamp with the most recent change to a row, via the ORA_SCN pseudocolumn.  Oracle 10g only.",
+          "DisplayName": "SCN_TO_TIMESTAMP(scn)",
+          "Text": "SCN_TO_TIMESTAMP(scn)"
+        },
+        {
+          "Description": "Date1 is converted to char type in the format specified by fmt.",
+          "DisplayName": "TO_CHAR(date1 [,fmt])",
+          "Text": "TO_CHAR(date1 [,fmt])"
+        },
+        {
+          "Description": "Returns '27-FEB-97'",
+          "DisplayName": "TO_CHAR(sysdate)",
+          "Text": "TO_CHAR(sysdate)"
+        },
+        {
+          "Description": "Returns '02/27/97'",
+          "DisplayName": "TO_CHAR(sysdate, 'MM/DD/YY')",
+          "Text": "TO_CHAR(sysdate, 'MM/DD/YY')"
+        },
+        {
+          "Description": "Returns the Julian date '2450507'",
+          "DisplayName": "TO_CHAR(sysdate, 'J')",
+          "Text": "TO_CHAR(sysdate, 'J')"
+        },
+        {
+          "Description": "Returns the short Month name 'Feb'",
+          "DisplayName": "TO_CHAR(sysdate,'Mon')",
+          "Text": "TO_CHAR(sysdate,'Mon')"
+        },
+        {
+          "Description": "Returns the long Month name 'February'",
+          "DisplayName": "TO_CHAR(sysdate, 'Month')",
+          "Text": "TO_CHAR(sysdate, 'Month')"
+        },
+        {
+          "Description": "Returns the 3 digit day of the year 058",
+          "DisplayName": "TO_CHAR(sysdate, 'DDD')",
+          "Text": "TO_CHAR(sysdate, 'DDD')"
+        },
+        {
+          "Description": "Number1 is converted by the format specified by fmt.",
+          "DisplayName": "TO_CHAR(number1 [,fmt])",
+          "Text": "TO_CHAR(number1 [,fmt])"
+        },
+        {
+          "Description": "Number1 is returned as '00123'",
+          "DisplayName": "TO_CHAR(123.456, '09999')",
+          "Text": "TO_CHAR(123.456, '09999')"
+        },
+        {
+          "Description": "Number1 is returned as '00123.5'",
+          "DisplayName": "TO_CHAR(123.456, '09999.9')",
+          "Text": "TO_CHAR(123.456, '09999.9')"
+        },
+        {
+          "Description": "Number1 is returned as '123,456'",
+          "DisplayName": "TO_CHAR(123456, 'FM999,999,999')",
+          "Text": "TO_CHAR(123456, 'FM999,999,999')"
+        },
+        {
+          "Description": "The TO_CLOB function converts NCLOB values in a LOB column to CLOB values. Oracle executes this function by converting the underlying LOB data from the NCHAR or NVARCHAR2 character set to the database character set.",
+          "DisplayName": "TO_CLOB(lob_column)",
+          "Text": "TO_CLOB(lob_column)"
+        },
+        {
+          "Description": "Converts a Char date to an Oracle Date data type. See TO_CHAR for samples of fmt.",
+          "DisplayName": "TO_DATE(char [,fmt])",
+          "Text": "TO_DATE(char [,fmt])"
+        },
+        {
+          "Description": "Converts a CHAR, VARCHAR2, NCHAR, or NVARCHAR2 string into an INTERVAL DAY TO SECOND.  The nlsparam is a value of NLS_NUMERIC_CHARACTERS.",
+          "DisplayName": "TO_DSINTERVAL(char [,nlsparam])",
+          "Text": "TO_DSINTERVAL(char [,nlsparam])"
+        },
+        {
+          "Description": "TO_LOB converts LONG or LONG RAW values in the column long_column to LOB values. You can apply this function only to a LONG or LONG RAW column, and only in the SELECT list of a subquery in an INSERT statement. Before using this function, you must create a LOB column to receive the converted LONG values. To convert LONGs, create a CLOB column. To convert LONG RAWs, create a BLOB column.",
+          "DisplayName": "TO_LOB(long_column)",
+          "Text": "TO_LOB(long_column)"
+        },
+        {
+          "Description": "TO_MULTI_BYTE returns char with all of its single-byte characters converted to their corresponding multibyte characters. char can be of datatype CHAR, VARCHAR2, NCHAR, or NVARCHAR2. The value returned is in the same datatype as char.",
+          "DisplayName": "TO_MULTI_BYTE(char)",
+          "Text": "TO_MULTI_BYTE(char)"
+        },
+        {
+          "Description": "The TO_NCHAR (character) function converts a character string from the database character set to the NVARCHAR2 character set. This function is equivalent to the TRANSLATE ... USING function with a USING clause in the NCHAR character set.",
+          "DisplayName": "TO_NCHAR(char, fmt, 'nlsparam')",
+          "Text": "TO_NCHAR(char, fmt, 'nlsparam')"
+        },
+        {
+          "Description": "The TO_NCHAR (datetime) function converts a character string of DATE, TIMESTAMP, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH LOCAL TIME ZONE, INTERVAL MONTH TO YEAR, or INTERVAL DAY TO SECOND datatype from the database character set to the NVARCHAR2 character set.",
+          "DisplayName": "TO_NCHAR(datetime, fmt, 'nlsparam')",
+          "Text": "TO_NCHAR(datetime, fmt, 'nlsparam')"
+        },
+        {
+          "Description": "The TO_NCHAR (number) function converts a number to a string in the NVARCHAR2 character set. The optional fmt and nlsparam corresponding to n can be of DATE, TIMESTAMP, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH LOCAL TIME ZONE, INTERVAL MONTH TO YEAR, or INTERVAL DAY TO SECOND datatype.",
+          "DisplayName": "TO_NCHAR(n, fmt, 'nlsparam')",
+          "Text": "TO_NCHAR(n, fmt, 'nlsparam')"
+        },
+        {
+          "Description": "The TO_NCLOB function converts CLOB values in a LOB column to NCLOB values. Oracle implements this function by converting the character set of the LOB column from the database character set to the NCHAR character set.",
+          "DisplayName": "TO_NCLOB(lob_column)",
+          "Text": "TO_NCLOB(lob_column)"
+        },
+        {
+          "Description": "Converts Char, a value of CHAR or VARCHAR2 datatype containing a number in the format specified by the optional format model fmt, to a value of NUMBER datatype.",
+          "DisplayName": "TO_NUMBER(char [,fmt [, 'nlsparams']])",
+          "Text": "TO_NUMBER(char [,fmt [, 'nlsparams']])"
+        },
+        {
+          "Description": "TO_SINGLE_BYTE returns char with all of its multibyte characters converted to their corresponding single-byte characters. char can be of datatype CHAR, VARCHAR2, NCHAR, or NVARCHAR2. The value returned is in the same datatype as char.",
+          "DisplayName": "TO_SINGLE_BYTE(char)",
+          "Text": "TO_SINGLE_BYTE(char)"
+        },
+        {
+          "Description": "Converts a CHAR, VARCHAR2, NCHAR, or NVARCHAR2 value to a TIMESTAMP, using the given format.  For example, consider TO_TIMESTAMP ('10-Sep-02 14:10:10.123000','DD-Mon-RR HH24:MI:SS.FF).",
+          "DisplayName": "TO_TIMESTAMP(char [,fmt [, 'nlsparam']])",
+          "Text": "TO_TIMESTAMP(char [,fmt [, 'nlsparam']])"
+        },
+        {
+          "Description": "Converts a CHAR, VARCHAR2, NCHAR, or NVARCHAR2 value to a TIMESTAMP WITH TIME ZONE, using the given format.",
+          "DisplayName": "TO_TIMESTAMP_TZ(char [,fmt [, 'nlsparam']])",
+          "Text": "TO_TIMESTAMP_TZ(char [,fmt [, 'nlsparam']])"
+        },
+        {
+          "Description": "Converts a CHAR, VARCHAR2, NCHAR, or NVARCHAR2 value to an INTERVAL YEAR TO MONTH.  For example, '02-04' becomes 2 years and 4 months.",
+          "DisplayName": "TO_YMINTERVAL(char)",
+          "Text": "TO_YMINTERVAL(char)"
+        },
+        {
+          "Description": "TRANSLATE ... USING converts text into the character set specified for conversions between the database character set and the national character set. \nThe text argument is the expression to be converted. \nSpecifying the USING CHAR_CS argument converts text into the database character set. The output datatype is VARCHAR2. \nSpecifying the USING NCHAR_CS argument converts text into the national character set. The output datatype is NVARCHAR2. \nThis function is similar to the Oracle CONVERT function, but must be used instead of CONVERT if either the input or the output datatype is being used as NCHAR or NVARCHAR2. If the input contains UCS2 codepoints or backslash characters (\\), use the UNISTR function.",
+          "DisplayName": "TRANSLATE(text USING CHAR_CS|NCHAR_CS)",
+          "Text": "TRANSLATE(text USING CHAR_CS|NCHAR_CS)"
+        },
+        {
+          "Description": "UNISTR takes as its argument a string in any character set and returns it in unicode in the database unicode character set. To include UCS2 codepoint characters in the string, use the escape backslash (\\) followed by the next number. To include the backslash itself, precede it with another backslash (\\\\).",
+          "DisplayName": "UNISTR('string')",
+          "Text": "UNISTR('string')"
+        }
+      ]
+    },
+    {
+      "Category": "Other Misc. Functions",
+      "Snippets": [
+        {
+          "Description": "BFILENAME returns a BFILE locator that is associated with a physical LOB binary file on the server's file system. A directory is an alias for a full pathname on the server's file system where the files are actually located, and 'filename' is the name of the file in the server's file system.",
+          "DisplayName": "BFILENAME(directory,filename)",
+          "Text": "BFILENAME(directory,filename)"
+        },
+        {
+          "Description": "Simple CASE statements evaluate an expression and compare it to different values to output another value.  \nFor example:  \nSELECT DEPTNO, CASE DEPTNO WHEN 10 THEN 'ACCTG' WHEN 20 THEN 'R AND D' ELSE 'OTHER' END \"Result\" FROM SCOTT.DEPT;  \n\nIf no ELSE clause is specified, then a NULL is returned.  Oracle 9i and up.",
+          "DisplayName": "CASE expr WHEN expr1 THEN ret_expr1 ELSE ret_expr2 END",
+          "Text": "CASE expr WHEN expr1 THEN ret_expr1 ELSE ret_expr2 END"
+        },
+        {
+          "Description": "A searched CASE statement evaluates expressions one by one and returns a value when an expression evaulates to true.  \nFor example: \nSELECT DEPTNO, CASE WHEN DEPTNO=10 THEN 'ACCT' WHEN DEPTNO=20 THEN 'R AND D' ELSE 'OTHER' END \"Result\" FROM SCOTT.DEPT;\n\nIf no ELSE clause is specified, then a NULL is returned.  Oracle 9i and up.",
+          "DisplayName": "CASE WHEN cond1 THEN ret_expr1 ELSE ret_expr2 END",
+          "Text": "CASE WHEN cond1 THEN ret_expr1 ELSE ret_expr2 END"
+        },
+        {
+          "Description": "The COALESCE function returns the first non-null expr in the expression list. At least one expr must not be the literal NULL. If all occurrences of expr evaluate to null, the function returns null. This function is a generalization of the NVL function.",
+          "DisplayName": "COALESCE(expr)",
+          "Text": "COALESCE(expr)"
+        },
+        {
+          "Description": "Translates expr to a return value. If expr equals value1, function returns Return1. If expr equals value2, function returns Return2. Etc. If expr does not equal any Value in the list, the default value is returned.",
+          "DisplayName": "DECODE(expr, value1 [, return1, value2, return2....,] default )",
+          "Text": "DECODE(expr, value1 [, return1, value2, return2....,] default )"
+        },
+        {
+          "Description": "DUMP returns a VARCHAR2 value containing the datatype code, length in bytes, and internal representation of expr. The returned result is always in the database character set.",
+          "DisplayName": "DUMP(expr,return_fmt,start_position,length)",
+          "Text": "DUMP(expr,return_fmt,start_position,length)"
+        },
+        {
+          "Description": "EMPTY_BLOB returns an empty LOB locator that can be used to initialize a LOB variable or in an INSERT or UPDATE statement to initialize a LOB column or attribute to EMPTY. EMPTY means that the LOB is initialized, but not populated with data.",
+          "DisplayName": "EMPTY_BLOB()",
+          "Text": "EMPTY_BLOB()"
+        },
+        {
+          "Description": "EMPTY_CLOB returns an empty LOB locator that can be used to initialize a LOB variable or in an INSERT or UPDATE statement to initialize a LOB column or attribute to EMPTY. EMPTY means that the LOB is initialized, but not populated with data.",
+          "DisplayName": "EMPTY_CLOB()",
+          "Text": "EMPTY_CLOB()"
+        },
+        {
+          "Description": "Returns 0 if the path does not exist in the XMLType.  Returns a number > 0 otherwise.",
+          "DisplayName": "EXISTSNODE(XMLType_instance, Xpath_string)",
+          "Text": "EXISTSNODE(XMLType_instance, Xpath_string)"
+        },
+        {
+          "Description": "Returns the greatest of the list of exprs.",
+          "DisplayName": "GREATEST(expr [,expr2, expr3...])",
+          "Text": "GREATEST(expr [,expr2, expr3...])"
+        },
+        {
+          "Description": "Returns the least of the list of exprs.",
+          "DisplayName": "LEAST(expr [,expr2, expr3...])",
+          "Text": "LEAST(expr [,expr2, expr3...])"
+        },
+        {
+          "Description": "NLS_CHARSET_DECL_LEN returns the declaration width (in number of characters) of an NCHAR column. The byte_count argument is the width of the column. The char_set_id argument is the character set ID of the column.",
+          "DisplayName": "NLS_CHARSET_DECL_LEN(byte_count,char_set_id)",
+          "Text": "NLS_CHARSET_DECL_LEN(byte_count,char_set_id)"
+        },
+        {
+          "Description": "NLS_CHARSET_ID returns the NLS character set ID number corresponding to NLS character set name text. The text argument is a run-time VARCHAR2 value. The text value 'CHAR_CS' returns the database character set ID number of the server. The text value 'NCHAR_CS' returns the national character set ID number of the server.",
+          "DisplayName": "NLS_CHARSET_ID(text)",
+          "Text": "NLS_CHARSET_ID(text)"
+        },
+        {
+          "Description": "NLS_CHARSET_NAME returns the name of the NLS character set corresponding to ID number number. The character set name is returned as a VARCHAR2 value in the database character set. If number is not recognized as a valid character set ID, this function returns null.",
+          "DisplayName": "NLS_CHARSET_NAME(number)",
+          "Text": "NLS_CHARSET_NAME(number)"
+        },
+        {
+          "Description": "The NULLIF function compares expr1 and expr2. If they are equal, the function returns null. If they are not equal, the function returns expr1. You cannot specify the literal NULL for expr1.",
+          "DisplayName": "NULLIF(expr1, expr2)",
+          "Text": "NULLIF(expr1, expr2)"
+        },
+        {
+          "Description": "If expr1 is null, returns expr2.  If expr1 is not null, returns expr1.",
+          "DisplayName": "NVL(expr1, expr2)",
+          "Text": "NVL(expr1, expr2)"
+        },
+        {
+          "Description": "If expr1 is not null, NVL2 returns expr2. If expr1 is null, NVL2 returns expr3. The argument expr1 can have any datatype. The arguments expr2 and expr3 can have any datatypes except LONG.",
+          "DisplayName": "NVL2(expr1, expr2, expr3)",
+          "Text": "NVL2(expr1, expr2, expr3)"
+        },
+        {
+          "Description": "SYS_CONTEXT returns the value of attribute associated with the context namespace. You can use this function in both SQL and PL/SQL statements.",
+          "DisplayName": "SYS_CONTEXT(namespace, attribute, length)",
+          "Text": "SYS_CONTEXT(namespace, attribute, length)"
+        },
+        {
+          "Description": "SYS_GUID generates and returns a globally unique identifier (RAW value) made up of 16 bytes. On most platforms, the generated identifier consists of a host identifier and a process or thread identifier of the process or thread invoking the function, and a nonrepeating value (sequence of bytes) for that process or thread.",
+          "DisplayName": "SYS_GUID()",
+          "Text": "SYS_GUID()"
+        },
+        {
+          "Description": "Returns an integer that uniquely identifies the current user.",
+          "DisplayName": "UID",
+          "Text": "UID"
+        },
+        {
+          "Description": "Returns the current Oracle user with the datatype VARCHAR2.",
+          "DisplayName": "USER",
+          "Text": "USER"
+        },
+        {
+          "Description": "Returns information about the current session.\nValid options are 'ENTRYID', 'SESSIONID', 'TERMINAL', 'LANGUAGE', 'LANG', 'CLIENT_INFO' and 'LABEL'.",
+          "DisplayName": "USERENV(option)",
+          "Text": "USERENV(option)"
+        },
+        {
+          "Description": "Returns the number of bytes in the internal representation of expr.",
+          "DisplayName": "VSIZE(expr)",
+          "Text": "VSIZE(expr)"
+        },
+        {
+          "Description": "Returns the current system date and time of the database server.",
+          "DisplayName": "SYSDATE",
+          "Text": "SYSDATE"
+        },
+        {
+          "Description": "If SQLERRM is passed a number value, it will return the error associated with that value. If SQLERRM is called with no arguments, inside of the exception section, it will return the error message associated with the most recent SQLCODE value.",
+          "DisplayName": "SQLERRM",
+          "Text": "SQLERRM"
+        },
+        {
+          "Description": "Returns the number associated with the most recently raised PL/SQL exception. This function can only be used from within a PL/SQL exception handler.",
+          "DisplayName": "SQLCODE",
+          "Text": "SQLCODE"
+        },
+        {
+          "Description": "SYS_CONNECT_BY_PATH is valid only in hierarchical queries. It returns the path of a column value from root to node, with column values separated by char for each row returned by CONNECT BY condition.",
+          "DisplayName": "SYS_CONNECT_BY_PATH(column,char)",
+          "Text": "SYS_CONNECT_BY_PATH(column,char)"
+        },
+        {
+          "Description": "Generates an XMLType object based on the value of the expression.  The expr parameter can be a scalar, a value of a user-defined type, or an XMLType object.  The fmt parameter is a value of type SYS.XMLGenFormatType.  Oracle 9i and up.",
+          "DisplayName": "SYS_XMLGEN(expr, [fmt])",
+          "Text": "SYS_XMLGEN(expr, [fmt])"
+        }
+      ]
+    },
+    {
+      "Category": "Number Format Options",
+      "Snippets": [
+        {
+          "Description": "Returns a comma in the specified position. You can specify multiple commas in a number format model.\nRestrictions:\nA comma element cannot begin a number format model.\nA comma cannot appear to the right of a decimal character or period in a number format model.",
+          "DisplayName": "TO_CHAR(number, '9,999')",
+          "Text": "TO_CHAR(number, '9,999')"
+        },
+        {
+          "Description": "Returns a decimal point, which is a period (.) in the specified position.\nRestriction: You can specify only one period in a number format model.",
+          "DisplayName": "TO_CHAR(number, '99.99')",
+          "Text": "TO_CHAR(number, '99.99')"
+        },
+        {
+          "Description": "Returns value with a leading dollar sign.",
+          "DisplayName": "TO_CHAR(number, '$9999')",
+          "Text": "TO_CHAR(number, '$9999')"
+        },
+        {
+          "Description": "Returns leading zeros.",
+          "DisplayName": "TO_CHAR(number, '0999')",
+          "Text": "TO_CHAR(number, '0999')"
+        },
+        {
+          "Description": "Returns trailing zeros.",
+          "DisplayName": "TO_CHAR(number, '9990')",
+          "Text": "TO_CHAR(number, '9990')"
+        },
+        {
+          "Description": "Returns value with the specified number of digits with a leading space if positive or with a leading minus if negative.\nLeading zeros are blank, except for a zero value, which returns a zero for the integer part of the fixed-point number.",
+          "DisplayName": "TO_CHAR(number, '9999')",
+          "Text": "TO_CHAR(number, '9999')"
+        },
+        {
+          "Description": "Returns blanks for the integer part of a fixed-point number when the integer part is zero (regardless of \"0\"s in the format model).",
+          "DisplayName": "TO_CHAR(number, 'B9999')",
+          "Text": "TO_CHAR(number, 'B9999')"
+        },
+        {
+          "Description": "Returns in the specified position the ISO currency symbol (the current value of the NLS_ISO_CURRENCY parameter).",
+          "DisplayName": "TO_CHAR(number, 'C999')",
+          "Text": "TO_CHAR(number, 'C999')"
+        },
+        {
+          "Description": "Returns in the specified position the decimal character, which is the current value of the NLS_NUMERIC_CHARACTER parameter. The default is a period (.).\nRestriction: You can specify only one decimal character in a number format model.",
+          "DisplayName": "TO_CHAR(number, '99D99')",
+          "Text": "TO_CHAR(number, '99D99')"
+        },
+        {
+          "Description": "Returns a value using in scientific notation.",
+          "DisplayName": "TO_CHAR(number, '9.9EEEE')",
+          "Text": "TO_CHAR(number, '9.9EEEE')"
+        },
+        {
+          "Description": "Returns a value with no leading or trailing blanks.",
+          "DisplayName": "TO_CHAR(number, 'FM90.9')",
+          "Text": "TO_CHAR(number, 'FM90.9')"
+        },
+        {
+          "Description": "Returns in the specified position the group separator (the current value of the NLS_NUMERIC_CHARACTER parameter). You can specify multiple group separators in a number format model.\nRestriction: A group separator cannot appear to the right of a decimal character or period in a number format model.",
+          "DisplayName": "TO_CHAR(number, '9G999')",
+          "Text": "TO_CHAR(number, '9G999')"
+        },
+        {
+          "Description": "Returns in the specified position the local currency symbol (the current value of the NLS_CURRENCY parameter).",
+          "DisplayName": "TO_CHAR(number, 'L999')",
+          "Text": "TO_CHAR(number, 'L999')"
+        },
+        {
+          "Description": "Returns negative value with a trailing minus sign (-).\nReturns positive value with a trailing blank.\nRestriction: The MI format element can appear only in the last position of a number format model.",
+          "DisplayName": "TO_CHAR(number, '9999MI')",
+          "Text": "TO_CHAR(number, '9999MI')"
+        },
+        {
+          "Description": "Returns negative value in <angle brackets>.\nReturns positive value with a leading and trailing blank.\nRestriction: The PR format element can appear only in the last position of a number format model.",
+          "DisplayName": "TO_CHAR(number, '9999PR')",
+          "Text": "TO_CHAR(number, '9999PR')"
+        },
+        {
+          "Description": "Returns a value as Roman numerals in uppercase.\nValue can be an integer between 1 and 3999.",
+          "DisplayName": "TO_CHAR(number, 'RN')",
+          "Text": "TO_CHAR(number, 'RN')"
+        },
+        {
+          "Description": "Returns a value as Roman numerals in lowercase.\nValue can be an integer between 1 and 3999.",
+          "DisplayName": "TO_CHAR(number, 'rn')",
+          "Text": "TO_CHAR(number, 'rn')"
+        },
+        {
+          "Description": "Returns negative value with a leading minus sign (-).\nReturns negative value with a trailing minus sign (-).\nReturns positive value with a trailing plus sign (+).\nRestriction: The S format element can appear only in the first or last position of a number format model.",
+          "DisplayName": "TO_CHAR(number, 'S9999')",
+          "Text": "TO_CHAR(number, 'S9999')"
+        },
+        {
+          "Description": "Returns positive value with a leading plus sign (+).\nReturns negative value with a trailing minus sign (-).\nReturns positive value with a trailing plus sign (+).\nRestriction: The S format element can appear only in the first or last position of a number format model.",
+          "DisplayName": "TO_CHAR(number, '9999S')",
+          "Text": "TO_CHAR(number, '9999S')"
+        },
+        {
+          "Description": "\"Text minimum\". Returns (in decimal output) the smallest number of characters possible. This element is case-insensitive.\nThe default is TM9, which returns the number in fixed notation unless the output exceeds 64 characters. If output exceeds 64 characters, Oracle automatically returns the number in scientific notation.\nRestrictions:\nYou cannot precede this element with any other element.\nYou can follow this element only with 9 or E (only one) or e (only one).",
+          "DisplayName": "TO_CHAR(number, 'TM')",
+          "Text": "TO_CHAR(number, 'TM')"
+        },
+        {
+          "Description": "Returns in the specified position the \"Euro\" (or other) dual currency symbol (the current value of the NLS_DUAL_CURRENCY parameter).",
+          "DisplayName": "TO_CHAR(number, 'U9999')",
+          "Text": "TO_CHAR(number, 'U9999')"
+        },
+        {
+          "Description": "Returns a value multiplied by 10n (and if necessary, round it up), where n is the number of 9's after the \"V\".",
+          "DisplayName": "TO_CHAR(number, '999V99')",
+          "Text": "TO_CHAR(number, '999V99')"
+        },
+        {
+          "Description": "Returns the hexadecimal value of the specified number of digits. If the specified number is not an integer, Oracle rounds it to an integer.\nRestrictions:\nThis element accepts only positive values or 0. Negative values return an error.\nYou can precede this element only with 0 (which returns leading zeroes) or FM. Any other elements return an error. If you specify neither 0 nor FM with X, the return always has 1 leading blank.",
+          "DisplayName": "TO_CHAR(number, 'XXXX')",
+          "Text": "TO_CHAR(number, 'XXXX')"
+        },
+        {
+          "Description": "Converts a numeric Julian date to a date in the format \"MM/DD/YY\"",
+          "DisplayName": "TO_CHAR(number, 'DATE')",
+          "Text": "TO_CHAR(number, 'DATE')"
+        }
+      ]
+    },
+    {
+      "Category": "Oracle Pseudo Columns",
+      "Snippets": [
+        {
+          "Description": "For each row returned by a hierarchial query, CONNECT_BY_ISCYCLE returns 1 if the current row has a child which is also its ancestor. Otherwise it returns 0.  CONNECT_BY_ISCYCLE will only be useful if you have specified NOCYCLE in the CONNECT BY clause.",
+          "DisplayName": "CONNECT_BY_ISCYCLE",
+          "Text": "CONNECT_BY_ISCYCLE"
+        },
+        {
+          "Description": "For each row returned by a hierarchial query, CONNECT_BY_ISLEAF returns 1 if the row is a leaf of the tree defined by the CONNECT BY condition (i.e. has no children). Otherwise it returns 0.",
+          "DisplayName": "CONNECT_BY_ISLEAF",
+          "Text": "CONNECT_BY_ISLEAF"
+        },
+        {
+          "Description": "Returns the current value of a sequence.",
+          "DisplayName": "CURRVAL",
+          "Text": "CURRVAL"
+        },
+        {
+          "Description": "Increments the sequence and returns the next value.",
+          "DisplayName": "NEXTVAL",
+          "Text": "NEXTVAL"
+        },
+        {
+          "Description": "For each row returned by a hierarchial query, LEVEL returns 1 for a root node, 2 for a child of a root, and so on.",
+          "DisplayName": "LEVEL",
+          "Text": "LEVEL"
+        },
+        {
+          "Description": "Shows the approximate SCN when a row was last updated.  Use SCN_TO_TIMESTAMP to translate the SCN into a timestamp.  Oracle 10g only.",
+          "DisplayName": "ORA_ROWSCN",
+          "Text": "ORA_ROWSCN"
+        },
+        {
+          "Description": "Returns a row's address, which contains information necessary to locate a row: which data block in the data file, which row in the data block, which data file.",
+          "DisplayName": "ROWID",
+          "Text": "ROWID"
+        },
+        {
+          "Description": "Returns a number indicating the order in which Oracle selects the row from a table or set of joined rows, before any ORDER BY clause is applied.",
+          "DisplayName": "ROWNUM",
+          "Text": "ROWNUM"
+        }
+      ]
+    },
+    {
+      "Category": "Sql Optimizer hints",
+      "Snippets": [
+        {
+          "Description": "The ALL_ROWS hint explicitly chooses the cost-based approach to optimize a statement block with a goal of best throughput (that is, minimum total resource consumption).",
+          "DisplayName": "/*+ ALL_ROWS */",
+          "Text": "/*+ ALL_ROWS */"
+        },
+        {
+          "Description": "The FIRST_ROWS hint explicitly chooses the cost-based approach to optimize a statement block with a goal of best response time (minimum resource usage to return first row).",
+          "DisplayName": "/*+ FIRST_ROWS(integer) */",
+          "Text": "/*+ FIRST_ROWS(integer) */"
+        },
+        {
+          "Description": "The CHOOSE hint causes the optimizer to choose between the rule-based and cost-based approaches for a SQL statement. The optimizer bases its selection on the presence of statistics for the tables accessed by the statement. If the data dictionary has statistics for at least one of these tables, then the optimizer uses the cost-based approach and optimizes with the goal of best throughput. If the data dictionary does not have statistics for these tables, then it uses the rule-based approach.",
+          "DisplayName": "/*+ CHOOSE */",
+          "Text": "/*+ CHOOSE */"
+        },
+        {
+          "Description": "The FULL hint explicitly chooses a full table scan for the specified table.",
+          "DisplayName": "/*+ FULL(table_name) */",
+          "Text": "/*+ FULL(table_name) */"
+        },
+        {
+          "Description": "The ROWID hint explicitly chooses a table scan by rowid for the specified table.",
+          "DisplayName": "/*+ ROWID(table_name) */",
+          "Text": "/*+ ROWID(table_name) */"
+        },
+        {
+          "Description": "The CLUSTER hint explicitly chooses a cluster scan to access the specified table. It applies only to clustered objects.",
+          "DisplayName": "/*+ CLUSTER(table_name) */",
+          "Text": "/*+ CLUSTER(table_name) */"
+        },
+        {
+          "Description": "The HASH hint explicitly chooses a hash scan to access the specified table. It applies only to tables stored in a cluster.",
+          "DisplayName": "/*+ HASH(table_name) */",
+          "Text": "/*+ HASH(table_name) */"
+        },
+        {
+          "Description": "The INDEX hint explicitly chooses an index scan for the specified table. You can use the INDEX hint for domain, B-tree, bitmap, and bitmap join indexes. However, Oracle recommends using INDEX_COMBINE rather than INDEX for bitmap indexes, because it is a more versatile hint.",
+          "DisplayName": "/*+ INDEX(table_name index_name) */",
+          "Text": "/*+ INDEX(table_name index_name) */"
+        },
+        {
+          "Description": "The INDEX_ASC hint explicitly chooses an index scan for the specified table. If the statement uses an index range scan, then Oracle scans the index entries in ascending order of their indexed values.",
+          "DisplayName": "/*+ INDEX_ASC(table_name index_name) */",
+          "Text": "/*+ INDEX_ASC(table_name index_name) */"
+        },
+        {
+          "Description": "The INDEX_COMBINE hint explicitly chooses a bitmap access path for the table. If no indexes are given as arguments for the INDEX_COMBINE hint, then the optimizer uses whatever Boolean combination of bitmap indexes has the best cost estimate for the table. If certain indexes are given as arguments, then the optimizer tries to use some Boolean combination of those particular bitmap indexes.",
+          "DisplayName": "/*+ INDEX_COMBINE(table_name index_name) */",
+          "Text": "/*+ INDEX_COMBINE(table_name index_name) */"
+        },
+        {
+          "Description": "The INDEX_JOIN hint explicitly instructs the optimizer to use an index join as an access path. For the hint to have a positive effect, a sufficiently small number of indexes must exist that contain all the columns required to resolve the query.",
+          "DisplayName": "/*+ INDEX_JOIN(table_name index_name) */",
+          "Text": "/*+ INDEX_JOIN(table_name index_name) */"
+        },
+        {
+          "Description": "The INDEX_DESC hint explicitly chooses an index scan for the specified table. If the statement uses an index range scan, then Oracle scans the index entries in descending order of their indexed values. In a partitioned index, the results are in descending order within each partition.",
+          "DisplayName": "/*+ INDEX_DESC(table_name index_name) */",
+          "Text": "/*+ INDEX_DESC(table_name index_name) */"
+        },
+        {
+          "Description": "The INDEX_FFS hint causes a fast full index scan to be performed rather than a full table scan.",
+          "DisplayName": "/*+ INDEX_FFS(table_name index_name) */",
+          "Text": "/*+ INDEX_FFS(table_name index_name) */"
+        },
+        {
+          "Description": "The NO_INDEX hint explicitly disallows a set of indexes for the specified table.",
+          "DisplayName": "/*+ INDEX_NOINDEX(table_name index_name) */",
+          "Text": "/*+ INDEX_NOINDEX(table_name index_name) */"
+        },
+        {
+          "Description": "The AND_EQUAL hint explicitly chooses an execution plan that uses an access path that merges the scans on several single-column indexes.",
+          "DisplayName": "/*+ INDEX_NOINDEX(table_name index_name[,index_name]) */",
+          "Text": "/*+ INDEX_NOINDEX(table_name index_name[,index_name]) */"
+        },
+        {
+          "Description": "The USE_CONCAT hint forces combined OR conditions in the WHERE clause of a query to be transformed into a compound query using the UNION ALL set operator. Generally, this transformation occurs only if the cost of the query using the concatenations is cheaper than the cost without them.",
+          "DisplayName": "/*+ USE_CONCAT */",
+          "Text": "/*+ USE_CONCAT */"
+        },
+        {
+          "Description": "The NO_EXPAND hint prevents the cost-based optimizer from considering OR-expansion for queries having OR conditions or IN-lists in the WHERE clause. Usually, the optimizer considers using OR expansion and uses this method if it decides that the cost is lower than not using it.",
+          "DisplayName": "/*+ NO_EXPAND */",
+          "Text": "/*+ NO_EXPAND */"
+        },
+        {
+          "Description": "The REWRITE hint forces the cost-based optimizer to rewrite a query in terms of materialized views, when possible, without cost consideration. Use the REWRITE hint with or without a view list. If you use REWRITE with a view list and the list contains an eligible materialized view, then Oracle uses that view regardless of its cost.",
+          "DisplayName": "/*+ REWRITE(view_name) */",
+          "Text": "/*+ REWRITE(view_name) */"
+        },
+        {
+          "Description": "The NOREWRITE hint disables query rewrite for the query block, overriding the setting of the parameter QUERY_REWRITE_ENABLED. Use the NOREWRITE hint on any query block of a request.",
+          "DisplayName": "/*+ NOREWRITE */",
+          "Text": "/*+ NOREWRITE */"
+        },
+        {
+          "Description": "The MERGE hint lets you merge a view on a per-query basis.",
+          "DisplayName": "/*+ MERGE(table_name) */",
+          "Text": "/*+ MERGE(table_name) */"
+        },
+        {
+          "Description": "The NO_MERGE hint causes Oracle not to merge mergeable views.",
+          "DisplayName": "/*+ NO_MERGE(table_name) */",
+          "Text": "/*+ NO_MERGE(table_name) */"
+        },
+        {
+          "Description": "The STAR_TRANSFORMATION hint makes the optimizer use the best plan in which the transformation has been used. Without the hint, the optimizer could make a cost-based decision to use the best plan generated without the transformation, instead of the best plan for the transformed query.",
+          "DisplayName": "/*+ STAR_TRANSFORMATION */",
+          "Text": "/*+ STAR_TRANSFORMATION */"
+        },
+        {
+          "Description": "The FACT hint is used in the context of the star transformation to indicate to the transformation that the hinted table should be considered as a fact table.",
+          "DisplayName": "/*+ FACT(table_name) */",
+          "Text": "/*+ FACT(table_name) */"
+        },
+        {
+          "Description": "The NO_FACT hint is used in the context of the star transformation to indicate to the transformation that the hinted table should not be considered as a fact table.",
+          "DisplayName": "/*+ NO_FACT(table_name) */",
+          "Text": "/*+ NO_FACT(table_name) */"
+        },
+        {
+          "Description": "The ORDERED hint causes Oracle to join tables in the order in which they appear in the FROM clause.",
+          "DisplayName": "/*+ ORDERED */",
+          "Text": "/*+ ORDERED */"
+        },
+        {
+          "Description": "The STAR hint forces a star query plan to be used, if possible. A star plan has the largest table in the query last in the join order and joins it with a nested loops join on a concatenated index. The STAR hint applies when there are at least three tables, the large table's concatenated index has at least three columns, and there are no conflicting access or join method hints. The optimizer also considers different permutations of the small tables.",
+          "DisplayName": "/*+ STAR */",
+          "Text": "/*+ STAR */"
+        },
+        {
+          "Description": "The USE_NL hint causes Oracle to join each specified table to another row source with a nested loops join using the specified table as the inner table.",
+          "DisplayName": "/*+ USE_NL(table_name) */",
+          "Text": "/*+ USE_NL(table_name) */"
+        },
+        {
+          "Description": "The USE_MERGE hint causes Oracle to join each specified table with another row source with a sort-merge join.",
+          "DisplayName": "/*+ USE_MERGE(table_name) */",
+          "Text": "/*+ USE_MERGE(table_name) */"
+        },
+        {
+          "Description": "The USE_HASH hint causes Oracle to join each specified table with another row source with a hash join.",
+          "DisplayName": "/*+ USE_HASH(table_name) */",
+          "Text": "/*+ USE_HASH(table_name) */"
+        },
+        {
+          "Description": "The DRIVING_SITE hint forces query execution to be done at a different site than that selected by Oracle. This hint can be used with either rule-based or cost-based optimization.",
+          "DisplayName": "/*+ DRIVING_SITE(table_name) */",
+          "Text": "/*+ DRIVING_SITE(table_name) */"
+        },
+        {
+          "Description": "The LEADING hint causes Oracle to use the specified table as the first table in the join order.",
+          "DisplayName": "/*+ LEADING(table_name) */",
+          "Text": "/*+ LEADING(table_name) */"
+        },
+        {
+          "Description": "For a specific query, place the MERGE_AJ hint into the NOT IN subquery. MERGE_AJ uses a sort-merge anti-join.",
+          "DisplayName": "/*+ MERGE_AJ */",
+          "Text": "/*+ MERGE_AJ */"
+        },
+        {
+          "Description": "For a specific query, place the HASH_AJ hint into the NOT IN subquery. HASH_AJ uses a hash anti-join.",
+          "DisplayName": "/*+ HASH_AJ */",
+          "Text": "/*+ HASH_AJ */"
+        },
+        {
+          "Description": "For a specific query, place the NL_AJ hint into the NOT IN subquery. NL_AJ uses a nested loop anti-join.",
+          "DisplayName": "/*+ NL_AJ */",
+          "Text": "/*+ NL_AJ */"
+        },
+        {
+          "Description": "The PARALLEL hint lets you specify the desired number of concurrent servers that can be used for a parallel operation. The hint applies to the INSERT, UPDATE, and DELETE portions of a statement as well as to the table scan portion.",
+          "DisplayName": "/*+ PARALLEL(table_name degree) */",
+          "Text": "/*+ PARALLEL(table_name degree) */"
+        },
+        {
+          "Description": "The NOPARALLEL hint overrides a PARALLEL specification in the table clause. In general, hints take precedence over table clauses.",
+          "DisplayName": "/*+ NOPARALLEL(table_name) */",
+          "Text": "/*+ NOPARALLEL(table_name) */"
+        },
+        {
+          "Description": "The PQ_DISTRIBUTE hint improves parallel join operation performance. Do this by specifying how rows of joined tables should be distributed among producer and consumer query servers. Using this hint overrides decisions the optimizer would normally make.",
+          "DisplayName": "/*+ PQ_DISTRIBUTE(table_name table_distribution,table_distribution) */",
+          "Text": "/*+ PQ_DISTRIBUTE(table_name table_distribution,table_distribution) */"
+        },
+        {
+          "Description": "When you use the APPEND hint for INSERT, data is simply appended to a table. Existing free space in the blocks currently allocated to the table is not used. If INSERT is parallelized using the PARALLEL hint or clause, then append mode is used by default. You can use NOAPPEND to override append mode. The APPEND hint applies to both serial and parallel insert. The append operation is performed in LOGGING or NOLOGGING mode, depending on whether the [NO] option is set for the table in question. Use the ALTER TABLE... [NO]LOGGING statement to set the appropriate value.",
+          "DisplayName": "/*+ APPEND parallel_hint */",
+          "Text": "/*+ APPEND parallel_hint */"
+        },
+        {
+          "Description": "The NOAPPEND hint overrides append mode.",
+          "DisplayName": "/*+ NOAPPEND */",
+          "Text": "/*+ NOAPPEND */"
+        },
+        {
+          "Description": "The PARALLEL_INDEX hint specifies the desired number of concurrent servers that can be used to parallelize index range scans for partitioned indexes.",
+          "DisplayName": "/*+ PARALLEL_INDEX(table_name, index_name, degree, RAC degree) */",
+          "Text": "/*+ PARALLEL_INDEX(table_name, index_name, degree, RAC degree) */"
+        },
+        {
+          "Description": "The NOPARALLEL_INDEX hint overrides a PARALLEL attribute setting on an index to avoid a parallel index scan operation.",
+          "DisplayName": "/*+ NOPARALLEL_INDEX(table_name index_name) */",
+          "Text": "/*+ NOPARALLEL_INDEX(table_name index_name) */"
+        },
+        {
+          "Description": "The CACHE hint specifies that the blocks retrieved for the table are placed at the most recently used end of the LRU list in the buffer cache when a full table scan is performed. This option is useful for small lookup tables.",
+          "DisplayName": "/*+ CACHE(table_name) */",
+          "Text": "/*+ CACHE(table_name) */"
+        },
+        {
+          "Description": "The NOCACHE hint specifies that the blocks retrieved for the table are placed at the least recently used end of the LRU list in the buffer cache when a full table scan is performed. This is the normal behavior of blocks in the buffer cache.",
+          "DisplayName": "/*+ NOCACHE(table_name) */",
+          "Text": "/*+ NOCACHE(table_name) */"
+        },
+        {
+          "Description": "Setting the UNNEST_SUBQUERY session parameter to TRUE enables subquery unnesting. Subquery unnesting unnests and merges the body of the subquery into the body of the statement that contains it, allowing the optimizer to consider them together when evaluating access paths and joins.",
+          "DisplayName": "/*+ UNNEST */",
+          "Text": "/*+ UNNEST */"
+        },
+        {
+          "Description": "If you enabled subquery unnesting with the UNNEST_SUBQUERY parameter, then the NO_UNNEST hint turns it off for specific subquery blocks.",
+          "DisplayName": "/*+ NO_UNNEST */",
+          "Text": "/*+ NO_UNNEST */"
+        },
+        {
+          "Description": "The PUSH_PRED hint forces pushing of a join predicate into the view.",
+          "DisplayName": "/*+ PUSH_PRED(table_name) */",
+          "Text": "/*+ PUSH_PRED(table_name) */"
+        },
+        {
+          "Description": "The NO_PUSH_PRED hint prevents pushing of a join predicate into the view.",
+          "DisplayName": "/*+ NO_PUSH_PRED(table_name) */",
+          "Text": "/*+ NO_PUSH_PRED(table_name) */"
+        },
+        {
+          "Description": "The PUSH_SUBQ hint causes non-merged subqueries to be evaluated at the earliest possible place in the execution plan. Generally, subqueries that are not merged are executed as the last step in the execution plan. If the subquery is relatively inexpensive and reduces the number of rows significantly, then it improves performance to evaluate the subquery earlier.",
+          "DisplayName": "/*+ PUSH_SUBQ */",
+          "Text": "/*+ PUSH_SUBQ */"
+        },
+        {
+          "Description": "The ORDERED_PREDICATES hint forces the optimizer to preserve the order of predicate evaluation, except for predicates used as index keys. Use this hint in the WHERE clause of SELECT statements.",
+          "DisplayName": "/*+ ORDERED_PREDICATES */",
+          "Text": "/*+ ORDERED_PREDICATES */"
+        },
+        {
+          "Description": "Oracle can replace literals in SQL statements with bind variables if it is safe to do so. This is controlled with the CURSOR_SHARING startup parameter. The CURSOR_SHARING_EXACT hint causes this behavior to be switched off. In other words, Oracle executes the SQL statement without any attempt to replace literals by bind variables.",
+          "DisplayName": "/*+ CURSOR_SHARING_EXACT */",
+          "Text": "/*+ CURSOR_SHARING_EXACT */"
+        }
+      ]
+    },
+    {
+      "Category": "Defined Exceptions",
+      "Snippets": [
+        {
+          "Description": "ORA-06530 Your program attempts to assign values to the attributes of an uninitialized (atomically null) object.",
+          "DisplayName": "ACCESS_INTO_NULL",
+          "Text": "ACCESS_INTO_NULL"
+        },
+        {
+          "Description": "ORA-06531 Your program attempts to apply collection methods other than EXISTS to an uninitialized (atomically null) nested table or varray, or the program attempts to assign values to the elements of an uninitialized nested table or varray.",
+          "DisplayName": "COLLECTION_IS_NULL",
+          "Text": "COLLECTION_IS_NULL"
+        },
+        {
+          "Description": "ORA-06511 Your program attempts to open an already open cursor. A cursor must be closed before it can be reopened.  A cursor FOR loop automatically opens the cursor to which it refers. So, your program cannot open that cursor inside the loop.",
+          "DisplayName": "CURSOR_ALREADY_OPEN",
+          "Text": "CURSOR_ALREADY_OPEN"
+        },
+        {
+          "Description": "ORA-00001 Your program attempts to store duplicate values in a database column that is constrained by a unique index.",
+          "DisplayName": "DUP_VAL_ON_INDEX",
+          "Text": "DUP_VAL_ON_INDEX"
+        },
+        {
+          "Description": "ORA-01001 Your program attempts an illegal cursor operation such as closing an unopened cursor.",
+          "DisplayName": "INVALID_CURSOR",
+          "Text": "INVALID_CURSOR"
+        },
+        {
+          "Description": "ORA-01722 In a SQL statement, the conversion of a character string into a number fails because the string does not represent a valid number. (In procedural statements, VALUE_ERROR is raised.)",
+          "DisplayName": "INVALID_NUMBER",
+          "Text": "INVALID_NUMBER"
+        },
+        {
+          "Description": "ORA-01017 Your program attempts to log on to Oracle with an invalid username and/or password.",
+          "DisplayName": "LOGIN_DENIED",
+          "Text": "LOGIN_DENIED"
+        },
+        {
+          "Description": "ORA-01403 A SELECT INTO statement returns no rows, or your program references a deleted element in a nested table or an uninitialized element in an index-by table.  SQL aggregate functions such as AVG and SUM always return a value or a null. So, a SELECT INTO statement that calls a aggregate function will never raise NO_DATA_FOUND. The FETCH statement is expected to return no rows eventually, so when that happens, no exception is raised.",
+          "DisplayName": "NO_DATA_FOUND",
+          "Text": "NO_DATA_FOUND"
+        },
+        {
+          "Description": "ORA-01012 Your program issues a database call without being connected to Oracle.",
+          "DisplayName": "NOT_LOGGED_ON",
+          "Text": "NOT_LOGGED_ON"
+        },
+        {
+          "Description": "ORA-06501 PL/SQL has an internal problem.",
+          "DisplayName": "PROGRAM_ERROR",
+          "Text": "PROGRAM_ERROR"
+        },
+        {
+          "Description": "ORA-06504 The host cursor variable and PL/SQL cursor variable involved in an assignment have incompatible return types. For example, when an open host cursor variable is passed to a stored subprogram, the return types of the actual and formal parameters must be compatible.",
+          "DisplayName": "ROWTYPE_MISMATCH",
+          "Text": "ROWTYPE_MISMATCH"
+        },
+        {
+          "Description": "ORA-30625 Your program attempts to call a MEMBER method on a null instance. That is, the built-in parameter SELF (which is always the first parameter passed to a MEMBER method) is null.",
+          "DisplayName": "SELF_IS_NULL",
+          "Text": "SELF_IS_NULL"
+        },
+        {
+          "Description": "ORA-06500 PL/SQL runs out of memory or memory has been corrupted.",
+          "DisplayName": "STORAGE_ERROR",
+          "Text": "STORAGE_ERROR"
+        },
+        {
+          "Description": "ORA-06533 Your program references a nested table or varray element using an index number larger than the number of elements in the collection.",
+          "DisplayName": "SUBSCRIPT_BEYOND_COUNT",
+          "Text": "SUBSCRIPT_BEYOND_COUNT"
+        },
+        {
+          "Description": "ORA-06532 Your program references a nested table or varray element using an index number (-1 for example) that is outside the legal range.",
+          "DisplayName": "SUBSCRIPT_OUTSIDE_LIMIT",
+          "Text": "SUBSCRIPT_OUTSIDE_LIMIT"
+        },
+        {
+          "Description": "ORA-01410 The conversion of a character string into a universal rowid fails because the character string does not represent a valid rowid.",
+          "DisplayName": "SYS_INVALID_ROWID",
+          "Text": "SYS_INVALID_ROWID"
+        },
+        {
+          "Description": "ORA-00051 A time-out occurs while Oracle is waiting for a resource.",
+          "DisplayName": "TIMEOUT_ON_RESOURCE",
+          "Text": "TIMEOUT_ON_RESOURCE"
+        },
+        {
+          "Description": "ORA-01422 A SELECT INTO statement returns more than one row.",
+          "DisplayName": "TOO_MANY_ROWS",
+          "Text": "TOO_MANY_ROWS"
+        },
+        {
+          "Description": "ORA-06502 An arithmetic, conversion, truncation, or size-constraint error occurs. For example, when your program selects a column value into a character variable, if the value is longer than the declared length of the variable, PL/SQL aborts the assignment and raises VALUE_ERROR. In procedural statements, VALUE_ERROR is raised if the conversion of a character string into a number fails. (In SQL statements, INVALID_NUMBER is raised.)",
+          "DisplayName": "VALUE_ERROR",
+          "Text": "VALUE_ERROR"
+        },
+        {
+          "Description": "ORA-01476 Your program attempts to divide a number by zero.",
+          "DisplayName": "ZERO_DIVIDE",
+          "Text": "ZERO_DIVIDE"
+        }
+      ]
+    },
+    {
+      "Category": "User provided Function List",
+      "Snippets": [
+        {
+          "Description": "This is an example of a custom user function.",
+          "DisplayName": "f_my_user_function",
+          "Text": "f_my_user_function"
+        }
+      ]
+    },
+    {
+      "Category": "Cursor Attributes",
+      "Snippets": [
+        {
+          "Description": "Returns the number of rows processed by a FORALL operation with the SAVE_EXCEPTIONS clause. This attribute applies to the implicit cursor named SQL only.",
+          "DisplayName": "%BULK_EXCEPTIONS",
+          "Text": "%BULK_EXCEPTIONS"
+        },
+        {
+          "Description": "Returns the number of rows processed by a FORALL operation. This attribute applies to the implicit cursor named SQL only.",
+          "DisplayName": "%BULK_ROWCOUNT",
+          "Text": "%BULK_ROWCOUNT"
+        },
+        {
+          "Description": "Returns TRUE if the last fetch from the cursor returned a row, or FALSE if the last fetch failed to return a row.",
+          "DisplayName": "%FOUND",
+          "Text": "%FOUND"
+        },
+        {
+          "Description": "If a cursor is open, cursor_name%ISOPEN returns TRUE; otherwise, it returns FALSE.",
+          "DisplayName": "%ISOPEN",
+          "Text": "%ISOPEN"
+        },
+        {
+          "Description": "Returns FALSE if the last fetch from the cursor returned a row, or TRUE if the last fetch failed to return a row.",
+          "DisplayName": "%NOTFOUND",
+          "Text": "%NOTFOUND"
+        },
+        {
+          "Description": "Returns the number of rows returned so far from the cursor. Reset to zero when the cursor is opened.",
+          "DisplayName": "%ROWCOUNT",
+          "Text": "%ROWCOUNT"
+        },
+        {
+          "Description": "Allows the definition of a variable to receive a complete row from the cursor.",
+          "DisplayName": "%ROWTYPE",
+          "Text": "%ROWTYPE"
+        }
+      ]
+    },
+    {
+      "Category": "Regular Expressions",
+      "Snippets": [
+        {
+          "Description": "Returns the number of times the POSIX compatible regular expression pattern is matched.",
+          "DisplayName": "REGEXP_COUNT(source_char, pattern [, position [, match_param]])",
+          "Text": "REGEXP_COUNT(source_char, pattern [, position [, match_param]])"
+        },
+        {
+          "Description": "Extends the functionality of INSTR by allowing you to search a string for a POSIX compatible regular expression pattern. It returns the beginning or ending position of the match depending on the value of the return_option parameter. If the expression cannot be matched 0 is returned.",
+          "DisplayName": "REGEXP_INSTR(source_char, pattern [, position [, occurrence [, return_option [, match_parameter]]]])",
+          "Text": "REGEXP_INSTR(source_char, pattern [, position [, occurrence [, return_option [, match_parameter]]]])"
+        },
+        {
+          "Description": "Similar to LIKE, this condition evaluates strings using a POSIX compatible regular expression pattern.",
+          "DisplayName": "REGEXP_LIKE(source_string, pattern [, match_parameter])",
+          "Text": "REGEXP_LIKE(source_string, pattern [, match_parameter])"
+        },
+        {
+          "Description": "Extends the functionality of REPLACE by allowing you to search a string for a POSIX compatible regular expression pattern.",
+          "DisplayName": "REGEXP_REPLACE(source_char, pattern [, replace_string [, position [, occurrence [, match_pattern]]]])",
+          "Text": "REGEXP_REPLACE(source_char, pattern [, replace_string [, position [, occurrence [, match_pattern]]]])"
+        },
+        {
+          "Description": "Extends the functionality of SUBSTR by allowing you to search a string for a POSIX compatible regular expression pattern. It is similar to REGEXP_INSTR, but returns the actual substring instead of the position of the substring.",
+          "DisplayName": "REGEXP_SUBSTR(source_string, pattern [, position [, occurrence [, match_parameter]]])",
+          "Text": "REGEXP_SUBSTR(source_string, pattern [, position [, occurrence [, match_parameter]]])"
+        }
+      ]
+    },
+    {
+      "Category": "Unit Testing (utPLSQL)",
+      "Snippets": [
+        {
+          "Description": "Annotation denoting a procedure that should be executed once after all tests in the suite.",
+          "DisplayName": "--%afterall",
+          "Text": "--%afterall"
+        },
+        {
+          "Description": "Annotation denoting a procedure that should be executed after each test in the suite.",
+          "DisplayName": "--%aftereach",
+          "Text": "--%aftereach"
+        },
+        {
+          "Description": "Annotation set at the test level that specifies a procedure to be executed after the test.",
+          "DisplayName": "--%aftertest(procedure_name)",
+          "Text": "--%aftertest(procedure_name)"
+        },
+        {
+          "Description": "Annotation denoting a procedure that should be executed once before all tests in the suite.",
+          "DisplayName": "--%beforeall",
+          "Text": "--%beforeall"
+        },
+        {
+          "Description": "Annotation denoting a procedure that should be executed before each test in the suite.",
+          "DisplayName": "--%beforeeach",
+          "Text": "--%beforeeach"
+        },
+        {
+          "Description": "Annotation set at the test level that specifies a procedure to be executed before the test.",
+          "DisplayName": "--%beforetest(procedure_name)",
+          "Text": "--%beforetest(procedure_name)"
+        },
+        {
+          "Description": "Annotation denoting the start of a nested context (sub-suite) in a suite.",
+          "DisplayName": "--%context(description)",
+          "Text": "--%context(description)"
+        },
+        {
+          "Description": "Annotation denoting a suite or test that is disabled. Disabled suites/tests are not executed; however, they are marked and reported as disabled in the run results.",
+          "DisplayName": "--%disabled(description)",
+          "Text": "--%disabled(description)"
+        },
+        {
+          "Description": "Annotation assigning a display name to a suite or test. It has the same meaning as the optional description parameter of the --%suite and --%test annotations.",
+          "DisplayName": "--%displayname(description)",
+          "Text": "--%displayname(description)"
+        },
+        {
+          "Description": "Annotation denoting the end of a nested context (sub-suite) in a suite.",
+          "DisplayName": "--%endcontext(description)",
+          "Text": "--%endcontext(description)"
+        },
+        {
+          "Description": "Annotation defining transaction control that can be set at either the suite or test level. Type is one of: \"auto\" (default) - a savepoint is created before invocation of each \u201cbefore block\u201d is and a rollback to specific savepoint is issued after each \u201cafter\u201d block; \"manual\" - rollback is never issued automatically. Property can be overridden for tests when it is set at the suite level.",
+          "DisplayName": "--%rollback(type)",
+          "Text": "--%rollback(type)"
+        },
+        {
+          "Description": "Annotation denoting a test suite. Optional description can be provided.",
+          "DisplayName": "--%suite(description)",
+          "Text": "--%suite(description)"
+        },
+        {
+          "Description": "Annotation allowing for logical grouping of suites.",
+          "DisplayName": "--%suitepath(path)",
+          "Text": "--%suitepath(path)"
+        },
+        {
+          "Description": "Annotation denoting a test. Optional description can be provided.",
+          "DisplayName": "--%test(description)",
+          "Text": "--%test(description)"
+        },
+        {
+          "Description": "Annotation denoting a test that must throw one of the exceptions provided.",
+          "DisplayName": "--%throws(exception_number [, exception_number [, ...]])",
+          "Text": "--%throws(exception_number [, exception_number [, ...]])"
+        },
+        {
+          "Description": "Returns ut_expectation to use for applying a matcher to a value.",
+          "DisplayName": "ut.expect(value [,message])",
+          "Text": "ut.expect(value [,message])"
+        },
+        {
+          "Description": "Validates value is not between a lower and upper bound.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_between(lower_bound, upper_bound)",
+          "Text": "ut.expect(value [,message]).not_to_be_between(lower_bound, upper_bound)"
+        },
+        {
+          "Description": "Validates value is true.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_false",
+          "Text": "ut.expect(value [,message]).not_to_be_false"
+        },
+        {
+          "Description": "Validates value is not greater than or equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_greater_or_equal(expected)",
+          "Text": "ut.expect(value [,message]).not_to_be_greater_or_equal(expected)"
+        },
+        {
+          "Description": "Validates value is not greater than an expected value.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_greater_than(expected)",
+          "Text": "ut.expect(value [,message]).not_to_be_greater_than(expected)"
+        },
+        {
+          "Description": "Validates value is not less than or equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_less_or_equal(expected)",
+          "Text": "ut.expect(value [,message]).not_to_be_less_or_equal(expected)"
+        },
+        {
+          "Description": "Validates value is not less than an expected value.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_less_than(expected)",
+          "Text": "ut.expect(value [,message]).not_to_be_less_than(expected)"
+        },
+        {
+          "Description": "Validates value is not like a mask.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_like(mask [, escape_char])",
+          "Text": "ut.expect(value [,message]).not_to_be_like(mask [, escape_char])"
+        },
+        {
+          "Description": "Validates value is null.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_not_null",
+          "Text": "ut.expect(value [,message]).not_to_be_not_null"
+        },
+        {
+          "Description": "Validates value is not null.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_null",
+          "Text": "ut.expect(value [,message]).not_to_be_null"
+        },
+        {
+          "Description": "Validates value is false.",
+          "DisplayName": "ut.expect(value [,message]).not_to_be_true",
+          "Text": "ut.expect(value [,message]).not_to_be_true"
+        },
+        {
+          "Description": "Validates value is not equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).not_to_equal(expected [, exclude, nulls_are_equal])",
+          "Text": "ut.expect(value [,message]).not_to_equal(expected [, exclude, nulls_are_equal])"
+        },
+        {
+          "Description": "Validates value is not equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).not_to_equal(expected [, nulls_are_equal])",
+          "Text": "ut.expect(value [,message]).not_to_equal(expected [, nulls_are_equal])"
+        },
+        {
+          "Description": "Validates value does not match a pattern.",
+          "DisplayName": "ut.expect(value [,message]).not_to_match(pattern [, modifiers])",
+          "Text": "ut.expect(value [,message]).not_to_match(pattern [, modifiers])"
+        },
+        {
+          "Description": "Validates value is between a lower and upper bound.",
+          "DisplayName": "ut.expect(value [,message]).to_be_between(lower_bound, upper_bound)",
+          "Text": "ut.expect(value [,message]).to_be_between(lower_bound, upper_bound)"
+        },
+        {
+          "Description": "Validates value is false.",
+          "DisplayName": "ut.expect(value [,message]).to_be_false",
+          "Text": "ut.expect(value [,message]).to_be_false"
+        },
+        {
+          "Description": "Validates value is greater than or equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_be_greater_or_equal(expected)",
+          "Text": "ut.expect(value [,message]).to_be_greater_or_equal(expected)"
+        },
+        {
+          "Description": "Validates value is greater than an expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_be_greater_than(expected)",
+          "Text": "ut.expect(value [,message]).to_be_greater_than(expected)"
+        },
+        {
+          "Description": "Validates value is less than or equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_be_less_or_equal(expected)",
+          "Text": "ut.expect(value [,message]).to_be_less_or_equal(expected)"
+        },
+        {
+          "Description": "Validates value is less than an expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_be_less_than(expected)",
+          "Text": "ut.expect(value [,message]).to_be_less_than(expected)"
+        },
+        {
+          "Description": "Validates value is like a mask.",
+          "DisplayName": "ut.expect(value [,message]).to_be_like(mask [, escape_char])",
+          "Text": "ut.expect(value [,message]).to_be_like(mask [, escape_char])"
+        },
+        {
+          "Description": "Validates value is not null.",
+          "DisplayName": "ut.expect(value [,message]).to_be_not_null",
+          "Text": "ut.expect(value [,message]).to_be_not_null"
+        },
+        {
+          "Description": "Validates value is null.",
+          "DisplayName": "ut.expect(value [,message]).to_be_null",
+          "Text": "ut.expect(value [,message]).to_be_null"
+        },
+        {
+          "Description": "Validates value is true.",
+          "DisplayName": "ut.expect(value [,message]).to_be_true",
+          "Text": "ut.expect(value [,message]).to_be_true"
+        },
+        {
+          "Description": "Validates value is equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_equal(expected [, exclude, nulls_are_equal])",
+          "Text": "ut.expect(value [,message]).to_equal(expected [, exclude, nulls_are_equal])"
+        },
+        {
+          "Description": "Validates value is equal to an expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_equal(expected [, nulls_are_equal])",
+          "Text": "ut.expect(value [,message]).to_equal(expected [, nulls_are_equal])"
+        },
+        {
+          "Description": "Validates value matches a pattern.",
+          "DisplayName": "ut.expect(value [,message]).to_match(pattern [, modifiers])",
+          "Text": "ut.expect(value [,message]).to_match(pattern [, modifiers])"
+        },
+        {
+          "Description": "Validates value is within range (tolerance) of the expected value.",
+          "DisplayName": "ut.expect(value [,message]).to_be_within(tolerance).of_(expected)",
+          "Text": "ut.expect(value [,message]).to_be_within(tolerance).of_(expected)"
+        },
+        {
+          "Description": "Validates value is within a percentage of the expected value. Works with NUMBER datatype, only.",
+          "DisplayName": "ut.expect(value [,message]).to_be_within_pct(percentage).of_(expected)",
+          "Text": "ut.expect(value [,message]).to_be_within_pct(percentage).of_(expected)"
+        }
+      ]
+    }
+  ]
+}

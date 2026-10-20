@@ -1,0 +1,632 @@
+[
+  {
+    "id": "1",
+    "name": "Async IO Check",
+    "desc": "Generally speaking, always set DISK_ASYNC_IO = TRUE. Even when DBWR_IO_SLAVES > 0 or DB_WRITER_PROCESSES > 1. Only set DISK_AYNC_IO = FALSE when the platform does not support asynchronous I/O or implements it inefficiently.",
+    "control": "Async_IO_",
+    "left": "Async_IO",
+    "op": "=",
+    "right": "0"
+  },
+  {
+    "id": "2",
+    "name": "DBWR Proc Slave Check",
+    "desc": "Excessive DBWR activity has been requested by setting DB_WRITER_PROCESSES > 1 and DBWR_IO_SLAVES > 0. Generally speaking, you should either use multiple DBWR processes or DBWR slaves - but not both.",
+    "control": "DBWR",
+    "left": "( DBWR_Count - 1 ) * DBWR_Slaves",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "3",
+    "name": "DBWR Proc Count High",
+    "desc": "Number of DBWR processes > 10 (the limit is 20). Verify that your hardware can actually handle that high an IO load.",
+    "control": "DBWR_Count_",
+    "left": "DBWR_Count",
+    "op": ">",
+    "right": "10"
+  },
+  {
+    "id": "4",
+    "name": "DBWR Slave Count High",
+    "desc": "Number of DBWR slave processes > 10 (there is no hard limit). Verify that your hardware can actually handle that high an IO load.",
+    "control": "DBWR_Slaves_",
+    "left": "DBWR_Slaves",
+    "op": ">",
+    "right": "10"
+  },
+  {
+    "id": "5",
+    "name": "Auditing",
+    "desc": "Auditing has been activated via the INIT.ORA setting or an ALTER command. While there may be security requirements for doing this, gathering such internal database operations information does impose minimal overhead.",
+    "control": "Overhead_Auditing",
+    "left": "Auditing_InitORA",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "6",
+    "name": "Timed OS Statistics",
+    "desc": "Timed OS Statistics has been activated via the INIT.ORA or an ALTER command. While there may be tuning reasons for doing this, gathering such operating system statistics is very expensive.",
+    "control": "Overhead_Stats_OS",
+    "left": "Timed_Stats_OS_InitORA",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "7",
+    "name": "Timed Statistics",
+    "desc": "Timed Statistics has been activated via the INIT.ORA or an ALTER command. While there may be tuning reasons for doing this, gathering such internal database statistics can be expensive.",
+    "control": "Overhead_Stats_DB",
+    "left": "Timed_Stats_DB_InitORA",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "8",
+    "name": "Oracle Trace",
+    "desc": "Oracle Trace has been enabled via the INIT.ORA or an ALTER command. While there may be tuning reasons for doing this, permitting such internal database trace collections can be expensive.",
+    "control": "Overhead_Trace_Oracle",
+    "left": "Trace_Enabled_Oracle_InitORA",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "9",
+    "name": "SQL Trace",
+    "desc": "SQLTrace has been enabled via the INIT.ORA or an ALTER command. While there may be tuning reasons for doing this, gathering such detailed SQL trace information imposes a severe performance impact.",
+    "control": "Overhead_Trace_SQL",
+    "left": "Trace_Enabled_SQL_InitORA",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "10",
+    "name": "Statistics Level",
+    "desc": "Statistics Level has been activated via the INIT.ORA or an ALTER command. While there may be tuning reasons for doing this, gathering both operating system and database statistics is expensive.",
+    "control": "Overhead_Stats_Level",
+    "left": "Stats_Level_InitORA",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "11",
+    "name": "Lock SGA",
+    "desc": "LOCK_SGA, which locks the entire SGA into physical memory, is not currently enabled. It is usually advisable to lock the SGA into real (physical) memory, especially if the use of virtual memory would include storing some of the SGA using disk space. This parameter is ignored on platforms that do not support it. This does not work for Oracle database instances on Windows.",
+    "control": "SGA_Lock_",
+    "left": "SGA_Lock",
+    "op": "=",
+    "right": "0"
+  },
+  {
+    "id": "12",
+    "name": "Session Cached Cursors",
+    "desc": "SESSION_CACHED_CURSORS, which lets you specify the number of session cursors to cache, is set to zero. Repeated parse calls of the same SQL statement cause the session cursor for that statement to be moved into the session cursor cache. Subsequent parse calls will find the cursor in the cache and need not reopen the cursor. Oracle uses a least recently used algorithm to remove entries in the session cursor cache to make room for new entries when needed.",
+    "control": "SGA_Session_Cached_Cursors",
+    "left": "Session_Cached_Cursors",
+    "op": "=",
+    "right": "0"
+  },
+  {
+    "id": "13",
+    "name": "Pre Page SGA",
+    "desc": "PRE_PAGE_SGA, which determines whether all SGA pages are brought into memory at instance startup, is currently not enabled. Operating system page table entries are then prebuilt for each page of the SGA. The resulting decrease in disk I/O may be offset by performance degradation in other areas. Therefore, this parameter is most useful on systems that have sufficient memory to hold all the SGA pages without degrading performance in other areas.",
+    "control": "SGA_Prepage",
+    "left": "Prepage",
+    "op": "=",
+    "right": "0"
+  },
+  {
+    "id": "14",
+    "name": "Cursor Space for Time",
+    "desc": "CURSOR_SPACE_FOR_TIME, which lets you use more space for cursors in order to save time, is currently not enabled. It affects both the shared SQL area and the client's private SQL area. When set to TRUE, then shared SQL areas are kept pinned in the shared pool. As a result, shared SQL areas are not aged out of the pool as long as an open cursor references them. Because each active cursor's SQL area is present in memory, execution is faster. However, the shared SQL areas never leave memory while they are in use. Therefore, you should set this parameter to TRUE only when the shared pool is large enough to hold all open cursors simultaneously.",
+    "control": "SGA_Cursor_Space_For_Time",
+    "left": "Cursor_space_for_time",
+    "op": "=",
+    "right": "0"
+  },
+  {
+    "id": "15",
+    "name": "Java Pool Too Small",
+    "desc": "JAVA_POOL_SIZE, which specifies the size in bytes of the Java pool from which the Java memory manager allocates most Java state during runtime execution, is below Oracle's recommended minimum of 10-50 MB for dedicated servers and up to 100 MB for shared servers. This memory includes the shared in-memory representation of Java method and class definitions, as well as the Java objects that are migrated to the Java session space at end-of-call. Note - there is another alert you can use if you're not using Java.",
+    "control": "Java_Pool_Megs_",
+    "left": "Java_Pool_Megs",
+    "op": "<",
+    "right": "10"
+  },
+  {
+    "id": "16",
+    "name": "Java Pool Not Needed",
+    "desc": "JAVA_POOL_SIZE, which specifies the size in bytes of the Java pool from which the Java memory manager allocates most Java state during runtime execution, is not necessary if you're not going to use Oracle's Java Virtual Machine (JVM). In that case, you can safely set this parameter to zero. Note - there is another alert you can use if you're using Java.",
+    "control": "Java_Pool_Megs_",
+    "left": "Java_Pool_Megs",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "17",
+    "name": "Memory Sort Check",
+    "desc": "The \"In memory sort\" percentage has fallen below the minimum threshold value set. For best performance in OLTP systems, most sorts should occur solely within memory. DSS applications typically access large volumes of data and are thus expected to perform sorts to disk.",
+    "control": "Efficiency_Mem_Sorts_",
+    "left": "Efficiency_Mem_Sorts",
+    "op": "<",
+    "right": "80"
+  },
+  {
+    "id": "18",
+    "name": "Index Usage Check",
+    "desc": "The \"Index Usage\" percentage has fallen below the minimum threshold value set. For best performance in OLTP systems, many if not most data accesses should be able to utilize indexes. DSS applications typically access large volumes of data and are thus expected to make somewhat less use of indexes on a percentage basis. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the index usage percentage falls below 80%.",
+    "control": "Efficiency_Idx_Usage_",
+    "left": "Efficiency_Idx_Usage",
+    "op": "<",
+    "right": "80"
+  },
+  {
+    "id": "19",
+    "name": "ARCH Proc Not Running",
+    "desc": "The ARCH process is not running and the database is in ARCHIVELOG mode. This is a disaster waiting to happen. Once the Online Redo Log files fill up, the database will come to a grinding halt. The database will not be able to perform a log switch from the Nth log file to the 1st log file as that file will be waiting to be backed up to secondary storage before it can be reused. Thus the entire database will become locked up.",
+    "control": "ARCH_",
+    "left": "ARCH",
+    "op": "<",
+    "right": "ArchiveLogMode"
+  },
+  {
+    "id": "20",
+    "name": "ARCH Proc Count High",
+    "desc": "Number of archive processes > 5 (the limit is 10). Verify that your hardware can actually handle that high an IO load.",
+    "control": "ARCH_Count",
+    "left": "ARCH",
+    "op": ">",
+    "right": "5"
+  },
+  {
+    "id": "21",
+    "name": "ARCH Proc Not Needed",
+    "desc": "The ARCH process is running and the database is in NOARCHIVELOG mode. This means that you have ARCH processes running even though they will be doing no work. These processes are thus unnecessary and can be eliminated. Set LOG_ARCHIVE_START = FALSE in your INIT.ORA file.",
+    "control": "Archive_Log_Mode",
+    "left": "( ArchiveLogMode  - 1 ) *  ARCH",
+    "op": "<",
+    "right": "0"
+  },
+  {
+    "id": "22",
+    "name": "Hourly Log Switch Rate High",
+    "desc": "Your Online Redo Log file switch rate for the past hour greatly exceeds your number of Redo Log Groups. This may present a problem as your archive processes may not be able to copy the redo logs to secondary storage before they're needed again, essentially resulting in a hung database. This also may indicate a much higher transaction load than originally anticipated and might warrant additional consideration regarding database configuration parameters set in the INIT.ORA file.",
+    "control": "Log_Switches_Past_Hour_",
+    "left": "Log_Switches_Past_Hour",
+    "op": ">",
+    "right": "Redo_Log_Files_Groups * 2"
+  },
+  {
+    "id": "23",
+    "name": "Daily Log Switch Rate High",
+    "desc": "Your Online Redo Log file switch rate for the past day greatly exceeds your number of Redo Log Groups. This may present a problem as your archive processes may not be able to copy the redo logs to secondary storage before they're needed again, essentially resulting in a hung database. This also may indicate a much higher transaction load than originally anticipated and might warrant additional consideration regarding database configuration parameters set in the INIT.ORA file.",
+    "control": "Log_Switches_Past_Day_",
+    "left": "Log_Switches_Past_Day",
+    "op": ">",
+    "right": "Redo_Log_Files_Groups * 48"
+  },
+  {
+    "id": "24",
+    "name": "Too Few Tablespaces",
+    "desc": "The database may have too few tablespaces. A typical Oracle database should have at least the following five tablespaces: SYSTEM, RBS or UNDO, TEMP, one for user data and one for user indexes. In fact, there should probably be separate tablespaces for user data and user indexes per application or major subject area contained within that database.",
+    "control": "Data_Files_Tablespaces_",
+    "left": "Data_Files_Tablespaces",
+    "op": "<",
+    "right": "5"
+  },
+  {
+    "id": "25",
+    "name": "Too Many Datafiles",
+    "desc": "The database may have too many data files. A typical Oracle database should have just a few data files per tablespace. When a tablespace has lots of data files, it's often the case that the data file is being used as a generic container for too many unrelated objects.",
+    "control": "Data_Files_Datafiles_",
+    "left": "Data_Files_Datafiles",
+    "op": ">=",
+    "right": "Data_Files_Tablespaces * 2"
+  },
+  {
+    "id": "26",
+    "name": "Database Getting Big",
+    "desc": "Total database data file size is getting relatively big. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the total database data file size passes half a terabyte.",
+    "control": "Data_Files_Megs_",
+    "left": "Data_Files_Megs",
+    "op": ">=",
+    "right": "500000"
+  },
+  {
+    "id": "27",
+    "name": "Database Filling Up",
+    "desc": "Total database data file percentage used is getting relatively tight. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the total database data file percentage used passes 80%.",
+    "control": "Data_Files_Percent_Used_",
+    "left": "Data_Files_Percent_Used",
+    "op": ">=",
+    "right": "80"
+  },
+  {
+    "id": "28",
+    "name": "Too Few Redo Log Groups",
+    "desc": "The database may have too few Online Redo Log Groups. A typical Oracle database must have at least two groups, but you should strongly consider more than two groups - especially when the database is in ARCHIVELOG mode. This might present a problem as your archive processes may not be able to copy the redo logs to secondary storage before they're needed again, essentially resulting in a hung database.",
+    "control": "Redo_Log_Files_Groups_",
+    "left": "Redo_Log_Files_Groups",
+    "op": "<=",
+    "right": "2"
+  },
+  {
+    "id": "29",
+    "name": "Mismatched Redo Log Size",
+    "desc": "The current Online Redo Log Group has a size that is different than the average for all the other groups. While this is permitable, it is nonetheless unusual. All the Online Redo Log Group and Member files should be the same size. It makes redo log tuning and troubleshooting easier when all the redo log group and member file sizes are the same.",
+    "control": "Redo_Log_Files_Current_",
+    "left": "select bytes from v$log where group# =  Redo_Log_Files_Current",
+    "op": "<>",
+    "right": "select avg(bytes) from v$log where group# !=  Redo_Log_Files_Current"
+  },
+  {
+    "id": "30",
+    "name": "Too Small Redo Log Size",
+    "desc": "The Redo Log Group files appear to be of an average size that is smaller than required to meet Oracle's recommendation of size in order to experience a log switch about every 30 minutes. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the average online redo log file size is less than 10 MB.",
+    "control": "Redo_Log_Files_Megs_",
+    "left": "Redo_Log_Files_Megs  /  Redo_Log_Files_Groups",
+    "op": "<",
+    "right": "10"
+  },
+  {
+    "id": "31",
+    "name": "Disproportionate Redo Log Size",
+    "desc": "The current Online Redo Log Group has a size that is disproportionately larger than normal. While this is permitable, it is nonetheless unusual. All the Online Redo Log Group and Member files should be the same size. It makes redo log tuning and troubleshooting easier when all the redo log group and member file sizes are the same.",
+    "control": "Redo_Log_Files_Active_",
+    "left": "Redo_Log_Files_Active",
+    "op": ">",
+    "right": "100 /  Redo_Log_Files_Groups"
+  },
+  {
+    "id": "32",
+    "name": "Session Usage Near Limit",
+    "desc": "The database is nearing its maximum allowable session limit. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percetage of current sessions used exceeds 90% of the total sessions allowed.",
+    "control": "Sessions_Total_",
+    "left": "Sessions_Used  / Sessions_Max",
+    "op": ">=",
+    "right": ".9"
+  },
+  {
+    "id": "33",
+    "name": "Too Few Active Sessions",
+    "desc": "The database has relatively very few sessions that are currently active. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of active sessions falls below 10% of the current sessions used.",
+    "control": "Sessions_Active_",
+    "left": "Sessions_Active  /  Sessions_Used",
+    "op": "<=",
+    "right": ".1"
+  },
+  {
+    "id": "34",
+    "name": "Too Many Locked Sessions",
+    "desc": "The database has relatively many sessions that are locked and waiting on resources. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of locked sessions exceeds 10% of the current sessions used.",
+    "control": "Sessions_Lock_Wait_",
+    "left": "Sessions_Lock_Wait  /  Sessions_Used",
+    "op": ">=",
+    "right": ".1"
+  },
+  {
+    "id": "35",
+    "name": "Process Usage Near Limit",
+    "desc": "The database is nearing its maximum allowable process limit. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of current processes used exceeds 90% of the total processes allowed.",
+    "control": "Processes_Total_",
+    "left": "Processes_Used  /  Processes_Max",
+    "op": ">=",
+    "right": ".9"
+  },
+  {
+    "id": "36",
+    "name": "Shared Process Usage Near Limit",
+    "desc": "The database is nearing its maximum allowable shared process limit. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percetage of current shared processes used exceeds 90% of the total shared processes allowed.",
+    "control": "Processes_Shared",
+    "left": "Processes_Shared_Used  /  Processes_Shared_Max",
+    "op": ">=",
+    "right": ".9"
+  },
+  {
+    "id": "37",
+    "name": "Dispatcher Process Usage Near Limit",
+    "desc": "The database is nearing its maximum allowable dispatcher process limit. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of current dispatcher processes used exceeds 90% of the total dispatcher processes allowed.",
+    "control": "Processes_Dispatchers",
+    "left": "Processes_Dispatchers_Used  /  Processes_Dispatchers_Max",
+    "op": ">=",
+    "right": ".9"
+  },
+  {
+    "id": "38",
+    "name": "Parallel Process Usage Near Limit",
+    "desc": "The database is nearing its maximum allowable parallel process limit. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percetage of current parallel processes used exceeds 90% of the total parallel processes allowed.",
+    "control": "Processes_Parallel",
+    "left": "Processes_Parallel_Used  /  Processes_Parallel_Max",
+    "op": ">=",
+    "right": ".9"
+  },
+  {
+    "id": "39",
+    "name": "Too Few Background Procs",
+    "desc": "The database appears to be missing some of the required background processes. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the background process count falls below 7. Note that this value is Oracle version dependent and that an older version of Oracle will require fewer minimum background processes.",
+    "control": "Processes_Background_",
+    "left": "Processes_Background",
+    "op": "<",
+    "right": "7"
+  },
+  {
+    "id": "40",
+    "name": "Dedicated Servers in MTS DB",
+    "desc": "Dedicated server processes have been detected in what appears to be a Multi-Threaded Server (MTS) database. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, certain DBA tasks require connecting to the database with a dedicated server and that may be what's happening. The real question is whether your applications are coded to use the correct connection style for the MTS database.",
+    "control": "Processes_Dedicated_",
+    "left": "Processes_Dispatchers_Used  *  Processes_Dedicated",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "41",
+    "name": "Excessive PGA Consumption",
+    "desc": "The database has a relatively large amount of PGA memory allocated as compared to the SGA. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters like the SORT_AREA_SIZE and not realized they apply per process - including parallel slave processes. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of PGA memory allocated exceeds 20% of the SGA memory allocated.",
+    "control": "PGA_Size_",
+    "left": "PGA_Allocated  /  SGA_Size",
+    "op": ">=",
+    "right": ".2"
+  },
+  {
+    "id": "42",
+    "name": "Inefficient PGA Allocation",
+    "desc": "The database is utilizing a relatively small portion of the PGA memory allocated. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters (e.g. SORT_AREA_SIZE) larger than necessary - resulting in wasted memory. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of PGA memory used falls below 60% of the PGA memory allocated.",
+    "control": "PGA_Allocated_",
+    "left": "PGA_Used  /  PGA_Max",
+    "op": "<=",
+    "right": ".6"
+  },
+  {
+    "id": "43",
+    "name": "Too Small SGA Allocation",
+    "desc": "The SGA memory allocation is suspiciously small, which can result in poor database performance. Oracle stores information in memory caches and on disk. Memory access is much faster than disk access. Disk scans (physical I/O) take a significant amount of time, compared with memory access, typically in the order of 10 milliseconds. Physical I/O also increases the CPU resources required, because of the path length in device drivers and operating system event schedulers. For this reason, it is more efficient for data requests for frequently accessed objects to be satisfied solely by memory, rather than also requiring disk access. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the SGA allocated falls below 128 MB.",
+    "control": "SGA_Size_",
+    "left": "SGA_Size",
+    "op": "<",
+    "right": "128"
+  },
+  {
+    "id": "44",
+    "name": "Overall DB Cache Waste",
+    "desc": "The database is using a low percentage of the overall database buffer cache memory allocated. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters larger than is actually necessary - thus less memory might be allocated while not negatively impacting the hit ratio. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of memory used falls below 60% of the memory allocated.",
+    "control": "DB_Buffer_Cache_Overall",
+    "left": "DB_Buffer_Cache_Overall_Used  /  DB_Buffer_Cache_Overall_Max",
+    "op": "<=",
+    "right": ".6"
+  },
+  {
+    "id": "45",
+    "name": "Default DB Cache Waste",
+    "desc": "The database is using a low percentage of the default database buffer cache memory allocated. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters larger than is actually necessary - thus less memory might be allocated while not negatively impacting the hit ratio. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of memory used falls below 60% of the memory allocated.",
+    "control": "DB_Buffer_Cache_Default",
+    "left": "DB_Buffer_Cache_Default_Used  /  DB_Buffer_Cache_Default_Max",
+    "op": "<=",
+    "right": ".6"
+  },
+  {
+    "id": "46",
+    "name": "Recycle DB Cache Waste",
+    "desc": "The database is using a low percentage of the recycle database buffer cache memory allocated. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters larger than is actually necessary - thus less memory might be allocated while not negatively impacting the hit ratio. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of memory used falls below 60% of the memory allocated.",
+    "control": "DB_Buffer_Cache_Recycle",
+    "left": "DB_Buffer_Cache_Recycle_Used  /  DB_Buffer_Cache_Recycle_Max",
+    "op": "<=",
+    "right": ".6"
+  },
+  {
+    "id": "47",
+    "name": "Keep DB Cache Waste",
+    "desc": "The database is using a low percentage of the keep database buffer cache memory allocated. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters larger than is actually necessary - thus less memory might be allocated while not negatively impacting the hit ratio. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of memory used falls below 60% of the memory allocated.",
+    "control": "DB_Buffer_Cache_Keep",
+    "left": "DB_Buffer_Cache_Keep_Used  /  DB_Buffer_Cache_Keep_Max",
+    "op": "<=",
+    "right": ".6"
+  },
+  {
+    "id": "48",
+    "name": "Library Cache Waste",
+    "desc": "The database is using a low percentage of the shared pool library cache cache memory allocated. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters larger than is actually necessary - thus less memory might be allocated while not negatively impacting the hit ratio. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of memory used falls below 60% of the memory allocated.",
+    "control": "Shared_Pool_Lib_Cache",
+    "left": "Shared_Pool_Lib_Cache_Used  /  Shared_Pool_Lib_Cache_Max",
+    "op": "<=",
+    "right": ".6"
+  },
+  {
+    "id": "49",
+    "name": "Shared Pool Too Small 1",
+    "desc": "The shared pool is probably too small. The main components of the shared pool are the library cache and the dictionary cache. The library cache stores the executable (parsed or compiled) form of recently referenced SQL and PL/SQL code. The dictionary cache stores data referenced from the data dictionary. A cache miss on the data dictionary cache or library cache is more expensive than a miss on the buffer cache. For this reason, the shared pool should be sized to ensure that frequently used data is cached. A number of features make large memory allocations in the shared pool: for example, the shared server, parallel query, or Recovery Manager. Oracle recommends segregating the SGA memory used by these features by configuring a distinct memory area, called the large pool. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the shared pool size falls below 40 MB.",
+    "control": "Shared_Pool_Overall",
+    "left": "Shared_Pool_Overall_Total",
+    "op": "<=",
+    "right": "40"
+  },
+  {
+    "id": "50",
+    "name": "Low Dict Cache Allocation",
+    "desc": "The dictionary cache is probably too small. The dictionary cache stores data referenced from the data dictionary. A cache miss on the data dictionary cache or library cache is more expensive than a miss on the buffer cache. For this reason, the shared pool should be sized to ensure that frequently used data is cached. However, many of the caches in the shared pool automatically increase or decrease in size as needed, including the library cache and the dictionary cache. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the cache size falls below 2 MB.",
+    "control": "Shared_Pool_Dict_Cache",
+    "left": "Shared_Pool_Dict_Cache_Total",
+    "op": "<",
+    "right": "2"
+  },
+  {
+    "id": "51",
+    "name": "Low SQL Area Allocation",
+    "desc": "The SQL area is probably too small. When an application makes a parse call for a SQL statement, if the parsed representation of the SQL statement does not already exist in the library cache or if it has been previously parsed but aged out of the cache then Oracle parses the statement and stores the parsed form in the SQL area. This is known as a hard parse. Resources required for a hard parse include additional CPU, library cache latch gets, and shared pool latch gets. So it's desirable to perform soft parses. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the SQL area size falls below 8 MB.",
+    "control": "Shared_Pool_SQL_Area",
+    "left": "Shared_Pool_SQL_Area_Total",
+    "op": "<",
+    "right": "8"
+  },
+  {
+    "id": "52",
+    "name": "Excess Shared Pool Free",
+    "desc": "The database has a large percentage of the shared pool free memory. While there is nothing inherently wrong with this occuring, it may require DBA review to be sure that it's appropriate. For example, the DBA may have set certain INIT.ORA parameters larger than is actually necessary. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the percentage of shared pool free memory exceeds 40% of the shared pool memory allocated.",
+    "control": "Shared_Pool_Free",
+    "left": "Shared_Pool_Free_Total  /  Shared_Pool_Overall_Total",
+    "op": ">=",
+    "right": ".4"
+  },
+  {
+    "id": "53",
+    "name": "Low Large Pool Allocation",
+    "desc": "The large pool is probably too small. A number of features make large memory allocations in the shared pool: for example, the shared server (MTS), parallel query, or Recovery Manager. Oracle recommends segregating the SGA memory used by these features by configuring a distinct and properly sized memory area, called the large pool. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the large pool size falls below 8 MB.",
+    "control": "Large_Pool_Megs_",
+    "left": "Large_Pool_Megs",
+    "op": "<",
+    "right": "8"
+  },
+  {
+    "id": "54",
+    "name": "Too Small Large Pool 1",
+    "desc": "The large pool is probably too small. A number of features make large memory allocations in the shared pool: for example, the shared server (MTS), parallel query, or Recovery Manager. Oracle recommends segregating the SGA memory used by these features by configuring a distinct and properly sized memory area, called the large pool. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the low large pool used percentage exceeds 80% of the large pool size.",
+    "control": "Large_Pool_Cur_Used_",
+    "left": "Large_Pool_Cur_Used  /  Large_Pool_Megs",
+    "op": ">=",
+    "right": ".8"
+  },
+  {
+    "id": "55",
+    "name": "Too Small Large Pool 2",
+    "desc": "The large pool is probably too small. A number of features make large memory allocations in the shared pool: for example, the shared server (MTS), parallel query, or Recovery Manager. Oracle recommends segregating the SGA memory used by these features by configuring a distinct and properly sized memory area, called the large pool. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the high large pool used percentage exceeds 80% of the large pool size.",
+    "control": "Large_Pool_Max_Used_",
+    "left": "Large_Pool_Max_Used  /  Large_Pool_Megs",
+    "op": ">=",
+    "right": ".8"
+  },
+  {
+    "id": "56",
+    "name": "Low Overall DB Cache Hit Ratio",
+    "desc": "The database is currently experiencing a low percentage of overall database buffer cache hit ratio. This may translate to slower database performance since Oracle may be doing more physical IO than if a larger cache were allocated. As a general rule, investigate increasing the size of the cache if the cache hit ratio is low and your application has been tuned to avoid performing full table scans. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the hit ratio percentage falls below 85%.",
+    "control": "DB_Buffer_Cache_Overall_Hit_",
+    "left": "DB_Buffer_Cache_Overall_Hit",
+    "op": "<",
+    "right": "85"
+  },
+  {
+    "id": "57",
+    "name": "Low Default DB Cache Hit Ratio",
+    "desc": "The database is currently experiencing a low percentage of default database buffer cache hit ratio. This may translate to slower database performance since Oracle may be doing more physical IO than if a larger cache were allocated. As a general rule, investigate increasing the size of the cache if the cache hit ratio is low and your application has been tuned to avoid performing full table scans. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the hit ratio percentage falls below 85%.",
+    "control": "DB_Buffer_Cache_Default_Hit_",
+    "left": "DB_Buffer_Cache_Default_Hit",
+    "op": "<",
+    "right": "85"
+  },
+  {
+    "id": "58",
+    "name": "Low Keep DB Cache Hit Ratio",
+    "desc": "The database is currently experiencing a low percentage of keep database buffer cache hit ratio. This may translate to slower database performance since Oracle may be doing more physical IO than if a larger cache were allocated. As a general rule, investigate increasing the size of the cache if the cache hit ratio is low and your application has been tuned to avoid performing full table scans. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the hit ratio percentage falls below 85%. Note - the DBA may simply have allocated a keep pool and not placed any objects into it or the applications may not be accessing keep pool objects.",
+    "control": "DB_Buffer_Cache_Keep_Hit_",
+    "left": "DB_Buffer_Cache_Keep_Hit",
+    "op": "<",
+    "right": "85"
+  },
+  {
+    "id": "59",
+    "name": "Low Recycle DB Cache Hit Ratio",
+    "desc": "The database is currently experiencing a low percentage of recycle database buffer cache hit ratio. This may translate to slower database performance since Oracle may be doing more physical IO than if a larger cache were allocated. As a general rule, investigate increasing the size of the cache if the cache hit ratio is low and your application has been tuned to avoid performing full table scans. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the hit ratio percentage falls below 85%. Note - the DBA may simply have allocated a recycle pool and not placed any objects into it or the applications may not be accessing recycle pool objects.",
+    "control": "DB_Buffer_Cache_Recycle_Hit_",
+    "left": "DB_Buffer_Cache_Recycle_Hit",
+    "op": "<",
+    "right": "85"
+  },
+  {
+    "id": "60",
+    "name": "Excessive Redo Log Buffer Size",
+    "desc": "The redo log buffer appears to be too large. Applications that insert, modify, or delete large volumes of data usually need to change the default log buffer size. The log buffer is small compared with the total SGA size, and a modestly sized log buffer can significantly enhance throughput on systems that perform many updates. A reasonable first estimate for such systems is to make the log buffer 1 MB. On most systems, sizing the log buffer larger than 1 MB does not provide any performance benefit. Increasing the log buffer size does not have any negative implications on performance or recoverability. It merely uses extra memory.",
+    "control": "Redo_Log_Buffer_Megs_",
+    "left": "Redo_Log_Buffer_Megs",
+    "op": ">",
+    "right": "1"
+  },
+  {
+    "id": "61",
+    "name": "Excessive Redo Allocation Retries",
+    "desc": "The value of redo buffer allocation retries should be near zero over an interval. If this value increments consistently, then processes have had to wait for space in the redo log buffer. The wait can be caused by the log buffer being too small or by checkpointing. Increase the size of the redo log buffer, if necessary, by changing the value of the initialization parameter LOG_BUFFER.  Alternatively, improve the checkpointing or archiving process.",
+    "control": "Redo_Log_Buffer_Retries_",
+    "left": "Redo_Log_Buffer_Retries",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "62",
+    "name": "Excessive Redo Allocation Waits",
+    "desc": "The value of redo buffer allocation waits should be near zero over an interval. If this value increments consistently, then processes have had to wait for space in the redo log buffer. The wait can be caused by the log buffer being too small or by checkpointing. Increase the size of the redo log buffer, if necessary, by changing the value of the initialization parameter LOG_BUFFER.  Alternatively, improve the checkpointing or archiving process.",
+    "control": "Redo_Log_Buffer_Waits_",
+    "left": "Redo_Log_Buffer_Waits",
+    "op": ">",
+    "right": "0"
+  },
+  {
+    "id": "63",
+    "name": "Shared Pool Too Small 2",
+    "desc": "The shared pool is probably too small. The main components of the shared pool are the library cache and the dictionary cache. The library cache stores the executable (parsed or compiled) form of recently referenced SQL and PL/SQL code. The dictionary cache stores data referenced from the data dictionary. A cache miss on the data dictionary cache or library cache is more expensive than a miss on the buffer cache. For this reason, the shared pool should be sized to ensure that frequently used data is cached. A number of features make large memory allocations in the shared pool: for example, the shared server, parallel query, or Recovery Manager. Oracle recommends segregating the SGA memory used by these features by configuring a distinct memory area, called the large pool. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the miscellaneous shared pool components size exceed 40% of the shared pool.",
+    "control": "Shared_Pool_Misc",
+    "left": "Shared_Pool_Misc_Total  /  Shared_Pool_Overall_Total",
+    "op": ">=",
+    "right": ".4"
+  },
+  {
+    "id": "64",
+    "name": "Low Dict Cache Hit Ratio",
+    "desc": "The database is currently experiencing a low percentage of dictionary cache hit ratio. This may translate to slower database performance since Oracle may be doing more physical IO than if a larger cache were allocated. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the hit ratio percentage falls below 95%. Note - the hit ratio may be less than 95% after initial database startup as the cache is empty, but should stabilize around the desired percentage after a short while.",
+    "control": "Shared_Pool_Dict_Cache_Hit_",
+    "left": "Shared_Pool_Dict_Cache_Hit",
+    "op": "<",
+    "right": "95"
+  },
+  {
+    "id": "65",
+    "name": "Low Library Cache Hit Ratio",
+    "desc": "The database is currently experiencing a low percentage of library cache hit ratio. This may translate to slower database performance since Oracle may be doing more physical IO than if a larger cache were allocated. Specifically, this means that SQL statements that are needed are being \"aged out\" of the cache. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the hit ratio percentage falls below 85%.",
+    "control": "Shared_Pool_Lib_Cache_Hit_",
+    "left": "Shared_Pool_Lib_Cache_Hit",
+    "op": "<",
+    "right": "85"
+  },
+  {
+    "id": "66",
+    "name": "High Block Mods Ratio",
+    "desc": "The database is experiencing a period of relatively high block modification versus get activity. This is usually the case during a high volume data load or other period of unusual insert/update activity. While there is nothing inherently wrong with this, the DBA may still want to examine the overall database load and see if there are jobs that can be scheduled so as not to overlap. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the block mods to get ratio exceeds 25%.",
+    "control": "Block_Mods_Sec_",
+    "left": "Block_Mods_Sec",
+    "op": ">",
+    "right": ".25 * Block_Gets_Sec"
+  },
+  {
+    "id": "67",
+    "name": "High Physical Writes Ratio",
+    "desc": "The database is experiencing a period of relatively high physical write versus read activity. This is usually the case during a high volume data load or other period of unusual insert/update activity. While there is nothing inherently wrong with this, the DBA may still want to examine the overall database load and see if they are jobs that can be scheduled so as not to overlap. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the physical writes to reads ratio exceeds 25%.",
+    "control": "Physical_Writes_Sec",
+    "left": "Phys_wr_sec",
+    "op": ">",
+    "right": ".25 *  Phys_rd_sec"
+  },
+  {
+    "id": "68",
+    "name": "Excessive Log Writer Writes",
+    "desc": "The database is experiencing a period of relatively high log writer activity. This is usually the case during a high volume data load or other period of unusual insert/update activity. While there is nothing inherently wrong with this, the DBA may still want to examine the overall database load and see if there are jobs that can be scheduled so as not to overlap. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the log writer writes per second exceeds 1000.",
+    "control": "LGWR_Count",
+    "left": "LGWR_wr_sec",
+    "op": ">",
+    "right": "1000"
+  },
+  {
+    "id": "69",
+    "name": "Excessive Physical Reads",
+    "desc": "The database is experiencing a period of relatively high physical read activity. This is usually the case during any period of unusually high select activity or if there is excessive full table scan activity. While there is nothing inherently wrong with this, the DBA may still want to examine the overall database load and see if there are jobs that can be scheduled so as not to overlap. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the physical reads per second exceeds 5000.",
+    "control": "Physical_Reads_Sec",
+    "left": "Phys_rd_sec",
+    "op": ">",
+    "right": "5000"
+  },
+  {
+    "id": "70",
+    "name": "Excessive Block Gets",
+    "desc": "The database is experiencing a period of relatively high block get activity. This is usually the case during any period of unusually high select activity or if there is excessive full table scan activity. While there is nothing inherently wrong with this, the DBA may still want to examine the overall database load and see if there are jobs that can be scheduled so as not to overlap. This is an arbitrary alert value to be defined by the user. The default triggers an alert when the block gets per second exceeds 5000.",
+    "control": "Block_Gets_Sec_",
+    "left": "Block_Gets_Sec",
+    "op": ">",
+    "right": "5000"
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "conn-default",
+    "name": "Produção Oracle 19c",
+    "host": "10.100.10.50",
+    "port": 1521,
+    "serviceName": "PROD",
+    "user": "SYSTEM",
+    "role": "NORMAL",
+    "color": "#dc2626",
+    "password": "",
+    "savePassword": true,
+    "useThick": true,
+    "useBridge": true,
+    "bridgeType": "ssh",
+    "bridgeHost": "10.100.10.39",
+    "bridgePort": 22,
+    "bridgeUser": "oracle",
+    "bridgePassword": "",
+    "saveBridgePassword": true
+  }
+]

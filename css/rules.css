@@ -1,0 +1,198 @@
+/* ==========================================================================
+   TOAD RULE UNIVERSE (CODE QUALITY AUDITOR) STYLES
+   ========================================================================== */
+
+.rules-view-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+/* Left Rules Catalog / Scan Summary */
+.rules-sidebar {
+  width: 340px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rules-header {
+  padding: 14px 16px;
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scorecard-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+}
+
+.score-num {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 800;
+  color: #34d399;
+}
+
+.score-grade {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.severity-breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.severity-badge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  font-size: 10px;
+}
+
+.severity-badge-card.severe {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.severity-badge-card.warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.severity-badge-card.info {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.severity-count {
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Violation List */
+.violations-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.violation-card {
+  padding: 10px 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.violation-card:hover {
+  border-color: var(--border-highlight);
+  background: var(--bg-surface-hover);
+}
+
+.violation-card.active {
+  border-color: var(--traces-red);
+  box-shadow: 0 0 10px var(--traces-red-subtle);
+}
+
+.violation-card.sev-0 { border-left: 3px solid var(--traces-red); }
+.violation-card.sev-1 { border-left: 3px solid #f59e0b; }
+.violation-card.sev-2 { border-left: 3px solid #38bdf8; }
+
+.violation-rule-id {
+  font-family: var(--font-code);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.violation-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.violation-location {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Right Code Inspector / Fix Pane */
+.rules-preview-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+.rule-detail-header {
+  padding: 16px 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.rule-full-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.rule-tip-box {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.code-inspection-editor {
+  flex: 1;
+  padding: 20px;
+  overflow: auto;
+  font-family: var(--font-code);
+  font-size: 13px;
+  line-height: 22px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.code-line-violation {
+  background: rgba(239, 68, 68, 0.2);
+  display: block;
+  border-left: 3px solid var(--traces-red);
+  padding-left: 8px;
+  margin: 0 -8px;
+}

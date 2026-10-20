@@ -1,0 +1,247 @@
+[
+  {
+    "id": "1",
+    "name": "Object Owner",
+    "attr": "object_owner",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "2",
+    "name": "Object Name",
+    "attr": "object_name",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "3",
+    "name": "ID",
+    "attr": "id",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "4",
+    "name": "Parent ID",
+    "attr": "pid",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "5",
+    "name": "Position",
+    "attr": "position",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "6",
+    "name": "Part Start",
+    "attr": "partition_start",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "7",
+    "name": "Part Stop",
+    "attr": "partition_stop",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "10",
+    "name": "Operation",
+    "attr": "operation",
+    "shown": true,
+    "sample": "TABLE ACCESS"
+  },
+  {
+    "id": "20",
+    "name": "Option",
+    "attr": "option",
+    "shown": true,
+    "sample": "FULL"
+  },
+  {
+    "id": "21",
+    "name": "Object Type",
+    "attr": "object_type",
+    "shown": true,
+    "sample": "UNIQUE"
+  },
+  {
+    "id": "23",
+    "name": "Other Tag",
+    "attr": "other_tag",
+    "shown": true,
+    "sample": "SERIAL_FROM_REMOTE"
+  },
+  {
+    "id": "25",
+    "name": "Object",
+    "attr": null,
+    "shown": true,
+    "sample": "SYS.TABLE1"
+  },
+  {
+    "id": "30",
+    "name": "Optimizer",
+    "attr": null,
+    "shown": true,
+    "sample": "CHOOSE"
+  },
+  {
+    "id": "35",
+    "name": "Remote",
+    "attr": "object_node",
+    "shown": true,
+    "sample": "UNIX1.CORP.COM"
+  },
+  {
+    "id": "40",
+    "name": "Partition #",
+    "attr": null,
+    "shown": true,
+    "sample": "1"
+  },
+  {
+    "id": "50",
+    "name": "Partition Info",
+    "attr": null,
+    "shown": true,
+    "sample": "partitions accessed #1 - #4"
+  },
+  {
+    "id": "90",
+    "name": "Cost",
+    "attr": "cost",
+    "shown": true,
+    "sample": ""
+  },
+  {
+    "id": "100",
+    "name": "Bytes",
+    "attr": "bytes",
+    "shown": true,
+    "sample": ""
+  },
+  {
+    "id": "110",
+    "name": "Cardinality",
+    "attr": "cardinality",
+    "shown": true,
+    "sample": ""
+  },
+  {
+    "id": "120",
+    "name": "Distribution",
+    "attr": "distribution",
+    "shown": false,
+    "sample": "QC (RANDOM)"
+  },
+  {
+    "id": "130",
+    "name": "Object Instance",
+    "attr": "object_instance",
+    "shown": true,
+    "sample": ""
+  },
+  {
+    "id": "180",
+    "name": "Other",
+    "attr": null,
+    "shown": false,
+    "sample": "SELECT /*+ ORDERED NO_EXPAND USE_NL(A2) INDEX(A2 \"PK_CUSTOMERS\") */ "
+  },
+  {
+    "id": "190",
+    "name": "Search Columns",
+    "attr": "search_columns",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "197",
+    "name": "CPU Cost",
+    "attr": "cpu_cost",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "199",
+    "name": "IO Cost",
+    "attr": "io_cost",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "220",
+    "name": "Time",
+    "attr": "time",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "230",
+    "name": "GraphicText1",
+    "attr": null,
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "230",
+    "name": "GraphicText1",
+    "attr": null,
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "240",
+    "name": "GraphicText2",
+    "attr": null,
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "250",
+    "name": "GraphicHint",
+    "attr": null,
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "260",
+    "name": "object_id",
+    "attr": "o_id",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "270",
+    "name": "Temp Space",
+    "attr": "temp_space",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "275",
+    "name": "QBlock Name",
+    "attr": "qblock_name",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "280",
+    "name": "Access Predicates",
+    "attr": "access_predicates",
+    "shown": false,
+    "sample": ""
+  },
+  {
+    "id": "290",
+    "name": "Filter Predicates",
+    "attr": "filter_predicates",
+    "shown": false,
+    "sample": ""
+  }
+]
