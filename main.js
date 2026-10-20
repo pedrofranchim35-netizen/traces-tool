@@ -187,13 +187,32 @@ async function applyGitHubUpdate(event) {
         if (entry.isDirectory()) {
           copyFolderSync(srcPath, destPath);
         } else {
-          fs.copyFileSync(srcPath, destPath);
+          try {
+            fs.copyFileSync(srcPath, destPath);
+          } catch (e) {
+            // Ignora arquivos bloqueados em execução (ex: DLLs do Python ativo)
+          }
         }
       }
     }
 
     copyFolderSync(sourceFolder, appDir);
     setLocalVersion(check.fullSha || check.latestVersion);
+
+    // Garantir dependências no Python embutido após atualização
+    const embeddedPy = path.join(appDir, 'python', 'python.exe');
+    if (fs.existsSync(embeddedPy)) {
+      if (event) event.sender.send('update-progress', { stage: 'deps', text: 'Verificando dependências Python (sshtunnel, oracledb)...' });
+      try {
+        const { execSync } = require('child_process');
+        execSync(`"${embeddedPy}" -c "import sshtunnel, paramiko, oracledb"`, { stdio: 'ignore', timeout: 5000 });
+      } catch (e) {
+        try {
+          const { execSync } = require('child_process');
+          execSync(`"${embeddedPy}" -m pip install oracledb sshtunnel paramiko bcrypt --quiet --no-warn-script-location`, { stdio: 'ignore', timeout: 120000 });
+        } catch (e2) {}
+      }
+    }
 
     try {
       fs.unlinkSync(zipPath);

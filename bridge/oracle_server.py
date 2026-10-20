@@ -39,22 +39,77 @@ import tempfile
 import ssl
 from datetime import datetime, date
 
-# Try importing oracledb
-try:
-    import oracledb
-    ORACLEDB_AVAILABLE = True
-except ImportError:
-    ORACLEDB_AVAILABLE = False
+ORACLEDB_AVAILABLE = False
+SSHTUNNEL_AVAILABLE = False
+SSHTunnelForwarder = None
 
-# Try importing sshtunnel for SSH Jump Host / Bastion bridge
-try:
-    import sshtunnel
-    from sshtunnel import SSHTunnelForwarder
-    sshtunnel.SSH_TIMEOUT = 8.0
-    sshtunnel.TUNNEL_TIMEOUT = 8.0
-    SSHTUNNEL_AVAILABLE = True
-except ImportError:
-    SSHTUNNEL_AVAILABLE = False
+def ensure_python_dependencies():
+    """
+    Verifica e instala automaticamente dependências faltantes (sshtunnel, paramiko, oracledb, bcrypt)
+    para garantir que nenhuma funcionalidade do TOAD ou da ponte SSH falhe por falta de biblioteca.
+    """
+    global ORACLEDB_AVAILABLE, SSHTUNNEL_AVAILABLE, SSHTunnelForwarder, oracledb, sshtunnel
+    missing = []
+    
+    try:
+        import oracledb
+        ORACLEDB_AVAILABLE = True
+    except ImportError:
+        missing.append("oracledb")
+        ORACLEDB_AVAILABLE = False
+
+    try:
+        import sshtunnel
+        from sshtunnel import SSHTunnelForwarder
+        sshtunnel.SSH_TIMEOUT = 10.0
+        sshtunnel.TUNNEL_TIMEOUT = 10.0
+        SSHTUNNEL_AVAILABLE = True
+    except ImportError:
+        missing.extend(["sshtunnel", "paramiko", "bcrypt"])
+        SSHTUNNEL_AVAILABLE = False
+
+    if missing:
+        print(f"[TRACES Auto-Dependency] Bibliotecas ausentes: {missing}. Instalando automaticamente...")
+        try:
+            import subprocess
+            py_exe = sys.executable
+            cmd = [py_exe, "-m", "pip", "install", *missing, "--quiet", "--no-warn-script-location"]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+            
+            if res.returncode != 0 and b"No module named pip" in res.stderr:
+                print("[TRACES Auto-Dependency] Instalando pip no Python embutido...")
+                import urllib.request
+                import tempfile
+                get_pip_path = os.path.join(tempfile.gettempdir(), "get-pip.py")
+                urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path)
+                subprocess.run([py_exe, get_pip_path, "--no-warn-script-location", "--quiet"], timeout=120)
+                try:
+                    os.remove(get_pip_path)
+                except Exception:
+                    pass
+                subprocess.run([py_exe, "-m", "pip", "install", *missing, "--quiet", "--no-warn-script-location"], timeout=120)
+
+            try:
+                import oracledb
+                ORACLEDB_AVAILABLE = True
+                print("[TRACES Auto-Dependency] oracledb carregado com sucesso!")
+            except Exception as e:
+                print(f"[TRACES Auto-Dependency] oracledb aviso: {e}")
+
+            try:
+                import sshtunnel
+                from sshtunnel import SSHTunnelForwarder
+                sshtunnel.SSH_TIMEOUT = 10.0
+                sshtunnel.TUNNEL_TIMEOUT = 10.0
+                SSHTUNNEL_AVAILABLE = True
+                print("[TRACES Auto-Dependency] sshtunnel e paramiko carregados com sucesso!")
+            except Exception as e:
+                print(f"[TRACES Auto-Dependency] sshtunnel aviso: {e}")
+        except Exception as e:
+            print(f"[TRACES Auto-Dependency] Falha na auto-instalação: {e}")
+
+# Executa verificação inicial de dependências no startup
+ensure_python_dependencies()
 
 PORT = 3033
 WEB_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -308,9 +363,12 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if not SSHTUNNEL_AVAILABLE:
+            ensure_python_dependencies()
+
+        if not SSHTUNNEL_AVAILABLE:
             self.send_api_response({
                 "success": False,
-                "error": "Biblioteca 'sshtunnel' não encontrada. Instale com 'pip install sshtunnel paramiko'."
+                "error": "Biblioteca 'sshtunnel' não encontrada e auto-instalação falhou. Verifique se o computador possui acesso à internet."
             }, status=500)
             return
 
@@ -402,9 +460,12 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 cman_dsn = f"""(DESCRIPTION=(SOURCE_ROUTE=YES)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST={bridge_host})(PORT={bridge_port}))(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT={port})))(CONNECT_DATA=(SERVICE_NAME={service_name or 'XE'})))"""
             else:
                 if not SSHTUNNEL_AVAILABLE:
+                    ensure_python_dependencies()
+
+                if not SSHTUNNEL_AVAILABLE:
                     self.send_api_response({
                         "success": False,
-                        "error": "Biblioteca 'sshtunnel' não encontrada."
+                        "error": "Biblioteca 'sshtunnel' não encontrada e auto-instalação falhou."
                     }, status=500)
                     return
 

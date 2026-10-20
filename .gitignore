@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-python/
 
 # Python cache
 __pycache__/
