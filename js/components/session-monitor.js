@@ -30,6 +30,8 @@ class SessionMonitor {
     this.autoRefreshInterval = 5; // seconds
     this.autoRefreshTimer = null;
     this.currentDetailTab = 'sql'; // 'sql' | 'tablespaces' | 'waits' | 'locks' | 'locktree' | 'cursors' | 'transactions' | 'io' | 'info'
+    this.drawerLayout = 'accordion'; // default to Gavetas Expansíveis!
+    this.expandedSections = new Set(['sql', 'tablespaces']);
     this.detailsCache = new Map(); // sid -> { data, ts }
     this.instanceOverview = this.getMockInstanceOverview();
     this.selectedMasterSqlId = '8h3k9f01q2a8z';
@@ -590,6 +592,58 @@ class SessionMonitor {
     }
   }
 
+  toggleDrawerLayout(layout) {
+    this.drawerLayout = layout;
+    this.renderDetail();
+  }
+
+  toggleAccordionSection(secKey) {
+    if (!this.expandedSections) this.expandedSections = new Set(['sql', 'tablespaces']);
+    if (this.expandedSections.has(secKey)) {
+      this.expandedSections.delete(secKey);
+    } else {
+      this.expandedSections.add(secKey);
+    }
+    const sec = document.getElementById(`session-sec-${secKey}`);
+    if (sec) {
+      const isExp = this.expandedSections.has(secKey);
+      sec.classList.toggle('expanded', isExp);
+      const chev = sec.querySelector('.session-accordion-chevron');
+      if (chev) chev.textContent = isExp ? '▼' : '▶';
+      const body = sec.querySelector('.session-accordion-body');
+      if (body) body.style.display = isExp ? 'block' : 'none';
+    } else {
+      this.renderDetail();
+    }
+  }
+
+  wrapSection(tabKey, title, icon, badge, contentHtml) {
+    if (this.drawerLayout === 'accordion') {
+      const isExp = Boolean(this.expandedSections && this.expandedSections.has(tabKey));
+      return `
+        <div class="session-accordion-section ${isExp ? 'expanded' : ''}" id="session-sec-${tabKey}">
+          <div class="session-accordion-header" onclick="window.TracesApp.sessionMonitor.toggleAccordionSection('${tabKey}')">
+            <div class="session-accordion-header-left">
+              <span class="session-accordion-chevron">${isExp ? '▼' : '▶'}</span>
+              <span><strong>${icon} ${title}</strong></span>
+            </div>
+            ${badge !== null && badge !== undefined ? `<span class="accordion-badge">${badge}</span>` : ''}
+          </div>
+          <div class="session-accordion-body" style="display: ${isExp ? 'block' : 'none'};">
+            ${contentHtml}
+          </div>
+        </div>
+      `;
+    } else {
+      const isVisible = this.currentDetailTab === tabKey;
+      return `
+        <div style="display: ${isVisible ? 'block' : 'none'};">
+          ${contentHtml}
+        </div>
+      `;
+    }
+  }
+
   getMockInstanceOverview() {
     const dbTablespaces = (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces.map(ts => ({
       tablespace: ts.name,
@@ -724,6 +778,14 @@ class SessionMonitor {
               </span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="display: flex; gap: 2px; margin-right: 4px;">
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; ${this.drawerLayout === 'accordion' ? 'background: #0284c7; color: #fff; font-weight: 700;' : ''}" onclick="window.TracesApp.sessionMonitor.toggleDrawerLayout('accordion')" title="Exibir como Gavetas / Menus Expansíveis (Vertical sem rolagem)">
+                  📂 Gavetas
+                </button>
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; ${this.drawerLayout === 'tabs' ? 'background: #0284c7; color: #fff; font-weight: 700;' : ''}" onclick="window.TracesApp.sessionMonitor.toggleDrawerLayout('tabs')" title="Exibir como Abas do TOAD">
+                  📑 Abas
+                </button>
+              </div>
               <button class="btn" style="height: 22px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.sessionMonitor.refresh()">
                 🔄 Atualizar Todos
               </button>
@@ -744,6 +806,14 @@ class SessionMonitor {
               </span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="display: flex; gap: 2px; margin-right: 4px;">
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; ${this.drawerLayout === 'accordion' ? 'background: #0284c7; color: #fff; font-weight: 700;' : ''}" onclick="window.TracesApp.sessionMonitor.toggleDrawerLayout('accordion')" title="Exibir como Gavetas / Menus Expansíveis (Vertical sem rolagem)">
+                  📂 Gavetas
+                </button>
+                <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; ${this.drawerLayout === 'tabs' ? 'background: #0284c7; color: #fff; font-weight: 700;' : ''}" onclick="window.TracesApp.sessionMonitor.toggleDrawerLayout('tabs')" title="Exibir como Abas do TOAD">
+                  📑 Abas
+                </button>
+              </div>
               <button class="btn btn-danger" style="height: 22px; padding: 0 8px; font-weight: 700; font-size: 11px;" onclick="window.TracesApp.sessionMonitor.killSession(${s.sid}, ${s.serial})">
                 ⚡ Kill Session IMMEDIATE
               </button>
@@ -780,51 +850,53 @@ class SessionMonitor {
           </div>
         </div>
 
-        <!-- Classic TOAD Notebook Tabs Strip ("Abas / Gavetas") -->
-        <div class="toad-drawer-tabs-strip">
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'sql' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('sql')">
-            <span>Current / Top SQL</span>
-            <span class="toad-drawer-tab-badge">${topSqlList.length}</span>
-          </button>
+        <!-- Classic TOAD Notebook Tabs Strip (somente no modo Abas) -->
+        ${this.drawerLayout === 'tabs' ? `
+          <div class="toad-drawer-tabs-strip">
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'sql' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('sql')">
+              <span>Current / Top SQL</span>
+              <span class="toad-drawer-tab-badge">${topSqlList.length}</span>
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'tablespaces' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('tablespaces')">
-            <span>💾 Tablespaces &amp; Temp</span>
-            <span class="toad-drawer-tab-badge">${dbTablespaces.length}</span>
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'tablespaces' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('tablespaces')">
+              <span>💾 Tablespaces &amp; Temp</span>
+              <span class="toad-drawer-tab-badge">${dbTablespaces.length}</span>
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'waits' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('waits')">
-            <span>Session Waits</span>
-            ${(ov.activeSessionWaits || []).length > 0 ? `<span class="toad-drawer-tab-badge">${(ov.activeSessionWaits || []).length}</span>` : ''}
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'waits' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('waits')">
+              <span>Session Waits</span>
+              ${(ov.activeSessionWaits || []).length > 0 ? `<span class="toad-drawer-tab-badge">${(ov.activeSessionWaits || []).length}</span>` : ''}
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'locks' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('locks')">
-            <span>Locks Held</span>
-            ${(ov.allLocks || []).length > 0 ? `<span class="toad-drawer-tab-badge danger">${(ov.allLocks || []).length}</span>` : ''}
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'locks' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('locks')">
+              <span>Locks Held</span>
+              ${(ov.allLocks || []).length > 0 ? `<span class="toad-drawer-tab-badge danger">${(ov.allLocks || []).length}</span>` : ''}
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'locktree' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('locktree')">
-            <span>🔒 Lock Tree</span>
-            ${blockers.length > 0 ? `<span class="toad-drawer-tab-badge danger">${blockers.length}</span>` : ''}
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'locktree' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('locktree')">
+              <span>🔒 Lock Tree</span>
+              ${blockers.length > 0 ? `<span class="toad-drawer-tab-badge danger">${blockers.length}</span>` : ''}
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'cursors' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('cursors')">
-            <span>Open Cursors</span>
-            <span class="toad-drawer-tab-badge">${(ov.allCursors || []).length}</span>
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'cursors' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('cursors')">
+              <span>Open Cursors</span>
+              <span class="toad-drawer-tab-badge">${(ov.allCursors || []).length}</span>
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'transactions' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('transactions')">
-            <span>Undo &amp; Transactions</span>
-            ${(ov.allTransactions || []).length > 0 ? `<span class="toad-drawer-tab-badge">${(ov.allTransactions || []).length}</span>` : ''}
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'transactions' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('transactions')">
+              <span>Undo &amp; Transactions</span>
+              ${(ov.allTransactions || []).length > 0 ? `<span class="toad-drawer-tab-badge">${(ov.allTransactions || []).length}</span>` : ''}
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'io' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('io')">
-            <span>I/O &amp; Memory</span>
-          </button>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'io' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('io')">
+              <span>I/O &amp; Memory</span>
+            </button>
 
-          <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'info' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('info')">
-            <span>Session Info</span>
-          </button>
-        </div>
+            <button class="toad-drawer-tab-btn ${this.currentDetailTab === 'info' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('info')">
+              <span>Session Info</span>
+            </button>
+          </div>
+        ` : ''}
 
         <!-- Active Drawer Tab Body -->
         <div class="toad-drawer-body">

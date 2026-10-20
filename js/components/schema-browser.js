@@ -28,7 +28,10 @@ class SchemaBrowser {
     this.detailTypePill = document.getElementById('browser-detail-type');
     this.detailTabs = document.querySelectorAll('.detail-tab');
     this.categoryDropdown = document.getElementById('browser-category-dropdown');
-    this.isCategoryDrawerOpen = true;
+    this.accordionContainer = document.getElementById('browser-accordion-drawers');
+    this.navMode = 'drawers'; // default to TOAD Gavetas Expansíveis!
+    this.expandedDrawers = new Set(['tablespaces', 'tables', 'users']);
+    this.isCategoryDrawerOpen = false;
   }
 
   bindEvents() {
@@ -49,7 +52,11 @@ class SchemaBrowser {
     if (this.searchInput) {
       this.searchInput.addEventListener('input', (e) => {
         this.searchQuery = e.target.value.toLowerCase().trim();
-        this.renderObjectList();
+        if (this.navMode === 'drawers') {
+          this.renderAccordionDrawers();
+        } else {
+          this.renderObjectList();
+        }
       });
     }
 
@@ -202,7 +209,120 @@ class SchemaBrowser {
 
   render() {
     this.renderCategoryPills();
-    this.renderObjectList();
+    if (this.navMode === 'drawers') {
+      if (this.accordionContainer) this.accordionContainer.style.display = 'block';
+      if (this.objectList) this.objectList.style.display = 'none';
+      this.renderAccordionDrawers();
+    } else {
+      if (this.accordionContainer) this.accordionContainer.style.display = 'none';
+      if (this.objectList) this.objectList.style.display = 'block';
+      this.renderObjectList();
+    }
+  }
+
+  setNavMode(mode) {
+    this.navMode = mode;
+    const btnDrawers = document.getElementById('btn-mode-drawers');
+    const btnFlat = document.getElementById('btn-mode-flat');
+    if (btnDrawers && btnFlat) {
+      btnDrawers.style.background = mode === 'drawers' ? '#0284c7' : '';
+      btnDrawers.style.color = mode === 'drawers' ? '#ffffff' : '';
+      btnFlat.style.background = mode === 'flat' ? '#0284c7' : '';
+      btnFlat.style.color = mode === 'flat' ? '#ffffff' : '';
+    }
+
+    if (this.accordionContainer) this.accordionContainer.style.display = mode === 'drawers' ? 'block' : 'none';
+    if (this.objectList) this.objectList.style.display = mode === 'flat' ? 'block' : 'none';
+
+    if (mode === 'drawers') {
+      this.renderAccordionDrawers();
+    } else {
+      this.renderObjectList();
+    }
+  }
+
+  toggleDrawer(catKey) {
+    if (this.expandedDrawers.has(catKey)) {
+      this.expandedDrawers.delete(catKey);
+    } else {
+      this.expandedDrawers.add(catKey);
+    }
+    this.renderAccordionDrawers();
+  }
+
+  renderAccordionDrawers() {
+    if (!this.accordionContainer) return;
+    const data = this.getSchemaData();
+
+    const categories = [
+      { key: 'tablespaces', label: 'Tablespaces', icon: '💾', count: (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces.length : 6 },
+      { key: 'users', label: 'Users', icon: '👥', count: 6 },
+      { key: 'tables', label: 'Tables', icon: '📋', count: data.tables?.length || 0 },
+      { key: 'views', label: 'Views', icon: '👁', count: data.views?.length || 0 },
+      { key: 'packages', label: 'Packages', icon: '📦', count: data.packages?.length || 0 },
+      { key: 'procedures', label: 'Procedures', icon: '⚙', count: data.procedures?.length || 0 },
+      { key: 'functions', label: 'Functions', icon: 'ƒ', count: data.functions?.length || 0 },
+      { key: 'triggers', label: 'Triggers', icon: '⚡', count: data.triggers?.length || 0 },
+      { key: 'indexes', label: 'Indexes', icon: '🗂', count: data.indexes?.length || 0 },
+      { key: 'sequences', label: 'Sequences', icon: '🔢', count: data.sequences?.length || 0 },
+      { key: 'synonyms', label: 'Synonyms', icon: '🔗', count: data.synonyms?.length || 0 },
+      { key: 'types', label: 'Types', icon: '🏷', count: data.types?.length || 0 }
+    ];
+
+    const html = categories.map(cat => {
+      let items = (data[cat.key] || []);
+      if (this.searchQuery) {
+        items = items.filter(it => it.name.toLowerCase().includes(this.searchQuery));
+      }
+
+      const hasMatchingSearch = Boolean(this.searchQuery && items.length > 0);
+      const isExpanded = hasMatchingSearch || this.expandedDrawers.has(cat.key);
+      const isCurrentCat = this.currentCategory === cat.key;
+      const isMasterForThisCat = isCurrentCat && this.selectedObject === null;
+
+      return `
+        <div class="toad-accordion-drawer ${isExpanded ? 'expanded' : ''}" data-cat="${cat.key}">
+          <div class="toad-accordion-header" onclick="window.TracesApp.schemaBrowser.toggleDrawer('${cat.key}')">
+            <div class="accordion-title-group">
+              <span class="accordion-chevron">${isExpanded ? '▼' : '▶'}</span>
+              <span><strong>${cat.icon} ${cat.label}</strong></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="accordion-badge">${items.length}</span>
+              <button class="btn" style="height: 18px; padding: 0 5px; font-size: 9px;" onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.selectCategory('${cat.key}'); window.TracesApp.schemaBrowser.showMasterOverview();" title="Ver Dashboard de Todas">
+                🌐
+              </button>
+            </div>
+          </div>
+          <div class="toad-accordion-body" style="${isExpanded ? 'display:block;' : 'display:none;'}">
+            <!-- Item Mestre de Todas -->
+            <div class="accordion-subitem master-overview-subitem ${isMasterForThisCat ? 'active' : ''}"
+                 onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}'); window.TracesApp.schemaBrowser.showMasterOverview();">
+              <span>🌐 [ Ver Todas as ${cat.label} ]</span>
+              <span style="font-size: 10px; font-weight: 700; color: ${isMasterForThisCat ? '#ffffff' : '#0284c7'};">Dashboard</span>
+            </div>
+            <!-- Subitens individuais -->
+            ${items.map(item => {
+              const isSel = isCurrentCat && this.selectedObject && this.selectedObject.name === item.name;
+              return `
+                <div class="accordion-subitem ${isSel ? 'active' : ''}"
+                     onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}'); window.TracesApp.schemaBrowser.selectObject('${item.name}');">
+                  <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;" title="${item.name}">${item.name}</span>
+                  <span style="font-size: 9px; opacity: 0.8;">${item.status || ''}</span>
+                </div>
+              `;
+            }).join('')}
+            ${items.length === 0 ? `
+              <div style="padding: 6px 12px 6px 26px; font-size: 10px; color: #94a3b8; font-style: italic;">
+                Nenhum objeto encontrado
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    this.accordionContainer.innerHTML = html;
   }
 
   renderCategoryPills() {
@@ -245,11 +365,16 @@ class SchemaBrowser {
   selectCategory(categoryKey) {
     this.currentCategory = categoryKey;
     this.selectedObject = null;
+    this.expandedDrawers.add(categoryKey);
     if (this.categoryDropdown && this.categoryDropdown.value !== categoryKey) {
       this.categoryDropdown.value = categoryKey;
     }
     this.renderCategoryPills();
-    this.renderObjectList();
+    if (this.navMode === 'drawers') {
+      this.renderAccordionDrawers();
+    } else {
+      this.renderObjectList();
+    }
 
     // Contextual tab switching
     if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
@@ -334,7 +459,11 @@ class SchemaBrowser {
 
   showMasterOverview() {
     this.selectedObject = null;
-    this.renderObjectList();
+    if (this.navMode === 'drawers') {
+      this.renderAccordionDrawers();
+    } else {
+      this.renderObjectList();
+    }
     this.renderDetailContent();
   }
 
@@ -374,10 +503,19 @@ class SchemaBrowser {
     this.selectedObject = items.find(o => o.name === objectName) || { name: objectName };
 
     // Update active highlight in list immediately
-    const allItems = this.objectList.querySelectorAll('.object-item');
-    allItems.forEach(el => el.classList.remove('active'));
-    const matched = Array.from(allItems).find(el => el.textContent.includes(objectName));
-    if (matched) matched.classList.add('active');
+    if (this.objectList) {
+      const allItems = this.objectList.querySelectorAll('.object-item');
+      allItems.forEach(el => el.classList.remove('active'));
+      const matched = Array.from(allItems).find(el => el.textContent.includes(objectName));
+      if (matched) matched.classList.add('active');
+    }
+
+    if (this.accordionContainer) {
+      const allSubitems = this.accordionContainer.querySelectorAll('.accordion-subitem');
+      allSubitems.forEach(el => el.classList.remove('active'));
+      const matchedSub = Array.from(allSubitems).find(el => el.textContent.trim().startsWith(objectName));
+      if (matchedSub) matchedSub.classList.add('active');
+    }
 
     // Update detail pane header with breadcrumb button
     this.detailTitle.innerHTML = `

@@ -300,6 +300,77 @@
   flex: 1 1 calc(100% - 115px) !important;
 }
 
+/* ==========================================================================
+   SESSION BROWSER - GAVETAS EXPANSÍVEIS (ACCORDION DRAWERS)
+   ========================================================================== */
+.session-accordion-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #ffffff;
+}
+
+.session-accordion-section {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.session-accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.session-accordion-header:hover {
+  background: #e2e8f0;
+}
+
+.session-accordion-section.expanded .session-accordion-header {
+  background: #e0f2fe;
+  border-bottom-color: #bae6fd;
+  color: #0284c7;
+  font-weight: 700;
+}
+
+.session-accordion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session-accordion-chevron {
+  font-size: 10px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+  display: inline-block;
+  width: 14px;
+}
+
+.session-accordion-section.expanded .session-accordion-chevron {
+  transform: rotate(90deg);
+  color: #0284c7;
+}
+
+.session-accordion-body {
+  display: none;
+  background: #ffffff;
+  padding: 8px 12px;
+}
+
+.session-accordion-section.expanded .session-accordion-body {
+  display: block;
+}
+
 .toad-drawer-tab-btn {
   display: inline-flex;
   align-items: center;
