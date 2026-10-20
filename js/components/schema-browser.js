@@ -15,6 +15,7 @@ class SchemaBrowser {
     this.realSchemas = [];
     this.realObjects = null;
     this.isLoadingDetails = false;
+    this.detailsCache = new Map();
 
     this.initElements();
     this.bindEvents();
@@ -59,7 +60,8 @@ class SchemaBrowser {
         if (window.TRACES_DB) window.TRACES_DB.activeSchema = this.currentSchema;
         this.selectedObject = null;
 
-        if (window.TracesApp && window.TracesApp.isRealDatabase) {
+        if (window.TracesApp && window.TracesApp.isConnected()) {
+          if (this.detailsCache) this.detailsCache.clear();
           await this.loadRealObjects(this.currentSchema);
         } else {
           this.render();
@@ -179,7 +181,7 @@ class SchemaBrowser {
         this.realObjects = {
           tables: data.objects.filter(o => o.type === 'TABLE'),
           views: data.objects.filter(o => o.type === 'VIEW'),
-          mviews: data.objects.filter(o => o.type === 'MATERIALIZED VIEW'),
+          mviews: data.objects.filter(o => o.type === 'MATERIALIZED VIEW' || o.type === 'MVIEW' || o.type === 'SNAPSHOT'),
           packages: data.objects.filter(o => o.type === 'PACKAGE' || o.type === 'PACKAGE BODY'),
           procedures: data.objects.filter(o => o.type === 'PROCEDURE'),
           functions: data.objects.filter(o => o.type === 'FUNCTION'),
@@ -189,7 +191,7 @@ class SchemaBrowser {
           synonyms: data.objects.filter(o => o.type === 'SYNONYM'),
           indexes: data.objects.filter(o => o.type === 'INDEX'),
           tablespaces: data.objects.filter(o => o.type === 'TABLESPACE'),
-          dblinks: data.objects.filter(o => o.type === 'DATABASE LINK' || o.type === 'DB LINK'),
+          dblinks: data.objects.filter(o => o.type === 'DATABASE LINK' || o.type === 'DB LINK' || o.type === 'DBLINK'),
           users: data.objects.filter(o => o.type === 'USER'),
           roles: data.objects.filter(o => o.type === 'ROLE'),
           jobs: data.objects.filter(o => o.type === 'JOB' || o.type === 'SCHEDULER JOB'),
@@ -212,12 +214,13 @@ class SchemaBrowser {
       this.currentSchema = conn.user.toUpperCase();
       if (this.schemaSelect) this.schemaSelect.value = this.currentSchema;
     }
+    if (this.detailsCache) this.detailsCache.clear();
     this.selectedObject = null;
     this.render();
   }
 
   getSchemaData() {
-    if (window.TracesApp && window.TracesApp.isRealDatabase && this.realObjects) {
+    if (window.TracesApp && window.TracesApp.isConnected() && this.realObjects) {
       return this.realObjects;
     }
     const schema = (window.TRACES_DB && window.TRACES_DB.schemas) 
@@ -534,15 +537,14 @@ class SchemaBrowser {
     }
 
     // If connected to real Oracle DB, fetch complete live object details
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+    if (window.TracesApp && window.TracesApp.isConnected()) {
       await this.fetchRealObjectDetails(this.currentSchema, objectName, this.currentCategory);
     } else {
       this.renderDetailContent();
     }
   }
 
-  async fetchRealObjectDetails(schema, name, category) {
-    this.isLoadingDetails = true;
+  async fetchRealObjectDetails(schema, name, category, forceRefresh = false) {
     const catTypeMap = {
       tables: 'TABLE',
       views: 'VIEW',
@@ -567,6 +569,18 @@ class SchemaBrowser {
       clusters: 'CLUSTER'
     };
     const objType = catTypeMap[category] || 'TABLE';
+    const cacheKey = `${schema}.${objType}.${name}`;
+
+    // 0ms instant cache hit
+    if (!forceRefresh && this.detailsCache && this.detailsCache.has(cacheKey)) {
+      const cached = this.detailsCache.get(cacheKey);
+      this.selectedObject = Object.assign(this.selectedObject || {}, cached);
+      this.isLoadingDetails = false;
+      this.renderDetailContent();
+      return;
+    }
+
+    this.isLoadingDetails = true;
 
     // Show loading state in detail area
     const activePane = document.querySelector('.detail-tab-pane.active');
@@ -580,17 +594,22 @@ class SchemaBrowser {
     }
 
     try {
-      const resp = await fetch(`/api/object-details?schema=${encodeURIComponent(schema)}&name=${encodeURIComponent(name)}&type=${encodeURIComponent(objType)}`);
+      const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+      const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
+      const resp = await fetch(`/api/object-details?schema=${encodeURIComponent(schema)}&name=${encodeURIComponent(name)}&type=${encodeURIComponent(objType)}${connParam}`);
       const details = await resp.json();
 
-      if (details.error) {
-        window.TracesApp.notify(`Erro ao obter detalhes de ${name}: ${details.error}`, 'error');
+      if (details.error && !details.name) {
+        window.TracesApp?.notify(`Erro ao obter detalhes de ${name}: ${details.error}`, 'error');
         this.isLoadingDetails = false;
         return;
       }
 
+      if (!this.detailsCache) this.detailsCache = new Map();
+      this.detailsCache.set(cacheKey, details);
+
       // Merge into selectedObject
-      this.selectedObject = Object.assign(this.selectedObject, details);
+      this.selectedObject = Object.assign(this.selectedObject || {}, details);
       this.isLoadingDetails = false;
       this.renderDetailContent();
     } catch (err) {
@@ -600,7 +619,7 @@ class SchemaBrowser {
     }
   }
 
-  switchDetailTab(tabKey) {
+  async switchDetailTab(tabKey) {
     this.currentDetailTab = tabKey;
     this.detailTabs.forEach(t => {
       t.classList.toggle('active', t.getAttribute('data-tab') === tabKey);
@@ -610,6 +629,62 @@ class SchemaBrowser {
     panes.forEach(p => {
       p.classList.toggle('active', p.id === `tab-pane-${tabKey}`);
     });
+
+    // On-demand fetch for Data Tab
+    if (tabKey === 'data' && this.selectedObject && window.TracesApp?.isConnected()) {
+      const objType = (this.selectedObject.type || this.currentCategory || '').toUpperCase();
+      if ((!this.selectedObject.data || this.selectedObject.data.length === 0) &&
+          (objType.includes('TABLE') || objType.includes('VIEW') || this.currentCategory === 'tables' || this.currentCategory === 'views' || this.currentCategory === 'mviews')) {
+        const dataPane = document.getElementById('tab-pane-data');
+        if (dataPane) {
+          dataPane.innerHTML = `
+            <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px;">
+              <span style="font-size: 18px; display: block; margin-bottom: 8px;">📊</span>
+              Carregando amostra de dados ao vivo de <strong>${this.currentSchema}.${this.selectedObject.name}</strong>...
+            </div>
+          `;
+        }
+        try {
+          const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+          const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
+          const resp = await fetch(`/api/object-data?schema=${encodeURIComponent(this.currentSchema)}&name=${encodeURIComponent(this.selectedObject.name)}&limit=100${connParam}`);
+          const res = await resp.json();
+          if (res.rows) {
+            this.selectedObject.data = res.rows;
+            const cacheKey = `${this.currentSchema}.${this.selectedObject.type || 'TABLE'}.${this.selectedObject.name}`;
+            if (this.detailsCache && this.detailsCache.has(cacheKey)) {
+              this.detailsCache.get(cacheKey).data = res.rows;
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load object data preview', e);
+        }
+      }
+    }
+
+    // On-demand fetch for Script Tab (if DDL empty)
+    if (tabKey === 'script' && this.selectedObject && !this.selectedObject.ddl && window.TracesApp?.isConnected()) {
+      const scriptPane = document.getElementById('tab-pane-script');
+      if (scriptPane) {
+        scriptPane.innerHTML = `
+          <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px;">
+            <span style="font-size: 18px; display: block; margin-bottom: 8px;">📜</span>
+            Gerando DDL completo de <strong>${this.currentSchema}.${this.selectedObject.name}</strong>...
+          </div>
+        `;
+      }
+      try {
+        const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+        const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
+        const resp = await fetch(`/api/object-ddl?schema=${encodeURIComponent(this.currentSchema)}&name=${encodeURIComponent(this.selectedObject.name)}&type=${encodeURIComponent(this.selectedObject.type || 'TABLE')}${connParam}`);
+        const res = await resp.json();
+        if (res.ddl) {
+          this.selectedObject.ddl = res.ddl;
+        }
+      } catch (e) {
+        console.warn('Failed to load object DDL', e);
+      }
+    }
 
     this.renderDetailContent();
   }
@@ -720,31 +795,51 @@ class SchemaBrowser {
         `;
       } else if (this.currentCategory === 'users') {
         const u = obj.userInfo || obj;
+        const statusVal = u.accountStatus || u.status || 'OPEN';
+        const isBad = statusVal.includes('LOCKED') || statusVal.includes('EXPIRED');
         colPane.innerHTML = `
           <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
             <div class="advisor-card" style="padding: 16px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <strong style="font-size: 13px; color: var(--text-primary);">Oracle User Account: ${obj.name}</strong>
-                <span class="status-indicator ${u.status === 'LOCKED' || u.status === 'EXPIRED' ? 'invalid' : 'valid'}">${u.status || 'OPEN'}</span>
+                <span class="status-indicator ${isBad ? 'invalid' : 'valid'}">${statusVal}</span>
               </div>
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 12px;">
                 <div><span style="color: var(--text-muted);">Default Tablespace:</span> <strong>${u.defaultTablespace || 'USERS'}</strong></div>
-                <div><span style="color: var(--text-muted);">Temporary Tablespace:</span> <strong>${u.tempTablespace || 'TEMP'}</strong></div>
+                <div><span style="color: var(--text-muted);">Temporary Tablespace:</span> <strong>${u.tempTablespace || u.temporaryTablespace || 'TEMP'}</strong></div>
                 <div><span style="color: var(--text-muted);">Security Profile:</span> <strong>${u.profile || 'DEFAULT'}</strong></div>
-                <div><span style="color: var(--text-muted);">Created Date:</span> <strong>${u.created || '2024-01-01'}</strong></div>
+                <div><span style="color: var(--text-muted);">Created Date:</span> <strong>${u.created || '-'}</strong></div>
               </div>
             </div>
             <div class="advisor-card" style="padding: 12px;">
               <strong style="font-size: 12px; margin-bottom: 8px; display: block;">Roles Concedidas (DBA_ROLE_PRIVS)</strong>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <span class="pk-badge" style="background:#0284c7; padding: 4px 8px;">CONNECT</span>
-                <span class="pk-badge" style="background:#0284c7; padding: 4px 8px;">RESOURCE</span>
-                ${obj.name === 'SYS' || obj.name === 'SYSTEM' ? '<span class="pk-badge" style="background:#dc2626; padding: 4px 8px;">DBA</span>' : ''}
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                ${(u.roles && u.roles.length > 0) ? u.roles.map(r => `
+                  <span class="pk-badge" style="background:#0284c7; padding: 3px 8px; font-size: 11px;">
+                    ${r.role || r} ${r.admin === 'YES' ? '★' : ''}
+                  </span>
+                `).join('') : `
+                  <span style="color: var(--text-muted); font-size: 11px;">Nenhuma role concedida diretamente.</span>
+                `}
               </div>
             </div>
+            ${(u.sysPrivs && u.sysPrivs.length > 0) ? `
+              <div class="advisor-card" style="padding: 12px;">
+                <strong style="font-size: 12px; margin-bottom: 8px; display: block;">Privilégios de Sistema (DBA_SYS_PRIVS)</strong>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; max-height: 120px; overflow-y: auto;">
+                  ${u.sysPrivs.map(p => `
+                    <span class="pk-badge" style="background:#475569; padding: 2px 6px; font-size: 10px;">
+                      ${p.privilege || p} ${p.admin === 'YES' ? '★' : ''}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
           </div>
         `;
       } else if (this.currentCategory === 'roles') {
+        const privs = obj.roleInfo?.privileges || obj.privileges || [];
+        const grantedRoles = obj.roleInfo?.grantedRoles || obj.grantedRoles || [];
         colPane.innerHTML = `
           <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
             <div class="advisor-card" style="padding: 16px;">
@@ -753,23 +848,85 @@ class SchemaBrowser {
                 <thead>
                   <tr>
                     <th>Granted System Privilege</th>
-                    <th>Admin Option</th>
+                    <th style="width: 120px;">Admin Option</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${(obj.privileges || [
-                    { privilege: 'CREATE SESSION', admin: 'NO' },
-                    { privilege: 'CREATE TABLE', admin: 'NO' },
-                    { privilege: 'CREATE PROCEDURE', admin: 'NO' },
-                    { privilege: 'CREATE VIEW', admin: 'NO' }
-                  ]).map(p => `
+                  ${privs.length > 0 ? privs.map(p => `
                     <tr>
-                      <td style="font-weight: 600; font-family: var(--font-code);">${p.privilege}</td>
+                      <td style="font-weight: 600; font-family: var(--font-code);">${p.privilege || p}</td>
                       <td>${p.admin || 'NO'}</td>
                     </tr>
-                  `).join('')}
+                  `).join('') : `
+                    <tr><td colspan="2" style="color: var(--text-muted); text-align: center;">Nenhum privilégio de sistema concedido diretamente a esta role.</td></tr>
+                  `}
                 </tbody>
               </table>
+            </div>
+            ${grantedRoles.length > 0 ? `
+              <div class="advisor-card" style="padding: 12px;">
+                <strong style="font-size: 12px; margin-bottom: 8px; display: block;">Roles Herdadas (ROLE_ROLE_PRIVS)</strong>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                  ${grantedRoles.map(gr => `
+                    <span class="pk-badge" style="background:#0284c7; padding: 3px 8px;">${gr.role || gr}</span>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else if (this.currentCategory === 'sequences') {
+        const seq = obj.sequenceInfo || obj;
+        colPane.innerHTML = `
+          <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+            <div class="advisor-card" style="padding: 16px;">
+              <strong style="font-size: 13px; color: var(--text-primary); margin-bottom: 12px; display: block;">Oracle Sequence: ${obj.name}</strong>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 12px;">
+                <div><span style="color: var(--text-muted);">Current / Last Value:</span> <strong style="font-family: var(--font-code); color: #0284c7; font-size: 14px;">${seq.lastNumber || '-'}</strong></div>
+                <div><span style="color: var(--text-muted);">Increment By:</span> <strong>${seq.incrementBy || 1}</strong></div>
+                <div><span style="color: var(--text-muted);">Cache Size:</span> <strong>${seq.cacheSize || 20}</strong></div>
+                <div><span style="color: var(--text-muted);">Min Value:</span> <strong>${seq.minValue || 1}</strong></div>
+                <div><span style="color: var(--text-muted);">Max Value:</span> <strong style="font-family: var(--font-code);">${seq.maxValue || '99999999999999999999'}</strong></div>
+                <div><span style="color: var(--text-muted);">Cycle / Order:</span> <strong>${seq.cycleFlag === 'Y' ? 'CYCLE' : 'NOCYCLE'} / ${seq.orderFlag === 'Y' ? 'ORDER' : 'NOORDER'}</strong></div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (this.currentCategory === 'synonyms') {
+        const syn = obj.synonymInfo || obj;
+        colPane.innerHTML = `
+          <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+            <div class="advisor-card" style="padding: 16px;">
+              <strong style="font-size: 13px; color: var(--text-primary); margin-bottom: 12px; display: block;">Oracle Synonym: ${obj.name}</strong>
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 12px;">
+                <div><span style="color: var(--text-muted);">Target Schema / Owner:</span> <strong style="font-family: var(--font-code);">${syn.targetOwner || this.currentSchema}</strong></div>
+                <div><span style="color: var(--text-muted);">Target Object:</span> <strong style="font-family: var(--font-code); color: #0284c7;">${syn.targetTable || obj.name}</strong></div>
+                <div><span style="color: var(--text-muted);">DB Link:</span> <strong>${syn.dbLink || '(Local Database)'}</strong></div>
+                <div><span style="color: var(--text-muted);">Status:</span> <span class="status-indicator valid">VALID</span></div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (this.currentCategory === 'triggers') {
+        const trg = obj.triggerInfo || obj;
+        colPane.innerHTML = `
+          <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+            <div class="advisor-card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <strong style="font-size: 13px; color: var(--text-primary);">Oracle Trigger: ${obj.name}</strong>
+                <span class="status-indicator ${trg.status === 'ENABLED' ? 'valid' : 'invalid'}">${trg.status || 'ENABLED'}</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 12px;">
+                <div><span style="color: var(--text-muted);">Trigger Type:</span> <strong>${trg.type || 'BEFORE EACH ROW'}</strong></div>
+                <div><span style="color: var(--text-muted);">Triggering Event:</span> <strong style="color: #0284c7;">${trg.event || 'INSERT OR UPDATE'}</strong></div>
+                <div><span style="color: var(--text-muted);">Target Table / View:</span> <strong style="font-family: var(--font-code);">${trg.tableOwner || this.currentSchema}.${trg.tableName || '-'}</strong></div>
+                <div><span style="color: var(--text-muted);">Action Type:</span> <strong>${trg.actionType || 'PL/SQL'}</strong></div>
+              </div>
+              <div style="margin-top: 12px;">
+                <button class="btn btn-primary" onclick="window.TracesApp.schemaBrowser.switchDetailTab('source');">
+                  📄 Ver Código-Fonte PL/SQL (Source Code)
+                </button>
+              </div>
             </div>
           </div>
         `;
@@ -835,7 +992,22 @@ class SchemaBrowser {
           </div>
         `;
       } else if (obj.columns && obj.columns.length > 0) {
+        const mvBanner = (obj.mviewInfo || this.currentCategory === 'mviews') ? `
+          <div class="advisor-card" style="margin: 10px 10px 0 10px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #86efac;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong style="color: #166534; font-size: 12px;">📋 Materialized View: ${obj.name} ${obj.mviewInfo?.containerTable ? `(Container: ${obj.mviewInfo.containerTable})` : ''}</strong>
+              <span class="status-indicator ${obj.mviewInfo?.compileState === 'VALID' ? 'valid' : 'invalid'}">${obj.mviewInfo?.compileState || 'VALID'}</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 11px;">
+              <div><span style="color: #64748b;">Refresh Mode:</span> <strong>${obj.mviewInfo?.refreshMode || 'DEMAND'}</strong></div>
+              <div><span style="color: #64748b;">Refresh Method:</span> <strong>${obj.mviewInfo?.refreshMethod || 'FORCE'}</strong></div>
+              <div><span style="color: #64748b;">Last Refresh:</span> <strong>${obj.mviewInfo?.lastRefreshDate || 'Never'}</strong></div>
+              <div><span style="color: #64748b;">Staleness:</span> <strong>${obj.mviewInfo?.staleness || 'FRESH'}</strong></div>
+            </div>
+          </div>
+        ` : '';
         colPane.innerHTML = `
+          ${mvBanner}
           <table class="meta-table">
             <thead>
               <tr>

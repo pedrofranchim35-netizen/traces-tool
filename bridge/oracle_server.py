@@ -29,6 +29,7 @@ import socketserver
 import json
 import os
 import sys
+import re
 import time
 import socket
 import urllib.parse
@@ -43,12 +44,7 @@ from datetime import datetime, date
 # 1. CONFIGURAR DIRETÓRIO VENDOR EMBUTIDO (OFFLINE-FIRST / CORPORATIVO)
 # ------------------------------------------------------------------------------
 VENDOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
-if os.path.isdir(VENDOR_DIR) and VENDOR_DIR not in sys.path:
-    sys.path.insert(0, VENDOR_DIR)
-
 ROOT_VENDOR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor")
-if os.path.isdir(ROOT_VENDOR) and ROOT_VENDOR not in sys.path:
-    sys.path.insert(0, ROOT_VENDOR)
 
 ORACLEDB_AVAILABLE = False
 SSHTUNNEL_AVAILABLE = False
@@ -57,27 +53,44 @@ SSHTunnelForwarder = None
 def ensure_python_dependencies():
     """
     Verifica e carrega automaticamente as dependências (sshtunnel, paramiko, oracledb, bcrypt).
-    Prioriza o diretório vendor embutido local (100% offline para redes corporativas/DMZ).
+    Prioriza os módulos instalados no Python ativo e usa vendor como fallback seguro.
     """
     global ORACLEDB_AVAILABLE, SSHTUNNEL_AVAILABLE, SSHTunnelForwarder, oracledb, sshtunnel
     
-    # Garantir caminhos vendor no sys.path
-    for v_dir in [VENDOR_DIR, ROOT_VENDOR]:
-        if os.path.isdir(v_dir) and v_dir not in sys.path:
-            sys.path.insert(0, v_dir)
-
+    # 1. Tentar carregar do ambiente Python padrão (onde estão os binários compilados .pyd)
     try:
         import oracledb
         ORACLEDB_AVAILABLE = True
-    except ImportError:
+    except Exception:
         ORACLEDB_AVAILABLE = False
 
     try:
         import sshtunnel
         from sshtunnel import SSHTunnelForwarder
         SSHTUNNEL_AVAILABLE = True
-    except ImportError:
+    except Exception:
         SSHTUNNEL_AVAILABLE = False
+
+    # 2. Se não encontrou, adicionar caminhos vendor no sys.path via append (para não ofuscar binários válidos)
+    if not ORACLEDB_AVAILABLE or not SSHTUNNEL_AVAILABLE:
+        for v_dir in [VENDOR_DIR, ROOT_VENDOR]:
+            if os.path.isdir(v_dir) and v_dir not in sys.path:
+                sys.path.append(v_dir)
+
+        if not ORACLEDB_AVAILABLE:
+            try:
+                import oracledb
+                ORACLEDB_AVAILABLE = True
+            except Exception:
+                pass
+
+        if not SSHTUNNEL_AVAILABLE:
+            try:
+                import sshtunnel
+                from sshtunnel import SSHTunnelForwarder
+                SSHTUNNEL_AVAILABLE = True
+            except Exception:
+                pass
 
     # Se ainda faltar algo, tentar pip como fallback (caso tenha internet)
     if not ORACLEDB_AVAILABLE or not SSHTUNNEL_AVAILABLE:
@@ -111,23 +124,96 @@ if SSHTUNNEL_AVAILABLE:
 if ORACLEDB_AVAILABLE:
     print("[TRACES] Driver Oracle Nativo (Thin/Thick) carregado com sucesso!")
 
+# ------------------------------------------------------------------------------
+# 2. ORACLE INSTANT CLIENT (MODO THICK - MÁXIMA COMPATIBILIDADE 10g-23ai / 0x939)
+# ------------------------------------------------------------------------------
+ORACLE_CLIENT_INITIALIZED = False
+ORACLE_CLIENT_LIB_DIR = None
+
+def find_and_init_oracle_client():
+    """
+    Localiza e inicializa o Oracle Instant Client (Thick Mode) embutido no Toad.
+    Garante suporte nativo completo para:
+    - Verificadores legados de senha Oracle 10g / 11g (0x939 DES hashes / DPY-3015)
+    - Conexões com Oracle 10g, 11g, 12c, 18c, 19c, 21c e 23ai
+    - Cifras e perfis de criptografia de rede Net8 / SQLNET.ORA
+    - Autenticação avançada e Wallets
+    """
+    global ORACLE_CLIENT_INITIALIZED, ORACLE_CLIENT_LIB_DIR
+    if ORACLE_CLIENT_INITIALIZED:
+        return True
+    if not ORACLEDB_AVAILABLE:
+        return False
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(script_dir, "instantclient", "instantclient_19_23"),
+        os.path.join(script_dir, "..", "instantclient", "instantclient_19_23"),
+        os.path.join(os.path.dirname(script_dir), "instantclient", "instantclient_19_23"),
+        r"C:\Users\TEMP.AzureAD\AppData\Local\TracesToad\resources\app\instantclient\instantclient_19_23",
+        r"C:\Users\TEMP.AzureAD\Downloads\traces-tool-main\traces-tool-main\instantclient\instantclient_19_23"
+    ]
+    for c_dir in candidates:
+        abs_p = os.path.abspath(c_dir)
+        if os.path.exists(os.path.join(abs_p, "oci.dll")):
+            try:
+                if abs_p not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = abs_p + os.pathsep + os.environ.get("PATH", "")
+                oracledb.init_oracle_client(lib_dir=abs_p)
+                ORACLE_CLIENT_INITIALIZED = True
+                ORACLE_CLIENT_LIB_DIR = abs_p
+                print(f"[TRACES] Oracle Client Thick Mode ativado com sucesso via: {abs_p} (versão: {oracledb.clientversion()})")
+                return True
+            except Exception as ex:
+                if "already initialized" in str(ex).lower():
+                    ORACLE_CLIENT_INITIALIZED = True
+                    ORACLE_CLIENT_LIB_DIR = abs_p
+                    return True
+                print(f"[TRACES] Falha ao inicializar Instant Client em {abs_p}: {ex}")
+
+    try:
+        oracledb.init_oracle_client()
+        ORACLE_CLIENT_INITIALIZED = True
+        print(f"[TRACES] Oracle Client Thick Mode ativado via PATH do sistema (versão: {oracledb.clientversion()})")
+        return True
+    except Exception as ex:
+        if "already initialized" in str(ex).lower():
+            ORACLE_CLIENT_INITIALIZED = True
+            return True
+        print(f"[TRACES] Instant Client não inicializado ({ex}). Modo Thin ativo.")
+        return False
+
+# Inicialização preventiva do Instant Client no carregamento do servidor
+find_and_init_oracle_client()
+
 PORT = 3033
 WEB_ROOT = os.path.dirname(os.path.abspath(__file__))
 if os.path.basename(WEB_ROOT) == "bridge":
     WEB_ROOT = os.path.dirname(WEB_ROOT)
 BASE_DIR = WEB_ROOT
 
-# Global active Oracle database connection state
+# ------------------------------------------------------------------------------
+# 3. REGISTRO MULTI-CONEXÕES E TÚNEIS SSH MULTIPLEXADOS
+# ------------------------------------------------------------------------------
+# Conexões ativas indexadas por conn_id / profile_id
+ACTIVE_CONNECTIONS = {}
+ACTIVE_CONN_ID = None
+
+# Túneis SSH indexados por rota (bridge -> target) para reutilização inteligente e zero colisão de portas
+SSH_TUNNELS = {}
+
+# Estado legado da conexão ativa única (mantido sincronizado para 100% de retrocompatibilidade)
 ACTIVE_CONNECTION = {
     "conn": None,
     "config": None,
     "status": "DISCONNECTED",
     "connected_at": None,
     "banner": None,
-    "mode": "THIN"
+    "mode": "THICK" if ORACLE_CLIENT_INITIALIZED else "THIN",
+    "os_info": None
 }
 
-# Global active SSH Tunnel / Jump Host state
+# Estado legado do túnel SSH único (mantido sincronizado)
 ACTIVE_TUNNEL = {
     "server": None,
     "local_port": None,
@@ -135,6 +221,72 @@ ACTIVE_TUNNEL = {
     "target_host": None,
     "target_port": None
 }
+
+def sync_legacy_active_connection():
+    """Mantém ACTIVE_CONNECTION e ACTIVE_TUNNEL perfeitamente sincronizados com ACTIVE_CONN_ID"""
+    global ACTIVE_CONNECTION, ACTIVE_CONNECTIONS, ACTIVE_CONN_ID, ACTIVE_TUNNEL
+    if ACTIVE_CONN_ID and ACTIVE_CONN_ID in ACTIVE_CONNECTIONS:
+        curr = ACTIVE_CONNECTIONS[ACTIVE_CONN_ID]
+        ACTIVE_CONNECTION["conn"] = curr.get("conn")
+        ACTIVE_CONNECTION["config"] = curr.get("config")
+        ACTIVE_CONNECTION["status"] = curr.get("status", "CONNECTED")
+        ACTIVE_CONNECTION["connected_at"] = curr.get("connected_at")
+        ACTIVE_CONNECTION["banner"] = curr.get("banner")
+        ACTIVE_CONNECTION["mode"] = curr.get("mode", "THICK" if ORACLE_CLIENT_INITIALIZED else "THIN")
+        ACTIVE_CONNECTION["os_info"] = curr.get("os_info")
+        t_key = curr.get("tunnel_key")
+        if t_key and t_key in SSH_TUNNELS:
+            t = SSH_TUNNELS[t_key]
+            ACTIVE_TUNNEL["server"] = t.get("server")
+            ACTIVE_TUNNEL["local_port"] = t.get("local_port")
+            ACTIVE_TUNNEL["bridge_host"] = t.get("bridge_host")
+            ACTIVE_TUNNEL["target_host"] = t.get("target_host")
+            ACTIVE_TUNNEL["target_port"] = t.get("target_port")
+        else:
+            ACTIVE_TUNNEL["server"] = None
+            ACTIVE_TUNNEL["local_port"] = None
+            ACTIVE_TUNNEL["bridge_host"] = None
+            ACTIVE_TUNNEL["target_host"] = None
+            ACTIVE_TUNNEL["target_port"] = None
+    elif ACTIVE_CONNECTIONS:
+        first_id = next(iter(ACTIVE_CONNECTIONS))
+        curr = ACTIVE_CONNECTIONS[first_id]
+        ACTIVE_CONNECTION["conn"] = curr.get("conn")
+        ACTIVE_CONNECTION["config"] = curr.get("config")
+        ACTIVE_CONNECTION["status"] = curr.get("status", "CONNECTED")
+        ACTIVE_CONNECTION["connected_at"] = curr.get("connected_at")
+        ACTIVE_CONNECTION["banner"] = curr.get("banner")
+        ACTIVE_CONNECTION["mode"] = curr.get("mode", "THICK" if ORACLE_CLIENT_INITIALIZED else "THIN")
+        ACTIVE_CONNECTION["os_info"] = curr.get("os_info")
+    else:
+        ACTIVE_CONNECTION["conn"] = None
+        ACTIVE_CONNECTION["config"] = None
+        ACTIVE_CONNECTION["status"] = "DISCONNECTED"
+        ACTIVE_CONNECTION["connected_at"] = None
+        ACTIVE_CONNECTION["banner"] = None
+        ACTIVE_CONNECTION["os_info"] = None
+        ACTIVE_TUNNEL["server"] = None
+        ACTIVE_TUNNEL["local_port"] = None
+        ACTIVE_TUNNEL["bridge_host"] = None
+        ACTIVE_TUNNEL["target_host"] = None
+        ACTIVE_TUNNEL["target_port"] = None
+
+def release_tunnel(tunnel_key, conn_id):
+    """Libera a referência de um túnel SSH e encerra o túnel apenas quando nenhuma conexão depender dele"""
+    global SSH_TUNNELS
+    if tunnel_key in SSH_TUNNELS:
+        t_info = SSH_TUNNELS[tunnel_key]
+        t_info["conn_ids"].discard(conn_id)
+        t_info["ref_count"] = max(0, t_info["ref_count"] - 1)
+        if t_info["ref_count"] == 0 or len(t_info["conn_ids"]) == 0:
+            print(f"[Bridge] Encerrando túnel SSH ({tunnel_key}) - nenhuma conexão ativa restante.")
+            try:
+                t_info["server"].stop()
+            except Exception:
+                pass
+            del SSH_TUNNELS[tunnel_key]
+        else:
+            print(f"[Bridge] Túnel SSH ({tunnel_key}) preservado para outras conexões ativas (restantes: {t_info['ref_count']})")
 
 # Microsoft Gateway state
 MS_GATEWAY_STATE = {
@@ -156,6 +308,103 @@ def json_serial(obj):
             return str(obj)
     return str(obj)
 
+def detect_oracle_os(cur):
+    """
+    Detects the host operating system of the Oracle Database server.
+    Differentiates between Linux, Microsoft Windows, and IBM AIX (as well as Solaris, HP-UX).
+    Returns dict with os_type ('linux' | 'windows' | 'aix' | 'other'),
+    os_name, platform_name, host_name, instance_name, port_string, and command templates.
+    """
+    os_info = {
+        "os_type": "linux",
+        "os_name": "Linux",
+        "platform_name": "Linux x86 64-bit",
+        "host_name": "",
+        "instance_name": "",
+        "port_string": "",
+        "file_separator": "/",
+        "path_example": "/u01/app/oracle/oradata",
+        "kill_cmd_template": "kill -9 {spid}",
+        "stack_cmd_template": "pstack {spid}",
+        "diag_tools": "top, vmstat, iostat, sar, free -m"
+    }
+
+    # 1. Platform Name from V$DATABASE
+    try:
+        cur.execute("SELECT platform_name FROM v$database WHERE ROWNUM = 1")
+        row = cur.fetchone()
+        if row and row[0]:
+            os_info["platform_name"] = str(row[0]).strip()
+    except Exception:
+        pass
+
+    # 2. Host name and Instance Name from V$INSTANCE
+    try:
+        cur.execute("SELECT host_name, instance_name FROM v$instance WHERE ROWNUM = 1")
+        row = cur.fetchone()
+        if row:
+            os_info["host_name"] = str(row[0] or "").strip()
+            os_info["instance_name"] = str(row[1] or "").strip()
+    except Exception:
+        pass
+
+    # 3. DBMS_UTILITY.PORT_STRING
+    try:
+        cur.execute("SELECT dbms_utility.port_string FROM dual")
+        row = cur.fetchone()
+        if row and row[0]:
+            os_info["port_string"] = str(row[0]).strip()
+    except Exception:
+        pass
+
+    # 4. Banner from V$VERSION
+    banner_str = ""
+    try:
+        cur.execute("SELECT banner FROM v$version")
+        rows = cur.fetchall()
+        banner_str = " ".join([str(r[0]) for r in rows if r and r[0]])
+    except Exception:
+        pass
+
+    combined = f"{os_info['platform_name']} {os_info['port_string']} {banner_str}".upper()
+
+    # Differentiate Linux vs Windows vs IBM AIX
+    if "AIX" in combined or "RS6000" in combined or "IBM/AIX" in combined:
+        os_info["os_type"] = "aix"
+        os_info["os_name"] = "IBM AIX"
+        os_info["file_separator"] = "/"
+        os_info["path_example"] = "/oracle/oradata"
+        os_info["kill_cmd_template"] = "kill -9 {spid}"
+        os_info["stack_cmd_template"] = "procstack {spid}"
+        os_info["diag_tools"] = "topas, vmstat -v, lsvg, lspv, svmon, errpt"
+        if not os_info["platform_name"] or os_info["platform_name"] == "Linux x86 64-bit":
+            os_info["platform_name"] = "AIX-Based Systems (64-bit)"
+    elif "WIN" in combined or "MICROSOFT" in combined:
+        os_info["os_type"] = "windows"
+        os_info["os_name"] = "Microsoft Windows"
+        os_info["file_separator"] = "\\"
+        os_info["path_example"] = "D:\\app\\oracle\\oradata"
+        inst = os_info["instance_name"] or "%ORACLE_SID%"
+        os_info["kill_cmd_template"] = f"orakill {inst} {{spid}}"
+        os_info["stack_cmd_template"] = f"tasklist /fi \"imagename eq oracle.exe\""
+        os_info["diag_tools"] = "tasklist, typeperf, Get-Process, sc query, orakill"
+        if not os_info["platform_name"] or os_info["platform_name"] == "Linux x86 64-bit":
+            os_info["platform_name"] = "Microsoft Windows x64 (64-bit)"
+    else:
+        # Default Linux
+        os_info["os_type"] = "linux"
+        os_info["os_name"] = "Linux"
+        os_info["file_separator"] = "/"
+        os_info["path_example"] = "/u01/app/oracle/oradata"
+        os_info["kill_cmd_template"] = "kill -9 {spid}"
+        os_info["stack_cmd_template"] = "pstack {spid}"
+        os_info["diag_tools"] = "top, vmstat, iostat, sar, free -m"
+        if not os_info["platform_name"]:
+            os_info["platform_name"] = "Linux x86 64-bit"
+
+    return os_info
+
+
 class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_ROOT, **kwargs)
@@ -166,21 +415,204 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Expires", "0")
         super().end_headers()
 
+    def get_connection_entry(self, payload=None, query=None):
+        """
+        Localiza a conexão correta no registro ACTIVE_CONNECTIONS:
+        1. Prioriza 'conn_id' ou 'profile_id' explícito no payload ou query.
+        2. Cabeçalho HTTP 'X-Connection-Id'.
+        3. Conexão atualmente selecionada (ACTIVE_CONN_ID).
+        4. Primeira conexão ativa disponível ou estado legado.
+        """
+        global ACTIVE_CONNECTIONS, ACTIVE_CONN_ID, ACTIVE_CONNECTION
+        target_id = None
+        if payload and isinstance(payload, dict):
+            target_id = payload.get("conn_id") or payload.get("id") or payload.get("profile_id")
+        if not target_id and query:
+            if isinstance(query, str):
+                params = urllib.parse.parse_qs(query)
+            elif isinstance(query, dict):
+                params = query
+            else:
+                params = {}
+            if "conn_id" in params and params["conn_id"]:
+                v = params["conn_id"]
+                target_id = v[0] if isinstance(v, list) else v
+            elif "profile_id" in params and params["profile_id"]:
+                v = params["profile_id"]
+                target_id = v[0] if isinstance(v, list) else v
+
+        if not target_id:
+            target_id = self.headers.get("X-Connection-Id")
+
+        if target_id and target_id in ACTIVE_CONNECTIONS:
+            entry = ACTIVE_CONNECTIONS[target_id]
+            if entry and entry.get("conn"):
+                return entry
+
+        if ACTIVE_CONN_ID and ACTIVE_CONN_ID in ACTIVE_CONNECTIONS:
+            entry = ACTIVE_CONNECTIONS[ACTIVE_CONN_ID]
+            if entry and entry.get("conn"):
+                return entry
+
+        for cid, entry in ACTIVE_CONNECTIONS.items():
+            if entry and entry.get("conn"):
+                return entry
+
+        if ACTIVE_CONNECTION.get("conn"):
+            return ACTIVE_CONNECTION
+
+        return None
+
+    def get_conn(self, payload=None, query=None):
+        """Retorna o objeto de conexão real oracledb"""
+        entry = self.get_connection_entry(payload, query)
+        return entry.get("conn") if entry else None
+
+    def get_os_info(self, payload=None, query=None):
+        """Retorna o SO detectado da conexão especificada ou ativa"""
+        entry = self.get_connection_entry(payload, query)
+        return entry.get("os_info") if entry else None
+
+    def handle_get_connections(self):
+        """Retorna a lista completa de todas as conexões Oracle simultaneamente ativas"""
+        conns = []
+        for cid, c in ACTIVE_CONNECTIONS.items():
+            if c.get("conn"):
+                cfg = c.get("config", {})
+                conns.append({
+                    "id": cid,
+                    "name": cfg.get("name") or cid,
+                    "user": cfg.get("user"),
+                    "host": cfg.get("host"),
+                    "port": cfg.get("port"),
+                    "service_name": cfg.get("service_name"),
+                    "role": cfg.get("role"),
+                    "banner": c.get("banner"),
+                    "os": c.get("os_info"),
+                    "mode": c.get("mode"),
+                    "connected_at": c.get("connected_at"),
+                    "is_active": (cid == ACTIVE_CONN_ID),
+                    "use_bridge": cfg.get("use_bridge"),
+                    "bridge_host": cfg.get("bridge_host")
+                })
+        self.send_api_response({
+            "success": True,
+            "active_id": ACTIVE_CONN_ID,
+            "total": len(conns),
+            "connections": conns
+        })
+
+    def handle_switch_connection(self, payload):
+        """Alterna a conexão de banco de dados ativa sem desconectar as outras"""
+        global ACTIVE_CONN_ID
+        target_id = payload.get("conn_id") or payload.get("id") or payload.get("profile_id")
+        if not target_id:
+            self.send_api_response({"success": False, "error": "ID da conexão não informado."}, status=400)
+            return
+        if target_id not in ACTIVE_CONNECTIONS or not ACTIVE_CONNECTIONS[target_id].get("conn"):
+            self.send_api_response({"success": False, "error": f"Conexão '{target_id}' não está ativa."}, status=404)
+            return
+
+        ACTIVE_CONN_ID = target_id
+        sync_legacy_active_connection()
+        c = ACTIVE_CONNECTIONS[target_id]
+        print(f"[Bridge] Conexão ativa alternada para: {target_id} ({c['config'].get('user')}@{c['config'].get('service_name')})")
+        self.send_api_response({
+            "success": True,
+            "active_id": ACTIVE_CONN_ID,
+            "connection": {
+                "id": target_id,
+                "name": c["config"].get("name") or target_id,
+                "user": c["config"].get("user"),
+                "host": c["config"].get("host"),
+                "port": c["config"].get("port"),
+                "service_name": c["config"].get("service_name"),
+                "role": c["config"].get("role"),
+                "banner": c.get("banner"),
+                "os": c.get("os_info"),
+                "mode": c.get("mode"),
+                "connected_at": c.get("connected_at")
+            }
+        })
+
+    def handle_get_saved_connections(self):
+        """Reads persistent saved database connection profiles from disk"""
+        cfg_file = os.path.join(BASE_DIR, "assets", "connections.json")
+        if os.path.exists(cfg_file):
+            try:
+                with open(cfg_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.send_api_response({"success": True, "connections": data})
+                return
+            except Exception as e:
+                print(f"[Bridge] Erro ao carregar conexões de {cfg_file}: {e}")
+        self.send_api_response({"success": True, "connections": []})
+
+    def handle_post_saved_connections(self, payload):
+        """Persists saved database connection profiles to disk atomically"""
+        conns = payload.get("connections", [])
+        cfg_file = os.path.join(BASE_DIR, "assets", "connections.json")
+        try:
+            os.makedirs(os.path.dirname(cfg_file), exist_ok=True)
+            with open(cfg_file, "w", encoding="utf-8") as f:
+                json.dump(conns, f, indent=2, ensure_ascii=False)
+
+            mirror_path = r"C:\Users\TEMP.AzureAD\Downloads\traces-tool-main\traces-tool-main\assets\connections.json"
+            try:
+                os.makedirs(os.path.dirname(mirror_path), exist_ok=True)
+                with open(mirror_path, "w", encoding="utf-8") as mf:
+                    json.dump(conns, mf, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+
+            print(f"[Bridge] {len(conns)} perfis de conexão persistidos em disco ({cfg_file}).")
+            self.send_api_response({"success": True, "count": len(conns)})
+        except Exception as e:
+            print(f"[Bridge] Erro ao salvar conexões no disco: {e}")
+            self.send_api_response({"success": False, "error": str(e)}, status=500)
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/status":
+            active_list = []
+            for cid, c in ACTIVE_CONNECTIONS.items():
+                if c.get("conn"):
+                    cfg = c.get("config", {})
+                    active_list.append({
+                        "id": cid,
+                        "name": cfg.get("name") or cid,
+                        "user": cfg.get("user"),
+                        "host": cfg.get("host"),
+                        "port": cfg.get("port"),
+                        "service_name": cfg.get("service_name"),
+                        "role": cfg.get("role"),
+                        "banner": c.get("banner"),
+                        "os": c.get("os_info"),
+                        "mode": c.get("mode"),
+                        "is_active": (cid == ACTIVE_CONN_ID),
+                        "use_bridge": cfg.get("use_bridge"),
+                        "bridge_host": cfg.get("bridge_host")
+                    })
             self.send_api_response({
                 "oracledb_available": ORACLEDB_AVAILABLE,
                 "oracledb_version": getattr(oracledb, "__version__", None) if ORACLEDB_AVAILABLE else None,
+                "thick_mode_initialized": ORACLE_CLIENT_INITIALIZED,
+                "thick_lib_dir": ORACLE_CLIENT_LIB_DIR,
                 "sshtunnel_available": SSHTUNNEL_AVAILABLE,
+                "active_id": ACTIVE_CONN_ID,
+                "total_active": len(active_list),
+                "connections": active_list,
                 "connection": {
                     "status": ACTIVE_CONNECTION["status"],
                     "config": ACTIVE_CONNECTION["config"],
                     "banner": ACTIVE_CONNECTION["banner"],
-                    "connected_at": ACTIVE_CONNECTION["connected_at"]
+                    "connected_at": ACTIVE_CONNECTION["connected_at"],
+                    "os": ACTIVE_CONNECTION.get("os_info"),
+                    "mode": ACTIVE_CONNECTION.get("mode")
                 },
                 "bridge_tunnel": {
-                    "active": ACTIVE_TUNNEL["server"] is not None,
+                    "active": any(t.get("server") is not None for t in SSH_TUNNELS.values()) or ACTIVE_TUNNEL.get("server") is not None,
+                    "tunnels_count": len(SSH_TUNNELS),
                     "bridge_host": ACTIVE_TUNNEL["bridge_host"],
                     "target_host": ACTIVE_TUNNEL["target_host"],
                     "target_port": ACTIVE_TUNNEL["target_port"],
@@ -191,12 +623,20 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     "gateway_url": MS_GATEWAY_STATE["gateway_url"]
                 }
             })
+        elif parsed.path == "/api/connections":
+            self.handle_get_connections()
+        elif parsed.path == "/api/saved-connections":
+            self.handle_get_saved_connections()
         elif parsed.path == "/api/schemas":
             self.handle_get_schemas()
         elif parsed.path == "/api/objects":
             self.handle_get_objects(parsed.query)
         elif parsed.path == "/api/object-details":
             self.handle_get_object_details(parsed.query)
+        elif parsed.path == "/api/object-data":
+            self.handle_get_object_data(parsed.query)
+        elif parsed.path == "/api/object-ddl":
+            self.handle_get_object_ddl(parsed.query)
         elif parsed.path == "/api/describe":
             self.handle_get_describe(parsed.query)
         elif parsed.path == "/api/sessions":
@@ -264,8 +704,12 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_connect(payload)
         elif parsed.path == "/api/test-bridge":
             self.handle_test_bridge(payload)
+        elif parsed.path == "/api/switch-connection":
+            self.handle_switch_connection(payload)
         elif parsed.path == "/api/disconnect":
-            self.handle_disconnect()
+            self.handle_disconnect(payload)
+        elif parsed.path == "/api/saved-connections":
+            self.handle_post_saved_connections(payload)
         elif parsed.path == "/api/query":
             self.handle_query(payload)
         elif parsed.path == "/api/script":
@@ -449,8 +893,11 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 "error": f"Falha na autenticação ou conexão com a Ponte SSH ({bridge_host}:{bridge_port}): {str(e)}"
             }, status=400)
 
+
+
     def handle_connect(self, payload):
         """Connects to real Oracle Database via python-oracledb, optionally through an SSH Bridge or Oracle CMAN"""
+        global ACTIVE_CONNECTIONS, ACTIVE_CONN_ID, ACTIVE_TUNNEL, SSH_TUNNELS
         if not ORACLEDB_AVAILABLE:
             self.send_api_response({
                 "success": False,
@@ -465,7 +912,10 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         service_name = payload.get("service_name")
         sid = payload.get("sid")
         role = payload.get("role", "NORMAL")
-        use_thick = payload.get("use_thick", False)
+        conn_name = payload.get("name") or f"{user}@{host}:{port}/{service_name or sid or 'XE'}"
+        profile_id = payload.get("id") or payload.get("profile_id")
+        conn_id = str(profile_id) if profile_id else f"{user}@{host}:{port}/{service_name or sid or 'XE'}"
+        use_thick = payload.get("use_thick", True) # Padrão True para máxima compatibilidade
 
         use_bridge = payload.get("use_bridge", False)
         bridge_type = payload.get("bridge_type", "ssh")
@@ -475,10 +925,11 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         bridge_password = payload.get("bridge_password", "")
         bridge_key_path = payload.get("bridge_key_path", "")
 
-        tunnel_instance = None
+        tunnel_key = None
         effective_host = host
         effective_port = port
         cman_dsn = None
+        newly_started_tunnel = None
 
         if use_bridge and bridge_host:
             if bridge_type == "cman":
@@ -495,120 +946,188 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     }, status=500)
                     return
 
-                if ACTIVE_TUNNEL.get("server"):
-                    try:
-                        ACTIVE_TUNNEL["server"].stop()
-                    except Exception:
-                        pass
-                    ACTIVE_TUNNEL["server"] = None
+                # Chave única que identifica este salto de ponte até o destino
+                tunnel_key = f"{bridge_user}@{bridge_host}:{bridge_port}->{host}:{port}"
+                existing_tunnel = SSH_TUNNELS.get(tunnel_key)
 
-                print(f"[Bridge] Conectando na Ponte SSH ({bridge_host}:{bridge_port}) para alcançar ({host}:{port})...")
-                try:
-                    tunnel_kwargs = {
-                        "ssh_address_or_host": (bridge_host, bridge_port),
-                        "remote_bind_address": (host, port),
-                        "local_bind_address": ("127.0.0.1", 0),
-                        "set_keepalive": 5.0,
-                        "allow_agent": False,
-                        "host_pkey_directories": []
-                    }
-                    if bridge_user:
-                        tunnel_kwargs["ssh_username"] = bridge_user
-                    if bridge_password:
-                        tunnel_kwargs["ssh_password"] = bridge_password
-                    if bridge_key_path and os.path.exists(bridge_key_path):
-                        tunnel_kwargs["ssh_pkey"] = bridge_key_path
-
-                    tunnel_instance = SSHTunnelForwarder(**tunnel_kwargs)
-                    tunnel_instance.start()
-
+                # Reutilizar túnel SSH se já existir e estiver ativo (elimina conflitos de porta!)
+                if existing_tunnel and existing_tunnel.get("server") and getattr(existing_tunnel["server"], "is_active", False):
                     effective_host = "127.0.0.1"
-                    effective_port = tunnel_instance.local_bind_port
-                    print(f"[Bridge] Túnel SSH ativo! Porta local mapeada: {effective_port} -> {host}:{port}")
+                    effective_port = existing_tunnel["local_port"]
+                    existing_tunnel["ref_count"] += 1
+                    existing_tunnel["conn_ids"].add(conn_id)
+                    print(f"[Bridge] Reutilizando túnel SSH existente ({tunnel_key}) na porta local {effective_port} (conexões ativas: {existing_tunnel['ref_count']})")
+                else:
+                    print(f"[Bridge] Conectando na Ponte SSH ({bridge_host}:{bridge_port}) para alcançar ({host}:{port})...")
+                    try:
+                        tunnel_kwargs = {
+                            "ssh_address_or_host": (bridge_host, bridge_port),
+                            "remote_bind_address": (host, port),
+                            "local_bind_address": ("127.0.0.1", 0),
+                            "set_keepalive": 5.0,
+                            "allow_agent": False,
+                            "host_pkey_directories": []
+                        }
+                        if bridge_user:
+                            tunnel_kwargs["ssh_username"] = bridge_user
+                        if bridge_password:
+                            tunnel_kwargs["ssh_password"] = bridge_password
+                        if bridge_key_path and os.path.exists(bridge_key_path):
+                            tunnel_kwargs["ssh_pkey"] = bridge_key_path
 
-                    ACTIVE_TUNNEL["server"] = tunnel_instance
-                    ACTIVE_TUNNEL["local_port"] = effective_port
-                    ACTIVE_TUNNEL["bridge_host"] = bridge_host
-                    ACTIVE_TUNNEL["target_host"] = host
-                    ACTIVE_TUNNEL["target_port"] = port
-                except Exception as tunnel_err:
-                    print(f"[Bridge] Erro ao abrir túnel SSH: {tunnel_err}")
-                    self.send_api_response({
-                        "success": False,
-                        "error": f"Erro na Ponte SSH ({bridge_host}:{bridge_port}): {str(tunnel_err)}"
-                    }, status=400)
-                    return
+                        tunnel_instance = SSHTunnelForwarder(**tunnel_kwargs)
+                        tunnel_instance.start()
+
+                        effective_host = "127.0.0.1"
+                        effective_port = tunnel_instance.local_bind_port
+                        print(f"[Bridge] Túnel SSH ativo! Porta local mapeada: {effective_port} -> {host}:{port}")
+
+                        newly_started_tunnel = tunnel_instance
+                        SSH_TUNNELS[tunnel_key] = {
+                            "server": tunnel_instance,
+                            "local_port": effective_port,
+                            "bridge_host": bridge_host,
+                            "bridge_port": bridge_port,
+                            "target_host": host,
+                            "target_port": port,
+                            "ref_count": 1,
+                            "conn_ids": {conn_id}
+                        }
+                    except Exception as tunnel_err:
+                        print(f"[Bridge] Erro ao abrir túnel SSH: {tunnel_err}")
+                        self.send_api_response({
+                            "success": False,
+                            "error": f"Erro na Ponte SSH ({bridge_host}:{bridge_port}): {str(tunnel_err)}"
+                        }, status=400)
+                        return
 
         # 2. Establish connection to Oracle Database
         start_time = time.time()
+        conn_mode = "THICK" if ORACLE_CLIENT_INITIALIZED else "THIN"
+        if use_thick and not ORACLE_CLIENT_INITIALIZED:
+            if find_and_init_oracle_client():
+                conn_mode = "THICK"
+
+        conn_params = {
+            "user": user,
+            "password": password
+        }
+
+        if role == "SYSDBA":
+            conn_params["mode"] = oracledb.AUTH_MODE_SYSDBA
+        elif role == "SYSOPER":
+            conn_params["mode"] = oracledb.AUTH_MODE_SYSOPER
+
+        if cman_dsn:
+            conn_params["dsn"] = cman_dsn
+        else:
+            conn_params["host"] = effective_host
+            conn_params["port"] = effective_port
+            if service_name:
+                conn_params["service_name"] = service_name
+            elif sid:
+                conn_params["sid"] = sid
+            else:
+                conn_params["service_name"] = "XE"
+
+        connection = None
         try:
-            if use_thick:
-                try:
-                    oracledb.init_oracle_client()
-                    ACTIVE_CONNECTION["mode"] = "THICK"
-                except Exception:
-                    ACTIVE_CONNECTION["mode"] = "THIN"
-            else:
-                ACTIVE_CONNECTION["mode"] = "THIN"
-
-            conn_params = {
-                "user": user,
-                "password": password
-            }
-
-            if role == "SYSDBA":
-                conn_params["mode"] = oracledb.AUTH_MODE_SYSDBA
-            elif role == "SYSOPER":
-                conn_params["mode"] = oracledb.AUTH_MODE_SYSOPER
-
-            if cman_dsn:
-                conn_params["dsn"] = cman_dsn
-            else:
-                conn_params["host"] = effective_host
-                conn_params["port"] = effective_port
-                if service_name:
-                    conn_params["service_name"] = service_name
-                elif sid:
-                    conn_params["sid"] = sid
+            # Tentar conexão com tratamento e auto-recuperação de verificador de senha legado (0x939 / DPY-3015)
+            try:
+                connection = oracledb.connect(**conn_params)
+            except Exception as initial_err:
+                err_str = str(initial_err)
+                if ("DPY-3015" in err_str or "0x939" in err_str or "verifier" in err_str.lower() or
+                    "DPY-3010" in err_str or "ORA-28040" in err_str or "DPY-3001" in err_str):
+                    print(f"[Bridge] Detectada incompatibilidade de autenticação/verificador ({err_str}). Tentando inicializar Oracle Instant Client Thick Mode...")
+                    if find_and_init_oracle_client():
+                        conn_mode = "THICK"
+                        connection = oracledb.connect(**conn_params)
+                    else:
+                        raise initial_err
                 else:
-                    conn_params["service_name"] = "XE"
+                    raise initial_err
 
-            # Close previous connection if exists
-            if ACTIVE_CONNECTION.get("conn"):
-                try:
-                    ACTIVE_CONNECTION["conn"].close()
-                except Exception:
-                    pass
-
-            connection = oracledb.connect(**conn_params)
             elapsed_ms = round((time.time() - start_time) * 1000, 1)
 
-            ACTIVE_CONNECTION["conn"] = connection
-            ACTIVE_CONNECTION["config"] = {
-                "user": user,
-                "host": host,
-                "port": port,
-                "service_name": service_name or sid,
-                "role": role,
-                "use_bridge": bool(use_bridge and bridge_host),
-                "bridge_host": bridge_host if use_bridge else None,
-                "bridge_port": bridge_port if use_bridge else None
-            }
-            ACTIVE_CONNECTION["status"] = "CONNECTED"
-            ACTIVE_CONNECTION["connected_at"] = datetime.now().isoformat()
+            # Se este mesmo perfil já possuía uma conexão anterior, encerra apenas a anterior dele
+            old_entry = ACTIVE_CONNECTIONS.get(conn_id)
+            if old_entry and old_entry.get("conn"):
+                try:
+                    old_entry["conn"].close()
+                except Exception:
+                    pass
+                if old_entry.get("tunnel_key") and old_entry["tunnel_key"] != tunnel_key:
+                    release_tunnel(old_entry["tunnel_key"], conn_id)
 
             with connection.cursor() as cur:
                 cur.execute("SELECT banner FROM v$version WHERE ROWNUM = 1")
                 row = cur.fetchone()
-                ACTIVE_CONNECTION["banner"] = row[0] if row else "Oracle Database"
+                banner = row[0] if row else "Oracle Database"
+                os_info = detect_oracle_os(cur)
 
-            print(f"[Bridge] Conexão com Oracle estabelecida com sucesso ({elapsed_ms} ms) - {ACTIVE_CONNECTION['banner']}")
+            conn_entry = {
+                "id": conn_id,
+                "conn": connection,
+                "config": {
+                    "id": conn_id,
+                    "name": conn_name,
+                    "user": user,
+                    "host": host,
+                    "port": port,
+                    "service_name": service_name or sid,
+                    "role": role,
+                    "use_bridge": bool(use_bridge and bridge_host),
+                    "bridge_host": bridge_host if use_bridge else None,
+                    "bridge_port": bridge_port if use_bridge else None,
+                    "use_thick": (conn_mode == "THICK")
+                },
+                "status": "CONNECTED",
+                "connected_at": datetime.now().isoformat(),
+                "banner": banner,
+                "os_info": os_info,
+                "mode": conn_mode,
+                "tunnel_key": tunnel_key
+            }
+
+            ACTIVE_CONNECTIONS[conn_id] = conn_entry
+            ACTIVE_CONN_ID = conn_id
+            sync_legacy_active_connection()
+
+            print(f"[Bridge] Conexão com Oracle '{conn_name}' estabelecida ({elapsed_ms} ms) [{conn_mode}] - SO: {os_info['os_name']} ({os_info['platform_name']}) - {banner}")
+
+            # Monta lista de conexões ativas
+            active_list = []
+            for cid, c in ACTIVE_CONNECTIONS.items():
+                if c.get("conn"):
+                    cfg = c.get("config", {})
+                    active_list.append({
+                        "id": cid,
+                        "name": cfg.get("name") or cid,
+                        "user": cfg.get("user"),
+                        "host": cfg.get("host"),
+                        "port": cfg.get("port"),
+                        "service_name": cfg.get("service_name"),
+                        "role": cfg.get("role"),
+                        "banner": c.get("banner"),
+                        "os": c.get("os_info"),
+                        "mode": c.get("mode"),
+                        "is_active": (cid == ACTIVE_CONN_ID),
+                        "use_bridge": cfg.get("use_bridge"),
+                        "bridge_host": cfg.get("bridge_host")
+                    })
+
             self.send_api_response({
                 "success": True,
+                "conn_id": conn_id,
+                "active_id": ACTIVE_CONN_ID,
+                "total_active": len(active_list),
+                "connections": active_list,
                 "message": f"Successfully connected to Oracle Database in {elapsed_ms} ms",
-                "version": ACTIVE_CONNECTION["banner"],
+                "version": banner,
+                "os": os_info,
                 "latency_ms": elapsed_ms,
-                "mode": ACTIVE_CONNECTION["mode"],
+                "mode": conn_mode,
                 "bridge": {
                     "active": bool(use_bridge and bridge_host),
                     "bridge_host": bridge_host,
@@ -616,49 +1135,297 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     "target_port": port
                 } if use_bridge else None
             })
+
         except Exception as e:
-            if tunnel_instance:
-                try:
-                    tunnel_instance.stop()
-                except Exception:
-                    pass
-                if ACTIVE_TUNNEL.get("server") == tunnel_instance:
-                    ACTIVE_TUNNEL["server"] = None
-            ACTIVE_CONNECTION["status"] = "ERROR"
+            if newly_started_tunnel and tunnel_key:
+                release_tunnel(tunnel_key, conn_id)
             print(f"[Bridge] Erro ao conectar no Oracle: {e}")
             self.send_api_response({
                 "success": False,
                 "error": str(e)
             }, status=400)
 
-    def handle_disconnect(self):
-        conn = ACTIVE_CONNECTION.get("conn")
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        ACTIVE_CONNECTION["conn"] = None
-        ACTIVE_CONNECTION["status"] = "DISCONNECTED"
-        ACTIVE_CONNECTION["config"] = None
+    def handle_disconnect(self, payload=None):
+        """Desconecta a sessão especificada ou todas as sessões se solicitado"""
+        global ACTIVE_CONN_ID, ACTIVE_CONNECTIONS, SSH_TUNNELS
+        target_id = None
+        disconnect_all = False
+        if payload and isinstance(payload, dict):
+            target_id = payload.get("conn_id") or payload.get("id") or payload.get("profile_id")
+            disconnect_all = payload.get("all", False)
 
-        if ACTIVE_TUNNEL.get("server"):
-            try:
-                ACTIVE_TUNNEL["server"].stop()
-            except Exception:
-                pass
-            ACTIVE_TUNNEL["server"] = None
-            ACTIVE_TUNNEL["local_port"] = None
+        if disconnect_all or (not target_id and not ACTIVE_CONNECTIONS):
+            for cid, c in list(ACTIVE_CONNECTIONS.items()):
+                if c.get("conn"):
+                    try:
+                        c["conn"].close()
+                    except Exception:
+                        pass
+            ACTIVE_CONNECTIONS.clear()
+            ACTIVE_CONN_ID = None
+            for t_info in list(SSH_TUNNELS.values()):
+                try:
+                    t_info["server"].stop()
+                except Exception:
+                    pass
+            SSH_TUNNELS.clear()
+            sync_legacy_active_connection()
+            print("[Bridge] Todas as conexões Oracle e túneis foram encerrados.")
+            self.send_api_response({"success": True, "message": "Todas as conexões e túneis foram encerrados.", "active_id": None, "total": 0})
+            return
 
-        print("[Bridge] Sessão Oracle e túnel da ponte desconectados.")
-        self.send_api_response({"success": True, "message": "Oracle connection and bridge tunnel closed."})
+        cid_to_close = target_id or ACTIVE_CONN_ID
+        if cid_to_close and cid_to_close in ACTIVE_CONNECTIONS:
+            c = ACTIVE_CONNECTIONS.pop(cid_to_close)
+            if c.get("conn"):
+                try:
+                    c["conn"].close()
+                except Exception:
+                    pass
+            if c.get("tunnel_key"):
+                release_tunnel(c["tunnel_key"], cid_to_close)
+            print(f"[Bridge] Conexão '{cid_to_close}' desconectada com sucesso.")
+
+            if ACTIVE_CONN_ID == cid_to_close:
+                ACTIVE_CONN_ID = next(iter(ACTIVE_CONNECTIONS)) if ACTIVE_CONNECTIONS else None
+
+            sync_legacy_active_connection()
+            self.send_api_response({
+                "success": True,
+                "message": f"Conexão '{cid_to_close}' desconectada.",
+                "active_id": ACTIVE_CONN_ID,
+                "total": len(ACTIVE_CONNECTIONS)
+            })
+        else:
+            sync_legacy_active_connection()
+            self.send_api_response({"success": True, "message": "Nenhuma conexão ativa encontrada para desconectar.", "active_id": None, "total": 0})
+
+    # -------------------------------------------------------------------------
+    # SQL*PLUS & TOAD CLIENT-SIDE COMMAND TRANSLATION
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def format_as_sqlplus_table(cols, rows, max_col_width=40):
+        """Formats columns and rows as classic SQL*Plus fixed-width textual table"""
+        if not cols:
+            return ["No rows selected."]
+        widths = [len(str(c)) for c in cols]
+        for r in rows:
+            for i, c in enumerate(cols):
+                val = str(r[c] if isinstance(r, dict) else (r[i] if i < len(r) else ''))
+                widths[i] = min(max_col_width, max(widths[i], len(val)))
+        header = ' '.join(str(c).ljust(widths[i]) for i, c in enumerate(cols))
+        sep = ' '.join('-' * widths[i] for i in range(len(cols)))
+        lines = [header, sep]
+        for r in rows:
+            row_str = ' '.join(str(r[c] if isinstance(r, dict) else (r[i] if i < len(r) else '')).ljust(widths[i]) for i, c in enumerate(cols))
+            lines.append(row_str)
+        lines.append("")
+        lines.append(f"{len(rows)} rows selected.")
+        return lines
+
+    @staticmethod
+    def translate_sqlplus_command(sql):
+        """
+        Translates SQL*Plus / Toad client-side commands into native Oracle SQL queries.
+        Returns: (is_command, translated_sql, table_name, original_command_type)
+        """
+        cleaned = (sql or "").strip()
+        while True:
+            stripped = cleaned.strip()
+            if stripped.startswith("--"):
+                cleaned = re.sub(r"^--[^\r\n]*[\r\n]*", "", cleaned)
+            elif stripped.startswith("/*"):
+                cleaned = re.sub(r"^/\*.*?\*/[\r\n]*", "", cleaned, flags=re.DOTALL)
+            else:
+                break
+        cmd = cleaned.rstrip(";").rstrip("/").strip()
+        if not cmd:
+            return (False, sql, None, None)
+
+        # 1. SHOW PARAMETER / PARAMETERS
+        m = re.match(r"^SHOW\s+PARAMETER(?:S)?(?:\s+(.+))?$", cmd, re.I)
+        if m:
+            filt = m.group(1)
+            if filt:
+                safe = filt.strip('\'"; ').replace("'", "''")
+                where = f"WHERE lower(name) LIKE lower('%{safe}%')"
+            else:
+                where = ""
+            q = f"""SELECT 
+                name,
+                CASE type 
+                    WHEN 1 THEN 'boolean'
+                    WHEN 2 THEN 'string'
+                    WHEN 3 THEN 'integer'
+                    WHEN 4 THEN 'file'
+                    WHEN 6 THEN 'big integer'
+                    ELSE to_char(type)
+                END AS type,
+                value,
+                display_value,
+                isdefault AS is_default,
+                isses_modifiable AS session_modifiable,
+                issys_modifiable AS system_modifiable,
+                description
+            FROM v$parameter
+            {where}
+            ORDER BY name"""
+            return (True, q.strip(), "V$PARAMETER", "SHOW PARAMETER")
+
+        # 2. SHOW SPPARAMETER / SPPARAMETERS
+        m = re.match(r"^SHOW\s+SPPARAMETER(?:S)?(?:\s+(.+))?$", cmd, re.I)
+        if m:
+            filt = m.group(1)
+            if filt:
+                safe = filt.strip('\'"; ').replace("'", "''")
+                where = f"WHERE lower(name) LIKE lower('%{safe}%')"
+            else:
+                where = ""
+            q = f"""SELECT 
+                name,
+                CASE type 
+                    WHEN 1 THEN 'boolean'
+                    WHEN 2 THEN 'string'
+                    WHEN 3 THEN 'integer'
+                    WHEN 4 THEN 'file'
+                    WHEN 6 THEN 'big integer'
+                    ELSE to_char(type)
+                END AS type,
+                value,
+                display_value,
+                isspecified,
+                sid
+            FROM v$spparameter
+            {where}
+            ORDER BY name, sid"""
+            return (True, q.strip(), "V$SPPARAMETER", "SHOW SPPARAMETER")
+
+        # 3. SHOW USER
+        if re.match(r"^SHOW\s+USER$", cmd, re.I):
+            q = """SELECT 
+                USER AS current_user,
+                SYS_CONTEXT('USERENV', 'SESSION_USER') AS session_user,
+                SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS current_schema,
+                SYS_CONTEXT('USERENV', 'DB_NAME') AS db_name,
+                SYS_CONTEXT('USERENV', 'SERVICE_NAME') AS service_name,
+                SYS_CONTEXT('USERENV', 'CON_NAME') AS con_name
+            FROM dual"""
+            return (True, q.strip(), "USERENV", "SHOW USER")
+
+        # 4. SHOW SGA
+        if re.match(r"^SHOW\s+SGA$", cmd, re.I):
+            q = """SELECT 
+                name,
+                value AS bytes,
+                ROUND(value / 1024 / 1024, 2) AS mb,
+                ROUND(value / 1024 / 1024 / 1024, 3) AS gb
+            FROM v$sga"""
+            return (True, q.strip(), "V$SGA", "SHOW SGA")
+
+        # 5. SHOW ERRORS / SHOW ERR
+        m = re.match(r"^SHOW\s+ERR(?:ORS)?(?:\s+(.+))?$", cmd, re.I)
+        if m:
+            target = m.group(1)
+            if target:
+                clean_tgt = target.strip('\'"; ')
+                words = clean_tgt.split()
+                if len(words) >= 2:
+                    obj_type = " ".join(words[:-1]).upper().replace("'", "''")
+                    obj_name = words[-1].upper().replace("'", "''")
+                    where = f"WHERE upper(type) LIKE '%{obj_type}%' AND upper(name) = '{obj_name}'"
+                else:
+                    obj_name = words[0].upper().replace("'", "''")
+                    where = f"WHERE upper(name) = '{obj_name}'"
+            else:
+                where = ""
+            q = f"""SELECT 
+                name, type, line, position, text AS error_text, attribute, message_number
+            FROM user_errors
+            {where}
+            ORDER BY name, sequence"""
+            return (True, q.strip(), "USER_ERRORS", "SHOW ERRORS")
+
+        # 6. SHOW RECYCLEBIN
+        if re.match(r"^SHOW\s+RECYCLEBIN$", cmd, re.I):
+            q = """SELECT 
+                object_name, original_name, operation, type, ts_name AS tablespace,
+                createtime, droptime, ROUND(space * 8192 / 1024 / 1024, 2) AS mb_approx,
+                can_undrop, can_purge
+            FROM user_recyclebin
+            ORDER BY droptime DESC"""
+            return (True, q.strip(), "USER_RECYCLEBIN", "SHOW RECYCLEBIN")
+
+        # 7. SHOW PDBS / PDB
+        if re.match(r"^SHOW\s+PDB(?:S)?$", cmd, re.I):
+            q = """SELECT con_id, name AS pdb_name, open_mode, restricted, total_size
+            FROM v$pdbs
+            ORDER BY con_id"""
+            return (True, q.strip(), "V$PDBS", "SHOW PDBS")
+
+        # 8. SHOW CON_NAME
+        if re.match(r"^SHOW\s+CON_NAME$", cmd, re.I):
+            q = "SELECT SYS_CONTEXT('USERENV', 'CON_NAME') AS con_name FROM dual"
+            return (True, q.strip(), "CON_NAME", "SHOW CON_NAME")
+
+        # 9. SHOW CON_ID
+        if re.match(r"^SHOW\s+CON_ID$", cmd, re.I):
+            q = "SELECT SYS_CONTEXT('USERENV', 'CON_ID') AS con_id FROM dual"
+            return (True, q.strip(), "CON_ID", "SHOW CON_ID")
+
+        # 10. SHOW RELEASE / SHOW VERSION
+        if re.match(r"^SHOW\s+(?:RELEASE|VERSION)$", cmd, re.I):
+            q = "SELECT banner AS oracle_version FROM v$version"
+            return (True, q.strip(), "V$VERSION", "SHOW VERSION")
+
+        # 11. SHOW TABLES
+        if re.match(r"^SHOW\s+TABLES$", cmd, re.I):
+            q = """SELECT table_name, tablespace_name, status, num_rows, last_analyzed 
+            FROM user_tables 
+            ORDER BY table_name"""
+            return (True, q.strip(), "USER_TABLES", "SHOW TABLES")
+
+        # 12. SHOW DATABASES / SHOW SCHEMAS
+        if re.match(r"^SHOW\s+(?:DATABASES|SCHEMAS)$", cmd, re.I):
+            q = """SELECT username AS schema_name, default_tablespace, created, account_status 
+            FROM all_users 
+            ORDER BY username"""
+            return (True, q.strip(), "ALL_USERS", "SHOW DATABASES")
+
+        # 13. DESC / DESCRIBE
+        m = re.match(r"^(?:DESC|DESCRIBE)\s+(.+)$", cmd, re.I)
+        if m:
+            target = m.group(1).strip('\'"; ')
+            parts = target.split('.')
+            if len(parts) == 2:
+                owner = parts[0].strip().upper().replace("'", "''")
+                tbl = parts[1].strip().upper().replace("'", "''")
+                where = f"upper(owner) = '{owner}' AND upper(table_name) = '{tbl}'"
+            else:
+                tbl = target.strip().upper().replace("'", "''")
+                where = f"upper(table_name) = '{tbl}'"
+            q = f"""SELECT 
+                column_id AS id, column_name AS name,
+                data_type || 
+                  CASE 
+                    WHEN data_type IN ('VARCHAR2', 'CHAR', 'RAW') THEN '(' || data_length || ')'
+                    WHEN data_type = 'NUMBER' AND data_precision IS NOT NULL AND data_scale IS NOT NULL THEN '(' || data_precision || ',' || data_scale || ')'
+                    WHEN data_type = 'NUMBER' AND data_precision IS NOT NULL THEN '(' || data_precision || ')'
+                    ELSE ''
+                  END AS data_type,
+                nullable AS null_allowed, data_default AS default_value
+            FROM all_tab_columns
+            WHERE {where}
+            ORDER BY column_id"""
+            return (True, q.strip(), f"DESCRIBE {target.upper()}", "DESCRIBE")
+
+        return (False, sql, None, None)
 
     # -------------------------------------------------------------------------
     # SQL EXECUTION & SCRIPTING
     # -------------------------------------------------------------------------
     def handle_query(self, payload):
         """Executes SQL statement on the real Oracle database with bind variables, limits, and autotrace"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn(payload)
         if not conn:
             self.send_api_response({"error": "No active Oracle Database connection. Connect first via Connection Manager."}, status=400)
             return
@@ -668,8 +1435,15 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.send_api_response({"error": "Empty SQL query provided."}, status=400)
             return
 
-        if sql.endswith(";"):
-            sql = sql[:-1].strip()
+        # Translate SQL*Plus / Toad client commands (SHOW PARAMETER, SHOW SGA, SHOW USER, etc.)
+        is_cmd, trans_sql, cmd_table_name, cmd_type = self.translate_sqlplus_command(sql)
+        if is_cmd:
+            sql = trans_sql
+            table_name_to_use = cmd_table_name
+        else:
+            table_name_to_use = payload.get("tableName", "QUERY_RESULT")
+            if sql.endswith(";"):
+                sql = sql[:-1].strip()
 
         params = payload.get("params")
         clean_params = None
@@ -689,7 +1463,19 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 else:
                     clean_params[clean_k] = v
 
-        limit = int(payload.get("limit", 500))
+        limit_val = payload.get("limit", 1000)
+        fetch_all = False
+        if limit_val in (0, -1, "all", "ALL", None):
+            fetch_all = True
+            limit = 0
+        else:
+            try:
+                limit = int(limit_val)
+                if limit <= 0:
+                    fetch_all = True
+            except (ValueError, TypeError):
+                limit = 1000
+
         autocommit = payload.get("autocommit", None)
 
         start_time = time.time()
@@ -709,7 +1495,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
-                cur.arraysize = min(limit, 1000)
+                cur.arraysize = 1000
                 if clean_params:
                     cur.execute(sql, clean_params)
                 else:
@@ -718,7 +1504,18 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
                 if cur.description:
                     cols = [col[0] for col in cur.description]
-                    raw_rows = cur.fetchmany(limit)
+                    if fetch_all:
+                        raw_rows = cur.fetchall()
+                        has_more = False
+                    else:
+                        raw_rows = cur.fetchmany(limit)
+                        peek = cur.fetchmany(1)
+                        if peek:
+                            has_more = True
+                            raw_rows.extend(peek)
+                        else:
+                            has_more = False
+
                     rows = []
                     for r in raw_rows:
                         row_dict = {}
@@ -749,10 +1546,12 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         "columns": cols,
                         "rows": rows,
                         "rowCount": len(rows),
-                        "hasMore": len(rows) == limit,
+                        "hasMore": has_more,
                         "elapsedMs": elapsed_ms,
                         "autotrace": autotrace,
-                        "tableName": payload.get("tableName", "QUERY_RESULT")
+                        "tableName": table_name_to_use,
+                        "isCommand": is_cmd,
+                        "commandType": cmd_type
                     })
                 else:
                     upper_sql = sql.upper().strip()
@@ -785,13 +1584,36 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_script(self, payload):
         """Executes PL/SQL block or multi-statement script and captures DBMS_OUTPUT"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn(payload)
         if not conn:
             self.send_api_response({"error": "No active Oracle connection."}, status=400)
             return
 
         script = payload.get("script", "").strip()
         start_time = time.time()
+
+        # Check if the script is a client-side command like SHOW PARAMETER
+        is_cmd, trans_sql, cmd_table_name, cmd_type = self.translate_sqlplus_command(script)
+        if is_cmd:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(trans_sql)
+                    cols = [col[0] for col in cur.description] if cur.description else []
+                    raw_rows = cur.fetchall()
+                    formatted_lines = self.format_as_sqlplus_table(cols, raw_rows)
+                    elapsed_ms = round((time.time() - start_time) * 1000, 1)
+                    self.send_api_response({
+                        "success": True,
+                        "dbmsOutput": formatted_lines,
+                        "elapsedMs": elapsed_ms,
+                        "isCommand": True,
+                        "commandType": cmd_type
+                    })
+                    return
+            except Exception as e:
+                self.send_api_response({"error": str(e)}, status=400)
+                return
+
         try:
             with conn.cursor() as cur:
                 cur.callproc("dbms_output.enable", [1000000])
@@ -822,12 +1644,29 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # -------------------------------------------------------------------------
     def handle_explain(self, payload):
         """Generates real execution plan via PLAN_TABLE & DBMS_XPLAN with column defs matching Toad"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn(payload)
         if not conn:
             self.send_api_response({"error": "No active Oracle connection."}, status=400)
             return
 
-        sql = payload.get("sql", "").strip().rstrip(";")
+        sql = payload.get("sql", "").strip()
+        # Translate SQL*Plus / Toad client commands before explaining
+        is_cmd, trans_sql, _, _ = self.translate_sqlplus_command(sql)
+        if is_cmd:
+            sql = trans_sql
+
+        # Clean trailing semicolons, slashes and filter leading comments so EXPLAIN PLAN FOR parses cleanly
+        sql = sql.rstrip(";").rstrip("/").strip()
+        clean_lines = []
+        for line in sql.splitlines():
+            s = line.strip()
+            if not clean_lines and (s.startswith("--") or s.startswith("/*")):
+                continue
+            clean_lines.append(line)
+        cleaned_sql = "\n".join(clean_lines).strip().rstrip(";").rstrip("/").strip()
+        if not cleaned_sql:
+            cleaned_sql = sql
+
         statement_id = f"TOAD_{int(time.time())}"
         try:
             with conn.cursor() as cur:
@@ -838,7 +1677,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     pass
 
                 # 2. Run EXPLAIN PLAN
-                cur.execute(f"EXPLAIN PLAN SET STATEMENT_ID = '{statement_id}' FOR {sql}")
+                cur.execute(f"EXPLAIN PLAN SET STATEMENT_ID = '{statement_id}' FOR {cleaned_sql}")
 
                 # 3. Retrieve DBMS_XPLAN formatted text
                 cur.execute("SELECT plan_table_output FROM TABLE(dbms_xplan.display('PLAN_TABLE', :1, 'ALL'))", [statement_id])
@@ -892,35 +1731,85 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # SCHEMA BROWSER ENDPOINTS
     # -------------------------------------------------------------------------
     def handle_get_schemas(self):
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn()
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"success": False, "error": "No active connection", "schemas": []}, status=200)
             return
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT username FROM all_users ORDER BY username")
-                schemas = [r[0] for r in cur.fetchall()]
-                self.send_api_response({"schemas": schemas})
+                try:
+                    cur.execute("SELECT username FROM dba_users ORDER BY username")
+                    schemas = [r[0] for r in cur.fetchall()]
+                except Exception:
+                    cur.execute("SELECT username FROM all_users ORDER BY username")
+                    schemas = [r[0] for r in cur.fetchall()]
+                if "PUBLIC" not in schemas:
+                    schemas.append("PUBLIC")
+                schemas.sort()
+                self.send_api_response({"success": True, "schemas": schemas})
         except Exception as e:
-            self.send_api_response({"error": str(e)}, status=400)
+            self.send_api_response({"success": False, "error": str(e), "schemas": []}, status=200)
 
     def handle_get_objects(self, query):
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn(query=query)
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"success": False, "error": "No active connection", "objects": []}, status=200)
             return
         params = urllib.parse.parse_qs(query)
         schema = params.get("schema", ["HR"])[0].upper()
         try:
             with conn.cursor() as cur:
-                # 1. Standard schema-owned objects
-                cur.execute("""
-                    SELECT object_name, object_type, status 
-                    FROM all_objects 
-                    WHERE owner = :1 
-                    ORDER BY object_type, object_name
-                """, [schema])
-                objs = [{"name": r[0], "type": r[1], "status": r[2]} for r in cur.fetchall()]
+                objs = []
+                # 1. Standard schema-owned objects (DBA_OBJECTS with ALL_OBJECTS fallback)
+                try:
+                    cur.execute("""
+                        SELECT object_name, object_type, status 
+                        FROM dba_objects 
+                        WHERE owner = :1 
+                        ORDER BY object_type, object_name
+                    """, [schema])
+                    objs = [{"name": r[0], "type": r[1], "status": r[2] or "VALID"} for r in cur.fetchall()]
+                except Exception:
+                    try:
+                        cur.execute("""
+                            SELECT object_name, object_type, status 
+                            FROM all_objects 
+                            WHERE owner = :1 
+                            ORDER BY object_type, object_name
+                        """, [schema])
+                        objs = [{"name": r[0], "type": r[1], "status": r[2] or "VALID"} for r in cur.fetchall()]
+                    except Exception:
+                        pass
+
+                # 1.1 Materialized Views (Guarantees all MViews are captured from DBA_MVIEWS / ALL_MVIEWS)
+                try:
+                    cur.execute("""
+                        SELECT mview_name, compile_state 
+                        FROM dba_mviews 
+                        WHERE owner = :1 
+                        ORDER BY mview_name
+                    """, [schema])
+                    mview_rows = cur.fetchall()
+                except Exception:
+                    try:
+                        cur.execute("""
+                            SELECT mview_name, compile_state 
+                            FROM all_mviews 
+                            WHERE owner = :1 
+                            ORDER BY mview_name
+                        """, [schema])
+                        mview_rows = cur.fetchall()
+                    except Exception:
+                        mview_rows = []
+
+                existing_mview_names = {o["name"] for o in objs if o["type"] in ("MATERIALIZED VIEW", "MVIEW", "SNAPSHOT")}
+                for r in mview_rows:
+                    if r[0] not in existing_mview_names:
+                        objs.append({
+                            "name": r[0],
+                            "type": "MATERIALIZED VIEW",
+                            "status": "VALID" if (r[1] or "").upper() == "VALID" else (r[1] or "VALID")
+                        })
 
                 # 2. Tablespaces (Toad Database/Storage)
                 try:
@@ -937,58 +1826,90 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
                 # 3. Database Links (DB Links)
                 try:
-                    cur.execute("SELECT db_link, 'VALID' FROM all_db_links WHERE owner = :1 OR owner = 'PUBLIC' ORDER BY db_link", [schema])
+                    cur.execute("""
+                        SELECT db_link, 'VALID' 
+                        FROM dba_db_links 
+                        WHERE owner = :1 OR owner = 'PUBLIC' 
+                        ORDER BY db_link
+                    """, [schema])
                     for r in cur.fetchall():
                         objs.append({"name": r[0], "type": "DATABASE LINK", "status": "VALID"})
                 except Exception:
                     try:
-                        cur.execute("SELECT db_link, 'VALID' FROM user_db_links ORDER BY db_link")
+                        cur.execute("""
+                            SELECT db_link, 'VALID' 
+                            FROM all_db_links 
+                            WHERE owner = :1 OR owner = 'PUBLIC' 
+                            ORDER BY db_link
+                        """, [schema])
                         for r in cur.fetchall():
                             objs.append({"name": r[0], "type": "DATABASE LINK", "status": "VALID"})
                     except Exception:
-                        pass
+                        try:
+                            cur.execute("SELECT db_link, 'VALID' FROM user_db_links ORDER BY db_link")
+                            for r in cur.fetchall():
+                                objs.append({"name": r[0], "type": "DATABASE LINK", "status": "VALID"})
+                        except Exception:
+                            pass
 
-                # 4. Users
+                # 4. Users (All Database Accounts - Queries DBA_USERS first, then ALL_USERS safely)
+                user_list = []
                 try:
-                    cur.execute("SELECT username, account_status FROM all_users ORDER BY username")
-                    for r in cur.fetchall():
-                        objs.append({"name": r[0], "type": "USER", "status": r[1] or "OPEN"})
-                except Exception:
-                    pass
-
-                # 5. Roles
-                try:
-                    cur.execute("SELECT role, 'VALID' FROM session_roles ORDER BY role")
-                    for r in cur.fetchall():
-                        objs.append({"name": r[0], "type": "ROLE", "status": "VALID"})
+                    cur.execute("SELECT username, account_status FROM dba_users ORDER BY username")
+                    user_list = cur.fetchall()
                 except Exception:
                     try:
-                        cur.execute("SELECT role, 'VALID' FROM dba_roles ORDER BY role")
-                        for r in cur.fetchall():
-                            objs.append({"name": r[0], "type": "ROLE", "status": "VALID"})
+                        cur.execute("SELECT username, 'OPEN' FROM all_users ORDER BY username")
+                        user_list = cur.fetchall()
                     except Exception:
                         pass
+                for r in user_list:
+                    objs.append({"name": r[0], "type": "USER", "status": r[1] or "OPEN"})
+
+                # 5. Roles (All Database Security Roles - Queries DBA_ROLES first, then SESSION_ROLES)
+                role_list = []
+                try:
+                    cur.execute("SELECT role, 'VALID' FROM dba_roles ORDER BY role")
+                    role_list = cur.fetchall()
+                except Exception:
+                    try:
+                        cur.execute("SELECT role, 'VALID' FROM session_roles ORDER BY role")
+                        role_list = cur.fetchall()
+                    except Exception:
+                        pass
+                for r in role_list:
+                    objs.append({"name": r[0], "type": "ROLE", "status": "VALID"})
 
                 # 6. Scheduler Jobs
                 try:
-                    cur.execute("SELECT job_name, state FROM all_scheduler_jobs WHERE owner = :1 ORDER BY job_name", [schema])
+                    cur.execute("SELECT job_name, state FROM dba_scheduler_jobs WHERE owner = :1 ORDER BY job_name", [schema])
                     for r in cur.fetchall():
                         objs.append({"name": r[0], "type": "JOB", "status": r[1] or "SCHEDULED"})
                 except Exception:
                     try:
-                        cur.execute("SELECT job_name, state FROM user_scheduler_jobs ORDER BY job_name")
+                        cur.execute("SELECT job_name, state FROM all_scheduler_jobs WHERE owner = :1 ORDER BY job_name", [schema])
                         for r in cur.fetchall():
                             objs.append({"name": r[0], "type": "JOB", "status": r[1] or "SCHEDULED"})
                     except Exception:
-                        pass
+                        try:
+                            cur.execute("SELECT job_name, state FROM user_scheduler_jobs ORDER BY job_name")
+                            for r in cur.fetchall():
+                                objs.append({"name": r[0], "type": "JOB", "status": r[1] or "SCHEDULED"})
+                        except Exception:
+                            pass
 
                 # 7. Directories
                 try:
-                    cur.execute("SELECT directory_name, 'VALID' FROM all_directories ORDER BY directory_name")
+                    cur.execute("SELECT directory_name, 'VALID' FROM dba_directories ORDER BY directory_name")
                     for r in cur.fetchall():
                         objs.append({"name": r[0], "type": "DIRECTORY", "status": "VALID"})
                 except Exception:
-                    pass
+                    try:
+                        cur.execute("SELECT directory_name, 'VALID' FROM all_directories ORDER BY directory_name")
+                        for r in cur.fetchall():
+                            objs.append({"name": r[0], "type": "DIRECTORY", "status": "VALID"})
+                    except Exception:
+                        pass
 
                 # 8. Queues
                 try:
@@ -1000,21 +1921,34 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
                 # 9. Recycle Bin
                 try:
-                    cur.execute("SELECT object_name, original_name, type FROM user_recyclebin ORDER BY droptime DESC")
+                    cur.execute("SELECT object_name, original_name, type FROM dba_recyclebin WHERE owner = :1 ORDER BY droptime DESC", [schema])
                     for r in cur.fetchall():
                         objs.append({"name": f"{r[1]} ({r[0]})", "type": "RECYCLEBIN", "status": "DROPPED"})
                 except Exception:
+                    try:
+                        cur.execute("SELECT object_name, original_name, type FROM user_recyclebin ORDER BY droptime DESC")
+                        for r in cur.fetchall():
+                            objs.append({"name": f"{r[1]} ({r[0]})", "type": "RECYCLEBIN", "status": "DROPPED"})
+                    except Exception:
+                        pass
+
+                # 10. Clusters
+                try:
+                    cur.execute("SELECT cluster_name, 'VALID' FROM all_clusters WHERE owner = :1 ORDER BY cluster_name", [schema])
+                    for r in cur.fetchall():
+                        objs.append({"name": r[0], "type": "CLUSTER", "status": "VALID"})
+                except Exception:
                     pass
 
-                self.send_api_response({"objects": objs})
+                self.send_api_response({"success": True, "objects": objs})
         except Exception as e:
-            self.send_api_response({"error": str(e)}, status=400)
+            self.send_api_response({"success": False, "error": str(e), "objects": []}, status=200)
 
     def handle_get_object_details(self, query):
-        """Full details for Schema Browser selection: Columns, Data, Indexes, Constraints, DDL, Source, Grants"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        """High-performance object inspector: targeted 1-2 fast queries instead of 15 serial round-trips"""
+        conn = self.get_conn(query=query)
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"success": False, "error": "No active connection", "details": None}, status=200)
             return
         params = urllib.parse.parse_qs(query)
         schema = params.get("schema", ["HR"])[0].upper()
@@ -1040,9 +1974,11 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
         try:
             with conn.cursor() as cur:
-                # 1. Fetch Columns (for Tables and Views)
-                if obj_type in ("TABLE", "VIEW", "MATERIALIZED VIEW"):
-                    # PK & FK mapping
+                # -------------------------------------------------------------
+                # 1. TABLES, VIEWS & MATERIALIZED VIEWS (Ultra-fast 2 queries)
+                # -------------------------------------------------------------
+                if obj_type in ("TABLE", "VIEW", "MATERIALIZED VIEW", "MVIEW"):
+                    # PK & FK mapping in single query
                     pk_cols = set()
                     fk_cols = set()
                     try:
@@ -1060,66 +1996,63 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     except Exception:
                         pass
 
-                    # Comments mapping
-                    col_comments = {}
-                    try:
-                        cur.execute("SELECT column_name, comments FROM all_col_comments WHERE owner = :1 AND table_name = :2", [schema, name])
-                        col_comments = {r[0]: r[1] for r in cur.fetchall() if r[1]}
-                    except Exception:
-                        pass
-
-                    cur.execute("""
-                        SELECT column_name, data_type, data_length, data_precision, data_scale, nullable, data_default, column_id
-                        FROM all_tab_columns 
-                        WHERE owner = :1 AND table_name = :2 
-                        ORDER BY column_id
-                    """, [schema, name])
-                    for r in cur.fetchall():
-                        c_name = r[0]
-                        d_type = r[1]
-                        if r[3] is not None:
-                            d_type += f"({r[3]}" + (f",{r[4]}" if r[4] else "") + ")"
-                        elif r[2] and "CHAR" in d_type:
-                            d_type += f"({r[2]})"
-
-                        details["columns"].append({
-                            "id": r[7],
-                            "name": c_name,
-                            "type": d_type,
-                            "length": r[2],
-                            "nullable": r[5],
-                            "defaultVal": str(r[6]).strip() if r[6] else "",
-                            "pk": c_name in pk_cols,
-                            "fk": c_name in fk_cols,
-                            "comments": col_comments.get(c_name, "")
-                        })
-
-                    # Data sample preview (First 100 rows)
-                    try:
-                        cur.execute(f"SELECT * FROM \"{schema}\".\"{name}\" WHERE ROWNUM <= 100")
-                        if cur.description:
-                            grid_cols = [col[0] for col in cur.description]
-                            raw_grid = cur.fetchall()
-                            for row in raw_grid:
-                                row_obj = {}
-                                for idx, col_name in enumerate(grid_cols):
-                                    row_obj[col_name] = json_serial(row[idx])
-                                details["data"].append(row_obj)
-                    except Exception as data_err:
-                        details["dataError"] = str(data_err)
-
-                # 2. Fetch Indexes
-                if obj_type in ("TABLE", "MATERIALIZED VIEW"):
+                    # Fetch Columns + Comments in single fast query
                     try:
                         cur.execute("""
                             SELECT 
-                                i.index_name, i.uniqueness, i.status, i.tablespace_name, 
-                                i.clustering_factor, i.blevel, i.num_rows,
-                                LISTAGG(ic.column_name, ', ') WITHIN GROUP (ORDER BY ic.column_position) as cols
+                                c.column_name, c.data_type, c.data_length, c.data_precision, c.data_scale, 
+                                c.nullable, c.data_default, c.column_id,
+                                (SELECT cm.comments FROM all_col_comments cm 
+                                 WHERE cm.owner = c.owner AND cm.table_name = c.table_name AND cm.column_name = c.column_name) as col_comments
+                            FROM all_tab_columns c
+                            WHERE c.owner = :1 AND c.table_name = :2 
+                            ORDER BY c.column_id
+                        """, [schema, name])
+                        col_defs_ddl = []
+                        for r in cur.fetchall():
+                            c_name = r[0]
+                            d_type = r[1]
+                            if r[3] is not None:
+                                d_type += f"({r[3]}" + (f",{r[4]}" if r[4] else "") + ")"
+                            elif r[2] and "CHAR" in d_type:
+                                d_type += f"({r[2]})"
+
+                            is_pk = c_name in pk_cols
+                            is_fk = c_name in fk_cols
+                            null_str = "NOT NULL" if r[5] == 'N' else ""
+                            def_val = str(r[6]).strip() if r[6] else ""
+                            def_clause = f"DEFAULT {def_val}" if def_val else ""
+                            
+                            col_line = f"  \"{c_name}\" {d_type}"
+                            if def_clause: col_line += f" {def_clause}"
+                            if null_str: col_line += f" {null_str}"
+                            col_defs_ddl.append(col_line)
+
+                            details["columns"].append({
+                                "id": r[7],
+                                "name": c_name,
+                                "type": d_type,
+                                "length": r[2],
+                                "nullable": r[5],
+                                "defaultVal": def_val,
+                                "pk": is_pk,
+                                "fk": is_fk,
+                                "comments": r[8] or ""
+                            })
+
+                        # Instant high-fidelity DDL in 0ms (no DBMS_METADATA delay!)
+                        pk_cols_str = ', '.join(['"' + p + '"' for p in pk_cols])
+                        pk_clause = f',\n  CONSTRAINT "PK_{name}" PRIMARY KEY ({pk_cols_str})' if pk_cols else ""
+                        details["ddl"] = f"CREATE {obj_type} \"{schema}\".\"{name}\" (\n" + ",\n".join(col_defs_ddl) + pk_clause + "\n);"
+                    except Exception:
+                        pass
+
+                    # Fetch Indexes fast
+                    try:
+                        cur.execute("""
+                            SELECT i.index_name, i.uniqueness, i.status, i.tablespace_name, i.num_rows
                             FROM all_indexes i
-                            LEFT JOIN all_ind_columns ic ON i.owner = ic.index_owner AND i.index_name = ic.index_name
                             WHERE i.table_owner = :1 AND i.table_name = :2
-                            GROUP BY i.index_name, i.uniqueness, i.status, i.tablespace_name, i.clustering_factor, i.blevel, i.num_rows
                             ORDER BY i.index_name
                         """, [schema, name])
                         for r in cur.fetchall():
@@ -1128,60 +2061,242 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                                 "type": r[1],
                                 "status": r[2] or "VALID",
                                 "tablespace": r[3] or "",
-                                "clusteringFactor": r[4],
-                                "blevel": r[5],
-                                "numRows": r[6],
-                                "columns": r[7] or ""
+                                "numRows": r[4],
+                                "columns": ""
                             })
                     except Exception:
                         pass
 
-                # 3. Fetch Constraints
-                if obj_type in ("TABLE", "VIEW"):
+                    # Materialized View metadata if applicable
+                    if obj_type in ("MATERIALIZED VIEW", "MVIEW"):
+                        try:
+                            cur.execute("""
+                                SELECT mview_name, container_name, query, refresh_mode, refresh_method, 
+                                       build_mode, fast_refreshable, last_refresh_type, 
+                                       TO_CHAR(last_refresh_date, 'YYYY-MM-DD HH24:MI:SS'), 
+                                       staleness, compile_state
+                                FROM all_mviews
+                                WHERE owner = :1 AND mview_name = :2
+                            """, [schema, name])
+                            mv = cur.fetchone()
+                            if mv:
+                                q_text = mv[2].read() if hasattr(mv[2], 'read') else str(mv[2] or "")
+                                details["mviewInfo"] = {
+                                    "name": mv[0],
+                                    "containerTable": mv[1],
+                                    "query": q_text,
+                                    "refreshMode": mv[3] or "DEMAND",
+                                    "refreshMethod": mv[4] or "FORCE",
+                                    "buildMode": mv[5] or "IMMEDIATE",
+                                    "fastRefreshable": mv[6] or "NO",
+                                    "lastRefreshType": mv[7] or "NONE",
+                                    "lastRefreshDate": mv[8] or "Never",
+                                    "staleness": mv[9] or "UNKNOWN",
+                                    "compileState": mv[10] or "VALID"
+                                }
+                                details["source"] = f"-- Materialized View Definition Query:\n{q_text}"
+                        except Exception:
+                            pass
+
+                # -------------------------------------------------------------
+                # 2. DATABASE LINKS (Fast query, zero hang)
+                # -------------------------------------------------------------
+                elif obj_type in ("DATABASE LINK", "DB LINK", "DBLINK"):
+                    link_user = "REMOTE_USER"
+                    link_host = "remote_host:1521/SERVICE"
+                    link_created = "2026-01-01"
+                    try:
+                        cur.execute("SELECT username, host, TO_CHAR(created, 'YYYY-MM-DD') FROM all_db_links WHERE db_link = :1", [name])
+                        r = cur.fetchone()
+                        if r:
+                            link_user = r[0] or link_user
+                            link_host = r[1] or link_host
+                            link_created = str(r[2]) if r[2] else link_created
+                    except Exception:
+                        pass
+                    details["dbLinkInfo"] = {
+                        "name": name,
+                        "user": link_user,
+                        "host": link_host,
+                        "created": link_created,
+                        "status": "VALID"
+                    }
+                    details["ddl"] = f"CREATE DATABASE LINK \"{name}\"\n  CONNECT TO \"{link_user}\" IDENTIFIED BY \"********\"\n  USING '{link_host}';"
+
+                # -------------------------------------------------------------
+                # 3. USERS (Instant DBA_USERS metadata + roles)
+                # -------------------------------------------------------------
+                elif obj_type == "USER":
+                    user_status = "OPEN"
+                    def_ts = "USERS"
+                    tmp_ts = "TEMP"
+                    prof = "DEFAULT"
+                    created_dt = ""
                     try:
                         cur.execute("""
-                            SELECT 
-                                c.constraint_name, c.constraint_type, c.status, c.search_condition, 
-                                c.r_constraint_name, c.delete_rule,
-                                LISTAGG(cc.column_name, ', ') WITHIN GROUP (ORDER BY cc.position) as cols
-                            FROM all_constraints c
-                            LEFT JOIN all_cons_columns cc ON c.owner = cc.owner AND c.constraint_name = cc.constraint_name
-                            WHERE c.owner = :1 AND c.table_name = :2
-                            GROUP BY c.constraint_name, c.constraint_type, c.status, c.search_condition, c.r_constraint_name, c.delete_rule
-                            ORDER BY c.constraint_type, c.constraint_name
-                        """, [schema, name])
-                        type_map = {'P': 'Primary Key', 'R': 'Foreign Key', 'U': 'Unique', 'C': 'Check / Not Null'}
-                        for r in cur.fetchall():
-                            details["constraints"].append({
-                                "name": r[0],
-                                "type": type_map.get(r[1], r[1]),
-                                "status": r[2],
-                                "details": (r[3] or (f"References {r[4]}" if r[4] else "")) or (r[6] or ""),
-                                "deleteRule": r[5] or "",
-                                "columns": r[6] or ""
-                            })
+                            SELECT account_status, default_tablespace, temporary_tablespace, profile, 
+                                   TO_CHAR(created, 'YYYY-MM-DD HH24:MI:SS')
+                            FROM dba_users 
+                            WHERE username = :1
+                        """, [name])
+                        r = cur.fetchone()
+                        if r:
+                            user_status = r[0] or user_status
+                            def_ts = r[1] or def_ts
+                            tmp_ts = r[2] or tmp_ts
+                            prof = r[3] or prof
+                            created_dt = str(r[4]) if r[4] else created_dt
+                    except Exception:
+                        try:
+                            cur.execute("SELECT 'OPEN', 'USERS', 'TEMP', 'DEFAULT', TO_CHAR(created, 'YYYY-MM-DD HH24:MI:SS') FROM all_users WHERE username = :1", [name])
+                            r = cur.fetchone()
+                            if r: created_dt = str(r[4]) if r[4] else created_dt
+                        except Exception:
+                            pass
+
+                    user_roles = []
+                    try:
+                        cur.execute("SELECT granted_role, admin_option, default_role FROM dba_role_privs WHERE grantee = :1 ORDER BY granted_role", [name])
+                        user_roles = [{"role": r[0], "admin": r[1], "default": r[2]} for r in cur.fetchall()]
                     except Exception:
                         pass
 
-                # 4. Fetch DDL via DBMS_METADATA.GET_DDL
-                try:
-                    cur.callproc("dbms_metadata.set_transform_param", [oracledb.DB_TYPE_NUMBER, "PRETTY", True])
-                    cur.callproc("dbms_metadata.set_transform_param", [oracledb.DB_TYPE_NUMBER, "SQLTERMINATOR", True])
-                except Exception:
-                    pass
+                    user_sys_privs = []
+                    try:
+                        cur.execute("SELECT privilege, admin_option FROM dba_sys_privs WHERE grantee = :1 ORDER BY privilege", [name])
+                        user_sys_privs = [{"privilege": r[0], "admin": r[1]} for r in cur.fetchall()]
+                    except Exception:
+                        pass
 
-                try:
-                    ddl_type = obj_type
-                    if ddl_type == "PACKAGE BODY":
-                        ddl_type = "PACKAGE_BODY"
-                    cur.execute("SELECT dbms_metadata.get_ddl(:1, :2, :3) FROM dual", [ddl_type, name, schema])
-                    ddl_lob = cur.fetchone()[0]
-                    details["ddl"] = ddl_lob.read() if hasattr(ddl_lob, 'read') else str(ddl_lob)
-                except Exception as ddl_err:
-                    details["ddl"] = f"-- DDL extraction unavailable: {str(ddl_err)}\n-- Generating standard template...\nCREATE {obj_type} \"{schema}\".\"{name}\";"
+                    details["userInfo"] = {
+                        "username": name,
+                        "accountStatus": user_status,
+                        "defaultTablespace": def_ts,
+                        "temporaryTablespace": tmp_ts,
+                        "profile": prof,
+                        "created": created_dt,
+                        "roles": user_roles,
+                        "sysPrivs": user_sys_privs
+                    }
+                    details["ddl"] = f"CREATE USER \"{name}\"\n  IDENTIFIED BY \"********\"\n  DEFAULT TABLESPACE \"{def_ts}\"\n  TEMPORARY TABLESPACE \"{tmp_ts}\"\n  PROFILE \"{prof}\"\n  ACCOUNT {user_status};"
 
-                # 5. Fetch PL/SQL Source Code & Compiler Errors
-                if obj_type in ("PROCEDURE", "FUNCTION", "PACKAGE", "PACKAGE BODY", "TRIGGER", "TYPE", "TYPE BODY"):
+                # -------------------------------------------------------------
+                # 4. ROLES
+                # -------------------------------------------------------------
+                elif obj_type == "ROLE":
+                    privs = []
+                    try:
+                        cur.execute("SELECT privilege, admin_option FROM role_sys_privs WHERE role = :1 ORDER BY privilege", [name])
+                        privs = [{"privilege": r[0], "admin": r[1]} for r in cur.fetchall()]
+                    except Exception:
+                        try:
+                            cur.execute("SELECT privilege, admin_option FROM dba_sys_privs WHERE grantee = :1 ORDER BY privilege", [name])
+                            privs = [{"privilege": r[0], "admin": r[1]} for r in cur.fetchall()]
+                        except Exception:
+                            pass
+
+                    role_roles = []
+                    try:
+                        cur.execute("SELECT granted_role, admin_option FROM role_role_privs WHERE role = :1 ORDER BY granted_role", [name])
+                        role_roles = [{"role": r[0], "admin": r[1]} for r in cur.fetchall()]
+                    except Exception:
+                        pass
+
+                    details["roleInfo"] = {
+                        "role": name,
+                        "privileges": privs,
+                        "grantedRoles": role_roles
+                    }
+                    details["ddl"] = f"CREATE ROLE \"{name}\" NOT IDENTIFIED;"
+
+                # -------------------------------------------------------------
+                # 5. SEQUENCES
+                # -------------------------------------------------------------
+                elif obj_type == "SEQUENCE":
+                    try:
+                        cur.execute("""
+                            SELECT min_value, max_value, increment_by, cycle_flag, order_flag, cache_size, last_number
+                            FROM all_sequences
+                            WHERE sequence_owner = :1 AND sequence_name = :2
+                        """, [schema, name])
+                        seq = cur.fetchone()
+                        if seq:
+                            details["sequenceInfo"] = {
+                                "name": name,
+                                "minValue": seq[0],
+                                "maxValue": seq[1],
+                                "incrementBy": seq[2],
+                                "cycleFlag": seq[3],
+                                "orderFlag": seq[4],
+                                "cacheSize": seq[5],
+                                "lastNumber": seq[6]
+                            }
+                            details["ddl"] = f"CREATE SEQUENCE \"{schema}\".\"{name}\"\n  MINVALUE {seq[0]}\n  MAXVALUE {seq[1]}\n  START WITH {seq[6]}\n  INCREMENT BY {seq[2]}\n  {'CYCLE' if seq[3] == 'Y' else 'NOCYCLE'}\n  {'ORDER' if seq[4] == 'Y' else 'NOORDER'}\n  CACHE {seq[5]};"
+                    except Exception:
+                        pass
+
+                # -------------------------------------------------------------
+                # 6. SYNONYMS
+                # -------------------------------------------------------------
+                elif obj_type == "SYNONYM":
+                    try:
+                        cur.execute("""
+                            SELECT table_owner, table_name, db_link 
+                            FROM all_synonyms 
+                            WHERE owner = :1 AND synonym_name = :2
+                        """, [schema, name])
+                        syn = cur.fetchone()
+                        if syn:
+                            details["synonymInfo"] = {
+                                "targetOwner": syn[0],
+                                "targetTable": syn[1],
+                                "dbLink": syn[2] or ""
+                            }
+                            link_str = f"@{syn[2]}" if syn[2] else ""
+                            details["ddl"] = f"CREATE OR REPLACE SYNONYM \"{schema}\".\"{name}\" FOR \"{syn[0]}\".\"{syn[1]}\"{link_str};"
+                    except Exception:
+                        pass
+
+                # -------------------------------------------------------------
+                # 7. TRIGGERS
+                # -------------------------------------------------------------
+                elif obj_type == "TRIGGER":
+                    try:
+                        cur.execute("""
+                            SELECT trigger_type, triggering_event, table_owner, table_name, status, action_type
+                            FROM all_triggers
+                            WHERE owner = :1 AND trigger_name = :2
+                        """, [schema, name])
+                        trg = cur.fetchone()
+                        if trg:
+                            details["triggerInfo"] = {
+                                "name": name,
+                                "type": trg[0],
+                                "event": trg[1],
+                                "tableOwner": trg[2],
+                                "tableName": trg[3],
+                                "status": trg[4],
+                                "actionType": trg[5]
+                            }
+                    except Exception:
+                        pass
+
+                    try:
+                        cur.execute("""
+                            SELECT text 
+                            FROM all_source 
+                            WHERE owner = :1 AND name = :2 AND type = 'TRIGGER' 
+                            ORDER BY line
+                        """, [schema, name])
+                        details["source"] = "".join([r[0] for r in cur.fetchall()])
+                        details["ddl"] = details["source"]
+                    except Exception:
+                        pass
+
+                # -------------------------------------------------------------
+                # 8. PROCEDURES, FUNCTIONS, PACKAGES
+                # -------------------------------------------------------------
+                elif obj_type in ("PROCEDURE", "FUNCTION", "PACKAGE", "PACKAGE BODY", "TYPE", "TYPE BODY"):
                     try:
                         cur.execute("""
                             SELECT text 
@@ -1191,6 +2306,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         """, [schema, name, obj_type])
                         lines = [r[0] for r in cur.fetchall()]
                         details["source"] = "".join(lines)
+                        details["ddl"] = details["source"]
                     except Exception:
                         pass
 
@@ -1205,79 +2321,10 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     except Exception:
                         pass
 
-                # 6. Fetch Object Statistics
-                if obj_type == "TABLE":
-                    try:
-                        cur.execute("""
-                            SELECT num_rows, blocks, avg_row_len, tablespace_name, TO_CHAR(last_analyzed, 'YYYY-MM-DD HH24:MI:SS')
-                            FROM all_tables 
-                            WHERE owner = :1 AND table_name = :2
-                        """, [schema, name])
-                        st = cur.fetchone()
-                        if st:
-                            details["stats"] = {
-                                "numRows": st[0] or 0,
-                                "blocks": st[1] or 0,
-                                "avgRowLen": st[2] or 0,
-                                "tablespace": st[3] or "USERS",
-                                "lastAnalyzed": st[4] or "Not Analyzed"
-                            }
-                    except Exception:
-                        pass
-
-                # 7. Fetch Grants / Privileges
-                try:
-                    cur.execute("""
-                        SELECT grantee, privilege, grantable 
-                        FROM all_tab_privs 
-                        WHERE table_schema = :1 AND table_name = :2
-                        ORDER BY grantee, privilege
-                    """, [schema, name])
-                    details["grants"] = [{"grantee": r[0], "privilege": r[1], "grantable": r[2]} for r in cur.fetchall()]
-                except Exception:
-                    pass
-
-                # 8. Fetch Partitions
-                if obj_type in ("TABLE", "INDEX"):
-                    try:
-                        cur.execute("""
-                            SELECT partition_name, tablespace_name, num_rows, high_value, blocks, compression
-                            FROM all_tab_partitions
-                            WHERE table_owner = :1 AND table_name = :2
-                            ORDER BY partition_position
-                        """, [schema, name])
-                        for r in cur.fetchall():
-                            details["partitions"].append({
-                                "name": r[0],
-                                "tablespace": r[1] or "",
-                                "numRows": r[2] or 0,
-                                "highValue": str(r[3]) if r[3] else "",
-                                "blocks": r[4] or 0,
-                                "compression": r[5] or "DISABLED"
-                            })
-                    except Exception:
-                        pass
-
-                # 9. Fetch Dependencies
-                try:
-                    cur.execute("""
-                        SELECT referenced_owner, referenced_name, referenced_type, referenced_link_name
-                        FROM all_dependencies
-                        WHERE owner = :1 AND name = :2
-                        ORDER BY referenced_owner, referenced_name
-                    """, [schema, name])
-                    for r in cur.fetchall():
-                        details["dependencies"].append({
-                            "referencedOwner": r[0] or "",
-                            "referencedName": r[1] or "",
-                            "referencedType": r[2] or "",
-                            "link": r[3] or ""
-                        })
-                except Exception:
-                    pass
-
-                # 10. Fetch Tablespace Details
-                if obj_type in ("TABLESPACE", "TS"):
+                # -------------------------------------------------------------
+                # 9. TABLESPACES
+                # -------------------------------------------------------------
+                elif obj_type in ("TABLESPACE", "TS"):
                     try:
                         cur.execute("""
                             SELECT file_name, bytes/1024/1024, autoextensible, maxbytes/1024/1024, status
@@ -1309,152 +2356,112 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     }
                     details["ddl"] = f"CREATE TABLESPACE \"{name}\" \n  DATAFILE SIZE {int(total_mb)}M AUTOEXTEND ON NEXT 128M MAXSIZE UNLIMITED \n  EXTENT MANAGEMENT LOCAL SEGMENT SPACE MANAGEMENT AUTO;"
 
-                # 11. Fetch Database Link Details
-                if obj_type in ("DATABASE LINK", "DB LINK", "DBLINK"):
-                    link_user = "REMOTE_USER"
-                    link_host = "remote_host:1521/SERVICE"
-                    link_created = "2026-01-01"
-                    try:
-                        cur.execute("SELECT username, host, created FROM all_db_links WHERE db_link = :1", [name])
-                        r = cur.fetchone()
-                        if r:
-                            link_user = r[0] or link_user
-                            link_host = r[1] or link_host
-                            link_created = str(r[2]) if r[2] else link_created
-                    except Exception:
-                        pass
-                    details["dbLinkInfo"] = {
-                        "name": name,
-                        "user": link_user,
-                        "host": link_host,
-                        "created": link_created,
-                        "status": "VALID"
-                    }
-                    details["ddl"] = f"CREATE DATABASE LINK \"{name}\"\n  CONNECT TO \"{link_user}\" IDENTIFIED BY \"********\"\n  USING '{link_host}';"
-
-                # 12. Fetch User Details
-                if obj_type == "USER":
-                    user_status = "OPEN"
-                    def_ts = "USERS"
-                    tmp_ts = "TEMP"
-                    prof = "DEFAULT"
-                    created_dt = "2026-01-01"
-                    try:
-                        cur.execute("SELECT account_status, default_tablespace, temporary_tablespace, profile, created FROM all_users WHERE username = :1", [name])
-                        r = cur.fetchone()
-                        if r:
-                            user_status = r[0] or user_status
-                            def_ts = r[1] or def_ts
-                            tmp_ts = r[2] or tmp_ts
-                            prof = r[3] or prof
-                            created_dt = str(r[4]) if r[4] else created_dt
-                    except Exception:
-                        pass
-
-                    user_roles = []
-                    try:
-                        cur.execute("SELECT granted_role, admin_option, default_role FROM dba_role_privs WHERE grantee = :1", [name])
-                        user_roles = [{"role": r[0], "admin": r[1], "default": r[2]} for r in cur.fetchall()]
-                    except Exception:
-                        pass
-
-                    details["userInfo"] = {
-                        "username": name,
-                        "accountStatus": user_status,
-                        "defaultTablespace": def_ts,
-                        "temporaryTablespace": tmp_ts,
-                        "profile": prof,
-                        "created": created_dt,
-                        "roles": user_roles
-                    }
-                    details["ddl"] = f"CREATE USER \"{name}\"\n  IDENTIFIED BY \"********\"\n  DEFAULT TABLESPACE \"{def_ts}\"\n  TEMPORARY TABLESPACE \"{tmp_ts}\"\n  PROFILE \"{prof}\"\n  ACCOUNT {user_status};"
-
-                # 13. Fetch Role Details
-                if obj_type == "ROLE":
-                    privs = []
-                    try:
-                        cur.execute("SELECT privilege, admin_option FROM role_sys_privs WHERE role = :1", [name])
-                        privs = [{"privilege": r[0], "admin": r[1]} for r in cur.fetchall()]
-                    except Exception:
-                        pass
-                    details["roleInfo"] = {
-                        "role": name,
-                        "privileges": privs
-                    }
-                    details["ddl"] = f"CREATE ROLE \"{name}\" NOT IDENTIFIED;"
-
-                # 14. Fetch Scheduler Job Details
-                if obj_type in ("JOB", "SCHEDULER JOB"):
-                    job_type = "STORED_PROCEDURE"
-                    job_action = "SYNC_PROCEDURE"
-                    repeat_interval = "FREQ=DAILY;BYHOUR=2"
-                    state = "SCHEDULED"
-                    next_run = "Tomorrow at 02:00:00"
-                    fail_count = 0
-                    try:
-                        cur.execute("SELECT job_type, job_action, repeat_interval, state, next_run_date, failure_count FROM all_scheduler_jobs WHERE job_name = :1", [name])
-                        r = cur.fetchone()
-                        if r:
-                            job_type = r[0] or job_type
-                            job_action = r[1] or job_action
-                            repeat_interval = r[2] or repeat_interval
-                            state = r[3] or state
-                            next_run = str(r[4]) if r[4] else next_run
-                            fail_count = r[5] or 0
-                    except Exception:
-                        pass
-                    details["jobInfo"] = {
-                        "jobName": name,
-                        "jobType": job_type,
-                        "jobAction": job_action,
-                        "repeatInterval": repeat_interval,
-                        "state": state,
-                        "nextRun": next_run,
-                        "failureCount": fail_count
-                    }
-                    details["ddl"] = f"BEGIN\n  DBMS_SCHEDULER.CREATE_JOB (\n    job_name => '\"{name}\"',\n    job_type => '{job_type}',\n    job_action => '{job_action}',\n    repeat_interval => '{repeat_interval}',\n    enabled => TRUE\n  );\nEND;\n/"
-
-                # 15. Fetch Directory Details
-                if obj_type == "DIRECTORY":
+                # -------------------------------------------------------------
+                # 10. DIRECTORIES
+                # -------------------------------------------------------------
+                elif obj_type == "DIRECTORY":
                     dir_path = "/u01/app/oracle/oradata"
                     try:
                         cur.execute("SELECT directory_path FROM all_directories WHERE directory_name = :1", [name])
                         r = cur.fetchone()
-                        if r:
-                            dir_path = r[0] or dir_path
+                        if r: dir_path = r[0] or dir_path
                     except Exception:
                         pass
-                    details["directoryInfo"] = {
-                        "name": name,
-                        "path": dir_path
-                    }
+                    details["directoryInfo"] = { "name": name, "path": dir_path }
                     details["ddl"] = f"CREATE OR REPLACE DIRECTORY \"{name}\" AS '{dir_path}';"
 
-                # 16. Fetch Recycle Bin Details
-                if obj_type in ("RECYCLEBIN", "BIN"):
-                    details["recyclebinInfo"] = {
-                        "objectName": name,
-                        "status": "DROPPED",
-                        "canUndrop": True
-                    }
+                # -------------------------------------------------------------
+                # 11. RECYCLE BIN
+                # -------------------------------------------------------------
+                elif obj_type in ("RECYCLEBIN", "BIN"):
                     orig = name.split(" ")[0]
-                    details["ddl"] = f"-- Restore dropped table from Oracle Flashback Recycle Bin:\nFLASHBACK TABLE \"{orig}\" TO BEFORE DROP;"
+                    details["recyclebinInfo"] = { "objectName": name, "status": "DROPPED", "canUndrop": True }
+                    details["ddl"] = f"FLASHBACK TABLE \"{orig}\" TO BEFORE DROP;"
 
                 self.send_api_response(details)
         except Exception as e:
-            self.send_api_response({"error": str(e)}, status=400)
+            self.send_api_response({"success": False, "error": str(e), "details": details}, status=200)
+
+    def handle_get_object_data(self, query):
+        """Fetches live table/view data rows on demand with rownum limit"""
+        conn = self.get_conn(query=query)
+        if not conn:
+            self.send_api_response({"success": False, "error": "No active connection", "data": []}, status=200)
+            return
+        params = urllib.parse.parse_qs(query)
+        schema = params.get("schema", ["HR"])[0].upper()
+        name = params.get("name", ["EMPLOYEES"])[0].upper()
+        limit = int(params.get("limit", [100])[0])
+        limit = max(1, min(limit, 500))
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f'SELECT * FROM "{schema}"."{name}" WHERE ROWNUM <= :1', [limit])
+                if not cur.description:
+                    self.send_api_response({"success": True, "columns": [], "data": []})
+                    return
+                columns = [col[0] for col in cur.description]
+                raw_rows = cur.fetchall()
+                data = []
+                for row in raw_rows:
+                    row_obj = {}
+                    for idx, cname in enumerate(columns):
+                        row_obj[cname] = json_serial(row[idx])
+                    data.append(row_obj)
+                self.send_api_response({"success": True, "columns": columns, "data": data, "count": len(data)})
+        except Exception as e:
+            self.send_api_response({"success": False, "error": str(e), "data": []}, status=200)
+
+    def handle_get_object_ddl(self, query):
+        """Fetches full official DDL via DBMS_METADATA on demand"""
+        conn = self.get_conn(query=query)
+        if not conn:
+            self.send_api_response({"success": False, "error": "No active connection", "ddl": ""}, status=200)
+            return
+        params = urllib.parse.parse_qs(query)
+        schema = params.get("schema", ["HR"])[0].upper()
+        name = params.get("name", ["EMPLOYEES"])[0].upper()
+        obj_type = params.get("type", ["TABLE"])[0].upper()
+
+        ddl_map = {
+            "PACKAGE BODY": "PACKAGE_BODY",
+            "TYPE BODY": "TYPE_BODY",
+            "MATERIALIZED VIEW": "MATERIALIZED_VIEW",
+            "MVIEW": "MATERIALIZED_VIEW",
+            "DATABASE LINK": "DB_LINK",
+            "JOB": "PROCOBJ"
+        }
+        ddl_type = ddl_map.get(obj_type, obj_type)
+
+        try:
+            with conn.cursor() as cur:
+                try:
+                    cur.callproc("dbms_metadata.set_transform_param", [oracledb.DB_TYPE_NUMBER, "PRETTY", True])
+                    cur.callproc("dbms_metadata.set_transform_param", [oracledb.DB_TYPE_NUMBER, "SQLTERMINATOR", True])
+                except Exception:
+                    pass
+
+                if ddl_type in ("TABLESPACE", "USER", "ROLE", "DIRECTORY"):
+                    cur.execute("SELECT dbms_metadata.get_ddl(:1, :2) FROM dual", [ddl_type, name])
+                else:
+                    cur.execute("SELECT dbms_metadata.get_ddl(:1, :2, :3) FROM dual", [ddl_type, name, schema])
+                ddl_lob = cur.fetchone()[0]
+                ddl_text = ddl_lob.read() if hasattr(ddl_lob, 'read') else str(ddl_lob)
+                self.send_api_response({"success": True, "ddl": ddl_text})
+        except Exception as e:
+            self.send_api_response({"success": False, "error": str(e), "ddl": f"-- DDL extraction unavailable: {str(e)}"}, status=200)
 
     def handle_get_describe(self, query):
         self.handle_get_object_details(query)
 
     # -------------------------------------------------------------------------
-    # SESSION BROWSER & MONITOR ENDPOINTS
+    # SESSION BROWSER & MONITOR ENDPOINTS (TOAD 1:1)
     # -------------------------------------------------------------------------
     def handle_get_sessions(self, query):
-        """Returns sessions matching native Toad filters (TOAD_SESSBROWFILTERS.INI)"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        """Returns sessions matching native Toad filters with locks hierarchy"""
+        conn = self.get_conn(query=query)
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"success": False, "error": "No active connection", "sessions": [], "locks": []}, status=200)
             return
 
         params = urllib.parse.parse_qs(query)
@@ -1462,91 +2469,164 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
         # Build WHERE condition based on Toad native filters
         where_sql = "1=1"
-        if filter_id == "filter1": # TOAD
+        if filter_id in ("filter1", "toad"):
             where_sql = "UPPER(s.program) LIKE '%TOAD%'"
-        elif filter_id == "filter2": # SAME USER
+        elif filter_id in ("filter2", "same_user"):
             where_sql = "s.username = USER"
-        elif filter_id == "filter3": # WAIT FOR LOCK
+        elif filter_id in ("filter3", "wait_lock"):
             where_sql = "s.lockwait IS NOT NULL"
-        elif filter_id == "filter4": # LAST CALL > 10 MIN
-            where_sql = "s.last_call_et > 600"
-        elif filter_id == "filter5": # DUPLICATE USERNAMES
+        elif filter_id in ("filter4", "last_call"):
+            where_sql = "NVL(s.last_call_et, 0) > 600"
+        elif filter_id in ("filter5", "dup_users"):
             where_sql = "EXISTS (SELECT 1 FROM v$session xxx WHERE s.username = xxx.username AND s.sid <> xxx.sid)"
-        elif filter_id == "filter6": # DUPLICATE PROGRAMS
+        elif filter_id in ("filter6", "dup_progs"):
             where_sql = "EXISTS (SELECT 1 FROM v$session xxx WHERE s.username = xxx.username AND s.program = xxx.program AND s.sid <> xxx.sid)"
-        elif filter_id == "filter7": # HIGH IO
-            where_sql = "io.physical_reads >= 500 OR io.block_changes >= 100"
-        elif filter_id == "filter9" or filter_id == "active": # STATUS - ACTIVE
-            where_sql = "s.status = 'ACTIVE'"
-        elif filter_id == "filter10": # STATUS - INACTIVE
+        elif filter_id in ("filter7", "high_io"):
+            where_sql = "NVL(io.physical_reads, 0) >= 500 OR NVL(io.block_changes, 0) >= 100"
+        elif filter_id in ("filter9", "active"):
+            where_sql = "s.status = 'ACTIVE' AND s.username IS NOT NULL"
+        elif filter_id in ("filter10", "inactive"):
             where_sql = "s.status = 'INACTIVE'"
-        elif filter_id == "filter11": # DEDICATED
+        elif filter_id in ("filter11", "dedicated"):
             where_sql = "s.server = 'DEDICATED'"
-        elif filter_id == "filter12": # SHARED
+        elif filter_id in ("filter12", "shared"):
             where_sql = "s.server = 'SHARED'"
-
-        # Dynamically evaluate custom filter expressions from assets/session_filters.json
-        try:
-            filters_file = os.path.join(BASE_DIR, 'assets', 'session_filters.json')
-            if os.path.exists(filters_file):
-                with open(filters_file, 'r', encoding='utf-8') as f:
-                    filt_data = json.load(f)
-                    for item in filt_data:
-                        if item.get('id') == filter_id and item.get('expr'):
-                            where_sql = item['expr']
-                            break
-        except Exception:
-            pass
+        elif filter_id in ("all", "all_sessions"):
+            where_sql = "1=1"
 
         try:
             with conn.cursor() as cur:
-                cur.execute(f"""
-                    SELECT 
-                        s.sid, s.serial#, NVL(s.username, 'BACKGROUND') as username, s.status, 
-                        NVL(s.osuser, '-') as osuser, NVL(s.machine, '-') as machine, 
-                        NVL(s.program, '-') as program, NVL(s.module, '-') as module,
-                        TO_CHAR(s.logon_time, 'YYYY-MM-DD HH24:MI:SS') as logon_time,
-                        s.last_call_et, s.lockwait, s.blocking_session, s.sql_id,
-                        NVL(s.event, 'None') as event,
-                        ROUND(NVL(p.pga_allocated, 0) / 1024 / 1024, 2) as pga_mb,
-                        NVL(io.physical_reads, 0) as physical_reads,
-                        NVL(io.block_changes, 0) as block_changes
-                    FROM v$session s
-                    LEFT JOIN v$process p ON s.paddr = p.addr
-                    LEFT JOIN v$sess_io io ON s.sid = io.sid
-                    WHERE {where_sql}
-                    ORDER BY s.status, s.sid
-                """)
+                os_info = ACTIVE_CONNECTION.get("os_info")
+                if not os_info:
+                    os_info = detect_oracle_os(cur)
+                    ACTIVE_CONNECTION["os_info"] = os_info
+
                 sessions = []
-                for r in cur.fetchall():
-                    sessions.append({
-                        "sid": r[0],
-                        "serial": r[1],
-                        "username": r[2],
-                        "status": r[3],
-                        "osuser": r[4],
-                        "machine": r[5],
-                        "program": r[6],
-                        "module": r[7],
-                        "logonTime": r[8],
-                        "lastCallEt": r[9],
-                        "lockwait": r[10],
-                        "blockingSession": r[11],
-                        "sqlId": r[12] or "-",
-                        "event": r[13],
-                        "pgaMb": r[14],
-                        "physicalReads": r[15],
-                        "blockChanges": r[16]
-                    })
-                self.send_api_response({"sessions": sessions, "filterApplied": filter_id})
+                try:
+                    cur.execute(f"""
+                        SELECT 
+                            s.sid, s.serial#, NVL(s.username, 'BACKGROUND') as username, s.status, 
+                            NVL(s.osuser, '-') as osuser, NVL(s.machine, '-') as machine, 
+                            NVL(s.program, '-') as program, NVL(s.module, '-') as module,
+                            TO_CHAR(s.logon_time, 'YYYY-MM-DD HH24:MI:SS') as logon_time,
+                            NVL(s.last_call_et, 0) as last_call_et, 
+                            s.lockwait, s.blocking_session, s.sql_id,
+                            NVL(s.event, 'None') as event,
+                            ROUND(NVL(p.pga_allocated, 0) / 1024 / 1024, 2) as pga_mb,
+                            NVL(io.physical_reads, 0) as physical_reads,
+                            NVL(io.block_changes, 0) as block_changes,
+                            NVL(p.spid, '-') as spid
+                        FROM v$session s
+                        LEFT JOIN v$process p ON s.paddr = p.addr
+                        LEFT JOIN v$sess_io io ON s.sid = io.sid
+                        WHERE {where_sql}
+                        ORDER BY DECODE(s.status, 'ACTIVE', 1, 2), s.sid
+                    """)
+                    for r in cur.fetchall():
+                        sessions.append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "status": r[3],
+                            "osuser": r[4],
+                            "machine": r[5],
+                            "program": r[6],
+                            "module": r[7],
+                            "logonTime": r[8],
+                            "lastCallEt": r[9],
+                            "lockwait": r[10],
+                            "blockingSession": r[11],
+                            "sqlId": r[12] or "-",
+                            "event": r[13],
+                            "pgaMb": r[14],
+                            "physicalReads": r[15],
+                            "blockChanges": r[16],
+                            "spid": r[17]
+                        })
+                except Exception as join_err:
+                    print(f"[SessionBrowser] Query completa falhou: {join_err}. Usando fallback v$session direto...")
+                    cur.execute(f"""
+                        SELECT 
+                            s.sid, s.serial#, NVL(s.username, 'BACKGROUND') as username, s.status, 
+                            NVL(s.osuser, '-') as osuser, NVL(s.machine, '-') as machine, 
+                            NVL(s.program, '-') as program, NVL(s.module, '-') as module,
+                            TO_CHAR(s.logon_time, 'YYYY-MM-DD HH24:MI:SS') as logon_time,
+                            NVL(s.last_call_et, 0) as last_call_et, 
+                            s.lockwait, s.blocking_session, s.sql_id,
+                            NVL(s.event, 'None') as event,
+                            0 as pga_mb, 0 as physical_reads, 0 as block_changes,
+                            NVL(s.process, '-') as spid
+                        FROM v$session s
+                        WHERE {where_sql if 'io.' not in where_sql else '1=1'}
+                        ORDER BY DECODE(s.status, 'ACTIVE', 1, 2), s.sid
+                    """)
+                    for r in cur.fetchall():
+                        sessions.append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "status": r[3],
+                            "osuser": r[4],
+                            "machine": r[5],
+                            "program": r[6],
+                            "module": r[7],
+                            "logonTime": r[8],
+                            "lastCallEt": r[9],
+                            "lockwait": r[10],
+                            "blockingSession": r[11],
+                            "sqlId": r[12] or "-",
+                            "event": r[13],
+                            "pgaMb": r[14],
+                            "physicalReads": r[15],
+                            "blockChanges": r[16],
+                            "spid": r[17]
+                        })
+
+                # Fetch Locks tree
+                locks = []
+                try:
+                    cur.execute("""
+                        SELECT 
+                            l.session_id, s.serial#, s.username, s.status, s.program,
+                            o.owner, o.object_name, o.object_type,
+                            l.locked_mode,
+                            s.blocking_session
+                        FROM v$locked_object l
+                        JOIN dba_objects o ON l.object_id = o.object_id
+                        JOIN v$session s ON l.session_id = s.sid
+                        ORDER BY l.session_id
+                    """)
+                    for r in cur.fetchall():
+                        locks.append({
+                            "sid": r[0],
+                            "serial": r[1],
+                            "username": r[2],
+                            "status": r[3],
+                            "program": r[4],
+                            "owner": r[5],
+                            "objectName": r[6],
+                            "objectType": r[7],
+                            "lockMode": r[8],
+                            "blockingSession": r[9]
+                        })
+                except Exception:
+                    pass
+
+                self.send_api_response({
+                    "success": True,
+                    "sessions": sessions,
+                    "locks": locks,
+                    "filterApplied": filter_id,
+                    "os": os_info
+                })
         except Exception as e:
-            self.send_api_response({"error": str(e)}, status=400)
+            self.send_api_response({"success": False, "error": str(e), "sessions": [], "locks": []}, status=200)
 
     def handle_get_session_details(self, query):
         """Current SQL, Waits, Locks, and I/O for a specific session"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn(query=query)
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"success": False, "error": "No active connection", "details": None}, status=200)
             return
 
         params = urllib.parse.parse_qs(query)
@@ -1641,13 +2721,13 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
                 self.send_api_response(details)
         except Exception as e:
-            self.send_api_response({"error": str(e)}, status=400)
+            self.send_api_response({"success": False, "error": str(e), "details": details}, status=200)
 
     def handle_kill_session(self, payload):
         """Terminates session via ALTER SYSTEM KILL SESSION"""
-        conn = ACTIVE_CONNECTION.get("conn")
+        conn = self.get_conn(payload)
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"success": False, "error": "No active connection"}, status=200)
             return
 
         sid = payload.get("sid")
@@ -2608,21 +3688,25 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # -------------------------------------------------------------------------
     def handle_get_unixmonitor(self):
         conn = ACTIVE_CONNECTION.get("conn")
+        os_info = ACTIVE_CONNECTION.get("os_info")
         if not conn:
-            self.send_api_response({"error": "No active connection"}, status=400)
+            self.send_api_response({"error": "No active connection", "os": os_info}, status=400)
             return
         os_stats = {}
         try:
             with conn.cursor() as cur:
+                if not os_info:
+                    os_info = detect_oracle_os(cur)
+                    ACTIVE_CONNECTION["os_info"] = os_info
                 try:
                     cur.execute("SELECT stat_name, value, comments FROM v$osstat")
                     for r in cur.fetchall():
                         os_stats[r[0]] = {"value": r[1], "comments": r[2]}
                 except Exception:
                     pass
-            self.send_api_response({"osStats": os_stats})
+            self.send_api_response({"osStats": os_stats, "os": os_info})
         except Exception as e:
-            self.send_api_response({"error": str(e)}, status=400)
+            self.send_api_response({"error": str(e), "os": os_info}, status=400)
 
     # -------------------------------------------------------------------------
     # DBA HUB - SPACE MANAGER & GROWTH FORECAST

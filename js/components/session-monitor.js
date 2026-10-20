@@ -73,33 +73,41 @@ class SessionMonitor {
       return;
     }
 
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
-      await this.loadRealSessions();
-      if (!isSilent) window.TracesApp.notify('Sessões atualizadas ao vivo do Oracle.', 'info');
-      return;
-    }
-
-    this.sessions = window.TRACES_DB.sessions;
-    this.render();
-    if (!isSilent) window.TracesApp.notify('Sessões atualizadas.', 'info');
+    await this.loadRealSessions();
+    if (!isSilent) window.TracesApp.notify('Sessões atualizadas ao vivo do Oracle.', 'info');
   }
 
   async loadRealSessions() {
     try {
-      const resp = await fetch(`/api/sessions?filter=${encodeURIComponent(this.currentFilter)}`);
+      const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+      const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
+      const resp = await fetch(`/api/sessions?filter=${encodeURIComponent(this.currentFilter)}${connParam}`);
       const data = await resp.json();
-      if (data.sessions) {
+      if (data.os && window.TracesApp?.setServerOs) {
+        window.TracesApp.setServerOs(data.os);
+      }
+      if (data.success !== false && data.sessions) {
         this.sessions = data.sessions;
+        this.locks = data.locks || [];
         
-        // Auto-select first session if none selected
-        if (!this.selectedSid && this.sessions.length > 0) {
-          this.selectedSid = this.sessions[0].sid;
-          this.selectedSerial = this.sessions[0].serial;
+        // Auto-select first session if none selected or selected session gone
+        if (!this.selectedSid || !this.sessions.some(s => s.sid === this.selectedSid)) {
+          if (this.sessions.length > 0) {
+            this.selectedSid = this.sessions[0].sid;
+            this.selectedSerial = this.sessions[0].serial;
+            this.loadSessionDetails(this.selectedSid);
+          } else {
+            this.selectedSid = null;
+            this.selectedSerial = null;
+            this.sessionDetails = null;
+          }
+        } else if (this.selectedSid) {
+          this.loadSessionDetails(this.selectedSid);
         }
 
         // Also refresh instance probe metrics
         try {
-          const probeResp = await fetch('/api/probe');
+          const probeResp = await fetch(`/api/probe${connParam ? '?' + connParam.slice(1) : ''}`);
           const probeData = await probeResp.json();
           if (probeData.metrics) {
             this.metrics = Object.assign(this.metrics, {
@@ -235,7 +243,7 @@ class SessionMonitor {
     this.selectedSerial = serial;
     this.renderTable();
 
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+    if (window.TracesApp && window.TracesApp.isConnected()) {
       await this.loadSessionDetails(sid);
     } else {
       this.renderDetail();
@@ -244,9 +252,11 @@ class SessionMonitor {
 
   async loadSessionDetails(sid) {
     try {
-      const resp = await fetch(`/api/session-details?sid=${sid}`);
+      const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+      const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
+      const resp = await fetch(`/api/session-details?sid=${sid}${connParam}`);
       const data = await resp.json();
-      this.sessionDetails = data;
+      this.sessionDetails = data.details || data;
       this.renderDetail();
     } catch (e) {
       console.warn('Session details load error', e);
@@ -258,31 +268,71 @@ class SessionMonitor {
     if (!this.lockTreeContent) return;
 
     const blockers = this.sessions.filter(s => s.blockingSession !== null || (s.lockwait && s.lockwait !== ''));
-    if (blockers.length === 0) {
+    const locks = this.locks || [];
+
+    if (blockers.length === 0 && locks.length === 0) {
       this.lockTreeContent.innerHTML = `
-        <div style="padding: 16px; text-align: center; color: #008000; font-size: 11px; font-weight: 600;">
-          ✔ Nenhuma contenção de lock ou sessão bloqueada no momento.
+        <div style="padding: 16px; text-align: center; color: #15803d; font-size: 11px; font-weight: 600;">
+          ✔ Nenhuma contenção de lock ou sessão bloqueada no momento (V$LOCKED_OBJECT / V$SESSION).
         </div>
       `;
       return;
     }
 
-    this.lockTreeContent.innerHTML = `
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${blockers.map(b => `
-          <div class="lock-node ${b.blockingSession ? 'root-blocker' : 'waiting-session'}">
-            <span style="background: ${b.blockingSession ? 'var(--traces-red)' : '#f59e0b'}; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 700;">
-              ${b.blockingSession ? 'BLOCKER' : 'WAITING'}
-            </span>
-            <span>SID: <strong>${b.sid}</strong>, Serial: ${b.serial} | User: <strong>${b.username}</strong> | Machine: ${b.machine}</span>
-            <span style="color: #64748b; font-size: 10px;">Wait Event: ${b.event}</span>
-            <button class="btn btn-danger" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.killSession(${b.sid}, ${b.serial})">
-              Kill (SID ${b.sid})
-            </button>
-          </div>
-        `).join('')}
-      </div>
-    `;
+    let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
+
+    if (blockers.length > 0) {
+      html += blockers.map(b => `
+        <div class="lock-node ${b.blockingSession ? 'root-blocker' : 'waiting-session'}">
+          <span style="background: ${b.blockingSession ? 'var(--traces-red)' : '#f59e0b'}; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 700;">
+            ${b.blockingSession ? 'BLOCKER' : 'WAITING'}
+          </span>
+          <span>SID: <strong>${b.sid}</strong>, Serial: ${b.serial} | User: <strong>${b.username}</strong> | Machine: ${b.machine}</span>
+          <span style="color: #64748b; font-size: 10px;">Wait Event: ${b.event}</span>
+          <button class="btn btn-danger" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.killSession(${b.sid}, ${b.serial})">
+            Kill (SID ${b.sid})
+          </button>
+        </div>
+      `).join('');
+    }
+
+    if (locks.length > 0) {
+      html += `
+        <table class="meta-table" style="width: 100%; margin-top: 4px; font-size: 11px;">
+          <thead>
+            <tr>
+              <th>SID</th>
+              <th>Serial#</th>
+              <th>User</th>
+              <th>Program</th>
+              <th>Object Locked</th>
+              <th>Type</th>
+              <th>Lock Mode</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${locks.map(lk => `
+              <tr>
+                <td style="font-weight: 700;">${lk.sid}</td>
+                <td>${lk.serial || '-'}</td>
+                <td style="color: #0078d7; font-weight: 600;">${lk.username}</td>
+                <td>${lk.program}</td>
+                <td style="font-family: var(--font-code); font-weight: 700;">${lk.owner}.${lk.objectName}</td>
+                <td>${lk.objectType}</td>
+                <td style="color: #b91c1c; font-weight: 700;">${lk.lockMode}</td>
+                <td>
+                  <button class="btn btn-danger" style="height: 20px; padding: 0 6px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.killSession(${lk.sid}, ${lk.serial || 0})">Kill</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    html += '</div>';
+    this.lockTreeContent.innerHTML = html;
   }
 
   renderDetail() {
@@ -296,17 +346,29 @@ class SessionMonitor {
     const locks = details.locks || [];
     const io = details.io || {};
 
+    const osInfo = window.TracesApp?.getServerOs?.() || { os_type: 'linux', os_name: 'Linux' };
+    const osKill = window.TracesApp?.getOsKillCommand?.(s.spid, s.sid) || {
+      cmd: `kill -9 ${s.spid || s.sid}`,
+      osType: 'linux',
+      osName: 'Linux',
+      debugCmd: `pstack ${s.spid || s.sid}`,
+      explanation: 'Finalize o processo no SO caso o ALTER SYSTEM KILL SESSION fique preso em KILLED.'
+    };
+    const osIcon = osInfo.os_type === 'windows' ? '🪟' : osInfo.os_type === 'aix' ? '🟣' : '🐧';
+    const osBadgeClass = osInfo.os_type === 'windows' ? 'os-windows' : osInfo.os_type === 'aix' ? 'os-aix' : 'os-linux';
+
     this.detailPane.innerHTML = `
       <div style="padding: 12px 16px; background: #fff; border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: 10px;">
         
         <!-- Header -->
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span style="font-weight: 700; font-size: 13px; color: var(--text-primary);">
               Session Inspector: SID ${s.sid}, Serial# ${s.serial} (${s.username})
             </span>
             <span class="session-status-badge ${s.status.toLowerCase()}">${s.status}</span>
-            <span style="font-size: 11px; color: var(--text-muted);">OS: ${s.osuser} @ ${s.machine} | Program: ${s.program}</span>
+            <span class="toad-os-badge ${osBadgeClass}">${osIcon} Host: ${osInfo.os_name}</span>
+            <span style="font-size: 11px; color: var(--text-muted);">SPID / Thread: <strong style="color: #4338ca; font-family: var(--font-code);">${s.spid || '-'}</strong> | OS: ${s.osuser} @ ${s.machine} | Program: ${s.program}</span>
           </div>
           <div style="display: flex; gap: 6px;">
             <button class="btn btn-danger" style="font-weight: 700;" onclick="window.TracesApp.sessionMonitor.killSession(${s.sid}, ${s.serial})">
@@ -315,6 +377,30 @@ class SessionMonitor {
             <button class="btn" onclick="window.TracesApp.sessionMonitor.refresh()">
               🔄 Atualizar
             </button>
+          </div>
+        </div>
+
+        <!-- OS-Adapted Kill & Diagnostic Box -->
+        <div class="os-cmd-banner">
+          <div class="os-cmd-row">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 13px;">${osIcon}</span>
+              <span style="font-size: 11px; font-weight: 700; color: #f8fafc;">Comando SO Adaptado (${osKill.osName}):</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="os-cmd-copy-btn" onclick="navigator.clipboard.writeText('${osKill.cmd}'); window.TracesApp.notify('Comando SO copiado: ${osKill.cmd}', 'success');">
+                📋 Copiar Kill SO
+              </button>
+              <button class="os-cmd-copy-btn" style="background:#475569; border-color:#64748b;" onclick="navigator.clipboard.writeText('${osKill.debugCmd}'); window.TracesApp.notify('Comando diagnóstico copiado: ${osKill.debugCmd}', 'info');">
+                🔍 Copiar Diagnóstico
+              </button>
+            </div>
+          </div>
+          <div class="os-cmd-row">
+            <code class="os-cmd-code">${osKill.cmd}</code>
+          </div>
+          <div class="os-cmd-hint">
+            💡 ${osKill.explanation} Diagnóstico do processo: <code style="color:#cbd5e1;">${osKill.debugCmd}</code>
           </div>
         </div>
 
@@ -439,12 +525,13 @@ class SessionMonitor {
     const ok = confirm(`Deseja encerrar a Sessão Oracle?\nALTER SYSTEM ${mode === 'POST_TRANSACTION' ? 'DISCONNECT' : 'KILL'} SESSION '${sid},${serial}' ${mode};`);
     if (!ok) return;
 
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+    if (window.TracesApp && window.TracesApp.isConnected()) {
       try {
+        const activeConn = window.TracesApp?.connectionManager?.getActive?.();
         const resp = await fetch('/api/kill-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sid, serial, mode })
+          body: JSON.stringify({ sid, serial, mode, conn_id: activeConn?.id })
         });
         const data = await resp.json();
         if (data.error) {

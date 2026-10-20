@@ -163,8 +163,20 @@
           <span>Format</span>
         </button>
 
+        <!-- Ctrl+Z: Undo -->
+        <button class="toad-btn" id="btn-editor-undo" onclick="window.TracesApp.sqlEditor.undo()" title="Desfazer / Undo (Ctrl+Z)">
+          <span class="toad-btn-icon" style="color: #2563eb;">↶</span>
+          <span>Undo</span>
+        </button>
+
+        <!-- Ctrl+Y: Redo -->
+        <button class="toad-btn" id="btn-editor-redo" onclick="window.TracesApp.sqlEditor.redo()" title="Refazer / Redo (Ctrl+Y)">
+          <span class="toad-btn-icon" style="color: #2563eb;">↷</span>
+          <span>Redo</span>
+        </button>
+
         <!-- Clear -->
-        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.textarea.value=''; window.TracesApp.sqlEditor.saveActiveTabContent(); window.TracesApp.sqlEditor.updateHighlighting(); window.TracesApp.sqlEditor.updateGutter();" title="Clear Editor">
+        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.pushHistorySnapshot(); window.TracesApp.sqlEditor.textarea.value=''; window.TracesApp.sqlEditor.saveActiveTabContent(); window.TracesApp.sqlEditor.updateHighlighting(); window.TracesApp.sqlEditor.updateGutter(); window.TracesApp.sqlEditor.pushHistorySnapshot();" title="Clear Editor">
           <span class="toad-btn-icon">🗑</span>
         </button>
 
@@ -389,26 +401,49 @@
                   <div class="grid-controls-bar">
                     <!-- Navigation buttons -->
                     <div class="grid-nav-group">
-                      <button class="grid-nav-btn" id="grid-btn-first" title="First Record" onclick="window.TracesApp.dataGrid.page=1; window.TracesApp.dataGrid.selectRow(0);">|◀</button>
-                      <button class="grid-nav-btn" id="grid-btn-prev" title="Prior Record">◀</button>
-                      <button class="grid-nav-btn" id="grid-btn-next" title="Next Record">▶</button>
-                      <button class="grid-nav-btn" id="grid-btn-last" title="Last Record" onclick="window.TracesApp.dataGrid.selectRow(window.TracesApp.dataGrid.data.length - 1);">▶|</button>
-                      <button class="grid-nav-btn" id="grid-btn-add-row" title="Insert Record" style="color: #008000; font-weight: 700;">+</button>
-                      <button class="grid-nav-btn" id="grid-btn-delete-row" title="Delete Record" style="color: #c00000; font-weight: 700;">-</button>
-                      <button class="grid-nav-btn" title="Post Changes (Commit to Database)" onclick="window.TracesApp.dataGrid.commitPendingChanges();" style="color: #008000; font-weight: 700;">✓</button>
-                      <button class="grid-nav-btn" title="Cancel Changes (Rollback Grid Edits)" onclick="window.TracesApp.dataGrid.rollbackPendingChanges();" style="color: #c00000; font-weight: 700;">✕</button>
+                      <button class="grid-nav-btn" id="grid-btn-first" title="Primeiro Registro (First Page & Record)" onclick="window.TracesApp.dataGrid.goToFirst();">⏮</button>
+                      <button class="grid-nav-btn" id="grid-btn-prev" title="Página / Registro Anterior (Prior)" onclick="window.TracesApp.dataGrid.goToPrev();">◀</button>
+                      <button class="grid-nav-btn" id="grid-btn-next" title="Próxima Página / Registro (Next)" onclick="window.TracesApp.dataGrid.goToNext();">▶</button>
+                      <button class="grid-nav-btn" id="grid-btn-last" title="Último Registro (Last Page & Record)" onclick="window.TracesApp.dataGrid.goToLast();">⏭</button>
+                      <div class="grid-toolbar-sep"></div>
+                      <button class="grid-nav-btn" id="grid-btn-add-row" title="Inserir Novo Registro" style="color: #16a34a; font-weight: 700;">➕</button>
+                      <button class="grid-nav-btn" id="grid-btn-delete-row" title="Excluir Registro Selecionado" style="color: #dc2626; font-weight: 700;">🗑️</button>
+                      <button class="grid-nav-btn" id="grid-btn-commit" title="Gravar Alterações no Banco Oracle (Commit)" onclick="window.TracesApp.dataGrid.commitPendingChanges();" style="color: #16a34a; font-weight: 700;">💾</button>
+                      <button class="grid-nav-btn" id="grid-btn-rollback" title="Cancelar Edições Pendentes (Rollback)" onclick="window.TracesApp.dataGrid.rollbackPendingChanges();" style="color: #dc2626; font-weight: 700;">↩</button>
+                      <div class="grid-toolbar-sep"></div>
+                      <button class="grid-nav-btn" id="grid-btn-refresh" title="Atualizar Dados (Re-executar Consulta F5)" onclick="window.TracesApp.dataGrid.refreshQuery();">🔄</button>
+                      <button class="grid-nav-btn" id="grid-btn-fetch-all" title="Carregar Todas as Linhas do Banco (Sem Limite)" onclick="window.TracesApp.dataGrid.fetchAllRows();" style="color: #2563eb; font-weight: 700;">⚡ Todas</button>
+                      <button class="grid-nav-btn" id="grid-btn-single-record" title="Visualizador de Registro Individual (F7)" onclick="window.TracesApp.dataGrid.openRecordViewer();">🔍 F7</button>
                     </div>
 
-                    <!-- Filter text box -->
-                    <div class="grid-filter-box">
-                      <span style="font-size: 11px; color: #0078d7;">🔍</span>
-                      <input type="text" id="grid-search-filter" placeholder="Filter rows in grid...">
+                    <!-- Middle: Filter & Page Size -->
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #475569;">
+                        <span>Página:</span>
+                        <select id="grid-page-size" class="toad-conn-combobox" style="height: 22px; font-size: 11px; padding: 1px 4px;" onchange="window.TracesApp.dataGrid.changePageSize(this.value)">
+                          <option value="50">50 linhas</option>
+                          <option value="100">100 linhas</option>
+                          <option value="250">250 linhas</option>
+                          <option value="500">500 linhas</option>
+                          <option value="1000">1.000 linhas</option>
+                          <option value="999999">Todas as Linhas</option>
+                        </select>
+                      </div>
+
+                      <div class="grid-filter-box">
+                        <span style="font-size: 11px; color: #64748b;">🔍</span>
+                        <input type="text" id="grid-search-filter" placeholder="Filtrar dados da grade...">
+                        <button id="grid-filter-clear" title="Limpar Filtro" style="background: none; border: none; cursor: pointer; font-size: 11px; color: #94a3b8; display: none;" onclick="window.TracesApp.dataGrid.clearFilter();">✕</button>
+                      </div>
                     </div>
 
                     <!-- Right actions -->
                     <div class="grid-actions-right">
-                      <button class="btn" id="grid-btn-export" title="Export grid data">
-                        Export Dataset
+                      <button class="btn" id="grid-btn-copy-menu" title="Opções de Cópia (Célula, Linha, TSV, SQL)" onclick="window.TracesApp.dataGrid.showCopyMenu(event);">
+                        📋 Copiar ▾
+                      </button>
+                      <button class="btn btn-primary" id="grid-btn-export" title="Exportar conjunto de dados (Excel, CSV, SQL, JSON)">
+                        📤 Exportar
                       </button>
                     </div>
                   </div>
@@ -421,8 +456,14 @@
                   </div>
 
                   <div class="grid-pagination-bar">
-                    <span id="grid-page-indicator">Record 1 of 14</span>
-                    <span style="color: #666; font-size: 10px;">Double-click cell to edit | Grid populated via Oracle Net8</span>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <span id="grid-page-indicator" style="font-weight: 600; color: #1e293b;">Registro 0 de 0</span>
+                      <span id="grid-selection-info" style="color: #64748b; font-size: 10.5px;"></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span id="grid-fetch-status" style="font-size: 10.5px; color: #0284c7;"></span>
+                      <span style="color: #94a3b8; font-size: 10px;">Clique duplo para editar | Clique direito para opções | Toad Net8</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -589,11 +630,24 @@
                 <span class="metric-value" id="plan-metric-cpu">1.28 M</span>
               </div>
             </div>
-            <div>
-              <button class="btn btn-primary" onclick="window.TracesApp.explainPlan.generatePlan(window.TracesApp.sqlEditor.textarea.value)">
-                Generate Execution Plan (Ctrl+E)
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button class="btn btn-primary" id="btn-explain-last-query" onclick="window.TracesApp.explainPlan.generatePlan()" title="Gerar Explain Plan da última query executada (Ctrl+E)">
+                🌳 Explain Última Query (Ctrl+E)
+              </button>
+              <button class="btn" id="btn-explain-cursor-query" onclick="window.TracesApp.explainPlan.generatePlanFromEditor()" title="Gerar Explain Plan da query onde o cursor está posicionado no editor">
+                🎯 Query no Cursor
               </button>
             </div>
+          </div>
+
+          <!-- Banner showing active query being explained -->
+          <div class="explain-query-strip" id="explain-query-strip">
+            <div class="explain-query-header">
+              <span class="explain-query-badge" id="explain-query-badge">ÚLTIMA QUERY EXECUTADA</span>
+              <span class="explain-query-timestamp" id="explain-query-timestamp"></span>
+              <button class="btn" style="height: 20px; font-size: 10.5px; padding: 0 8px; margin-left: auto;" onclick="window.TracesApp.explainPlan.copyCurrentSql()" title="Copiar SQL em análise">📋 Copiar SQL</button>
+            </div>
+            <div class="explain-query-text" id="explain-query-text">-- Nenhuma query analisada ainda. Execute uma consulta na Worksheet (F9) ou clique em Explain Plan.</div>
           </div>
 
           <div class="plan-body-split">
@@ -904,6 +958,7 @@
       <div class="status-cell" id="status-grid-rows" style="width: 90px;" title="Data Grid Rows">0 rows</div>
       <div class="status-cell cell-tx" id="status-db-transaction" style="width: 140px;">[Transaction: Idle]</div>
       <div class="status-cell" id="status-db-user" style="width: 220px;">[Desconectado]</div>
+      <div class="status-cell" id="status-db-os" style="width: 155px; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="Sistema Operacional do Servidor Oracle (Linux, Windows, AIX) - Clique para inspecionar no DBA Hub">[SO: Auto-Detect]</div>
       <div class="status-cell cell-grow" id="status-db-version">Pronto para conectar ao banco de dados</div>
       <div class="status-cell" id="status-db-latency" style="width: 80px;">-- ms</div>
       <div class="status-cell status-traces-badge" style="width: 120px;" title="Powered by Traces">

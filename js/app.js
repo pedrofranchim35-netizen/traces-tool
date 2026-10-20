@@ -13,6 +13,17 @@ class TracesApp {
     this.isRealDatabase = false;
     this.realDatabaseConfig = null;
     this.autoCommit = false;
+    this.serverOs = {
+      os_type: 'linux',
+      os_name: 'Linux',
+      platform_name: 'Linux x86 64-bit',
+      host_name: 'oracle-srv-01',
+      instance_name: 'ORCL',
+      file_separator: '/',
+      kill_cmd_template: 'kill -9 {spid}',
+      stack_cmd_template: 'pstack {spid}',
+      diag_tools: 'top, vmstat, iostat, sar, free -m'
+    };
     this.init();
   }
 
@@ -65,21 +76,118 @@ class TracesApp {
     return Boolean(this.isRealDatabase || (this.connectionManager && this.connectionManager.activeConn));
   }
 
+  setServerOs(osInfo) {
+    if (!osInfo) return;
+    this.serverOs = Object.assign({}, this.serverOs, osInfo);
+    const combined = `${this.serverOs.platform_name || ''} ${this.serverOs.os_name || ''} ${this.serverOs.port_string || ''}`.toUpperCase();
+    if (combined.includes('AIX') || combined.includes('RS6000') || combined.includes('IBM/AIX')) {
+      this.serverOs.os_type = 'aix';
+      if (!this.serverOs.os_name) this.serverOs.os_name = 'IBM AIX';
+      this.serverOs.file_separator = '/';
+      this.serverOs.kill_cmd_template = 'kill -9 {spid}';
+      this.serverOs.stack_cmd_template = 'procstack {spid}';
+      this.serverOs.diag_tools = 'topas, vmstat -v, lsvg, lspv, svmon, errpt';
+    } else if (combined.includes('WIN') || combined.includes('MICROSOFT')) {
+      this.serverOs.os_type = 'windows';
+      if (!this.serverOs.os_name) this.serverOs.os_name = 'Microsoft Windows';
+      this.serverOs.file_separator = '\\';
+      const inst = this.serverOs.instance_name || '%ORACLE_SID%';
+      this.serverOs.kill_cmd_template = `orakill ${inst} {spid}`;
+      this.serverOs.stack_cmd_template = 'tasklist /fi "imagename eq oracle.exe"';
+      this.serverOs.diag_tools = 'tasklist, typeperf, Get-Process, sc query, orakill';
+    } else {
+      this.serverOs.os_type = 'linux';
+      if (!this.serverOs.os_name) this.serverOs.os_name = 'Linux';
+      this.serverOs.file_separator = '/';
+      this.serverOs.kill_cmd_template = 'kill -9 {spid}';
+      this.serverOs.stack_cmd_template = 'pstack {spid}';
+      this.serverOs.diag_tools = 'top, vmstat, iostat, sar, free -m';
+    }
+
+    this.updateConnectionState();
+
+    if (this.sessionMonitor && typeof this.sessionMonitor.renderDetail === 'function') {
+      this.sessionMonitor.renderDetail();
+    }
+    if (this.dbaTools && typeof this.dbaTools.renderCurrentSubtab === 'function' && this.dbaTools.currentSubtab === 'unixmonitor') {
+      this.dbaTools.renderCurrentSubtab();
+    }
+  }
+
+  getServerOs() {
+    return this.serverOs || {
+      os_type: 'linux',
+      os_name: 'Linux',
+      platform_name: 'Linux x86 64-bit',
+      file_separator: '/',
+      kill_cmd_template: 'kill -9 {spid}'
+    };
+  }
+
+  getOsKillCommand(spid, sid, instanceName) {
+    const os = this.getServerOs();
+    const pid = spid || sid || '<spid>';
+    if (os.os_type === 'windows') {
+      const inst = instanceName || os.instance_name || 'ORCL';
+      return {
+        cmd: `orakill ${inst} ${pid}`,
+        osType: 'windows',
+        osName: 'Microsoft Windows',
+        debugCmd: `tasklist /fi "imagename eq oracle.exe" /v`,
+        explanation: `No Windows, threads dedicadas dentro do processo oracle.exe devem ser eliminadas com orakill ${inst} ${pid} para encerrar a sessão sem derrubar a instância.`
+      };
+    } else if (os.os_type === 'aix') {
+      return {
+        cmd: `kill -9 ${pid}`,
+        osType: 'aix',
+        osName: 'IBM AIX',
+        debugCmd: `procstack ${pid}`,
+        explanation: `No IBM AIX, o processo de servidor dedicado roda em nível de SO. Utilize kill -9 ${pid} para eliminação forçada ou procstack ${pid} para obter a stack de threads AIX.`
+      };
+    } else {
+      return {
+        cmd: `kill -9 ${pid}`,
+        osType: 'linux',
+        osName: 'Linux',
+        debugCmd: `pstack ${pid}`,
+        explanation: `No Linux, o processo de servidor dedicado (LOCAL=NO) pode ser finalizado no SO via kill -9 ${pid} ou inspecionado com pstack ${pid}.`
+      };
+    }
+  }
+
   updateConnectionState() {
     const isConn = this.isConnected();
     const conn = this.isRealDatabase ? this.realDatabaseConfig : this.connectionManager?.getActive();
 
     // 1. Update Title & Status Bar
     if (isConn && conn) {
+      if (!this.isRealDatabase && conn.osType) {
+        this.serverOs = {
+          os_type: conn.osType,
+          os_name: conn.osName,
+          platform_name: conn.platform,
+          host_name: conn.host,
+          instance_name: conn.instanceName || conn.serviceName || 'ORCL',
+          file_separator: conn.osType === 'windows' ? '\\' : '/',
+          path_example: conn.osType === 'windows' ? 'D:\\app\\oracle\\oradata' : conn.osType === 'aix' ? '/oracle/oradata' : '/u01/app/oracle/oradata',
+          kill_cmd_template: conn.osType === 'windows' ? `orakill ${conn.instanceName || conn.serviceName || 'ORCL'} {spid}` : 'kill -9 {spid}',
+          stack_cmd_template: conn.osType === 'windows' ? 'tasklist /fi "imagename eq oracle.exe"' : conn.osType === 'aix' ? 'procstack {spid}' : 'pstack {spid}',
+          diag_tools: conn.osType === 'windows' ? 'tasklist, typeperf, Get-Process, sc query, orakill' : conn.osType === 'aix' ? 'topas, vmstat -v, lsvg, lspv, svmon, errpt' : 'top, vmstat, iostat, sar, free -m'
+        };
+      }
+
+      const totalActive = this.connectionManager?.activeConnections?.size || 1;
+      const multiSuffix = totalActive > 1 ? ` [${totalActive} Bancos Conectados]` : '';
       const connStr = `${conn.user}@${conn.host || 'localhost'}:${conn.port || 1521}/${conn.serviceName || conn.service_name || 'ORCL'}`;
-      document.title = `Toad for Oracle - [${connStr}]`;
+      document.title = `Toad for Oracle - [${connStr}]${multiSuffix}`;
       const titleEl = document.getElementById('toad-window-title');
-      if (titleEl) titleEl.textContent = `Toad for Oracle - [${connStr}]`;
+      if (titleEl) titleEl.textContent = `Toad for Oracle - [${connStr}]${multiSuffix}`;
       
       const mbStatus = document.getElementById('toad-mb-status');
       if (mbStatus) {
         mbStatus.className = 'toad-menubar-status connected';
-        mbStatus.innerHTML = `<span class="mb-status-dot"></span><span>${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}</span>`;
+        const multiBadge = totalActive > 1 ? ` <span style="background: #15803d; color: #fff; font-size: 9.5px; padding: 1px 6px; border-radius: 8px; font-weight: 700; margin-left: 5px;">${totalActive} DBs</span>` : '';
+        mbStatus.innerHTML = `<span class="mb-status-dot"></span><span>${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}</span>${multiBadge}`;
       }
       const startBadge = document.getElementById('start-header-status-badge');
       if (startBadge) {
@@ -93,9 +201,20 @@ class TracesApp {
       const userEl = document.getElementById('status-db-user');
       const verEl = document.getElementById('status-db-version');
       const latEl = document.getElementById('status-db-latency');
+      const osEl = document.getElementById('status-db-os');
       if (userEl) userEl.textContent = `${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}`;
       if (verEl) verEl.textContent = conn.serverVersion || 'Oracle Database 19c Enterprise Edition (AL32UTF8 | Dedicated Server)';
       if (latEl && (!latEl.textContent || latEl.textContent === '-- ms')) latEl.textContent = '0.5 ms';
+
+      if (osEl) {
+        const os = this.getServerOs();
+        const icon = os.os_type === 'windows' ? '🪟' : os.os_type === 'aix' ? '🟣' : '🐧';
+        const label = os.os_type === 'windows' ? 'Windows x64' : os.os_type === 'aix' ? 'IBM AIX' : 'Linux x86_64';
+        const badgeClass = os.os_type === 'windows' ? 'os-windows' : os.os_type === 'aix' ? 'os-aix' : 'os-linux';
+        osEl.innerHTML = `<span class="toad-os-badge ${badgeClass}">${icon} ${label}</span>`;
+        osEl.title = `Host SO: ${os.os_name} (${os.platform_name || ''}) | Instância: ${os.instance_name || conn.serviceName || 'ORCL'} - Clique para abrir o Monitor de Servidor no DBA Hub`;
+        osEl.onclick = () => this.openWindow('dba', 'unixmonitor');
+      }
 
       const startAlert = document.getElementById('start-alert-box');
       if (startAlert) {
@@ -127,9 +246,14 @@ class TracesApp {
       const userEl = document.getElementById('status-db-user');
       const verEl = document.getElementById('status-db-version');
       const latEl = document.getElementById('status-db-latency');
+      const osEl = document.getElementById('status-db-os');
       if (userEl) userEl.textContent = '[Desconectado]';
       if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
       if (latEl) latEl.textContent = '-- ms';
+      if (osEl) {
+        osEl.innerHTML = `<span>🖥️</span> <span>[SO: Auto]</span>`;
+        osEl.title = 'Host SO: Detectado automaticamente ao conectar (Linux, Windows, AIX)';
+      }
 
       const startBadge = document.getElementById('start-header-status-badge');
       if (startBadge) {
@@ -378,6 +502,9 @@ class TracesApp {
       if (data.connection && data.connection.status === 'CONNECTED') {
         this.isRealDatabase = true;
         this.realDatabaseConfig = data.connection.config;
+        if (data.connection.os) {
+          this.setServerOs(data.connection.os);
+        }
         this.updateConnectionState();
 
         // If currently on Start Page, switch to SQL Editor automatically (authentic Toad behavior)
@@ -465,7 +592,10 @@ class TracesApp {
 
     // Component-specific hooks on switch
     if (viewKey === 'sessions' && this.sessionMonitor) {
-      this.sessionMonitor.renderGauges();
+      this.sessionMonitor.refresh(true);
+    }
+    if (viewKey === 'explain' && this.explainPlan) {
+      this.explainPlan.onViewActivated();
     }
   }
 
@@ -528,11 +658,11 @@ class TracesApp {
         e.preventDefault();
         this.sqlEditor.rollbackTransaction();
       }
-      // Global Ctrl+E / Cmd+E: Explain Plan
+      // Global Ctrl+E / Cmd+E: Explain Plan (target last executed query)
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         this.openWindow('explain');
-        this.explainPlan.generatePlan(this.sqlEditor.textarea.value);
+        this.explainPlan.generatePlan();
       }
       // Global Ctrl+B / Cmd+B: Schema Browser
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
