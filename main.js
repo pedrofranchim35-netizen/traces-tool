@@ -174,6 +174,14 @@ async function applyGitHubUpdate(event) {
 
     if (event) event.sender.send('update-progress', { stage: 'copying', text: 'Aplicando arquivos ao aplicativo...' });
 
+    // Parar processo Python ativo para liberar recursos do sistema
+    if (pythonProcess) {
+      try {
+        pythonProcess.kill();
+        pythonProcess = null;
+      } catch (e) {}
+    }
+
     const sourceFolder = path.join(extractDir, `${REPO_NAME}-${BRANCH}`);
     const appDir = getAppDirectory();
 
@@ -181,7 +189,7 @@ async function applyGitHubUpdate(event) {
       if (!fs.existsSync(to)) fs.mkdirSync(to, { recursive: true });
       const entries = fs.readdirSync(from, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.name === '.git' || entry.name === 'dist-win' || entry.name.endsWith('.exe')) continue;
+        if (entry.name === '.git' || entry.name === 'dist-win' || entry.name === 'python' || entry.name.endsWith('.exe')) continue;
         const srcPath = path.join(from, entry.name);
         const destPath = path.join(to, entry.name);
         if (entry.isDirectory()) {
@@ -190,7 +198,7 @@ async function applyGitHubUpdate(event) {
           try {
             fs.copyFileSync(srcPath, destPath);
           } catch (e) {
-            // Ignora arquivos bloqueados em execução (ex: DLLs do Python ativo)
+            // Ignora arquivos bloqueados em execução (ex: DLLs ou binários ativos)
           }
         }
       }

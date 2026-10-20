@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
 
-# Python cache
+# Python runtime & cache
+python/
 __pycache__/
 *.py[cod]
 *$py.class
