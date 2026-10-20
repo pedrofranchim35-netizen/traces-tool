@@ -303,3 +303,74 @@
 .console-line.error { color: #c00000; }
 .console-line.info { color: #0000ff; }
 .console-line.dbms { color: #7f3f00; font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   TOAD CODE INSIGHT (INTELLISENSE & AUTOCOMPLETE POPUP)
+   -------------------------------------------------------------------------- */
+.toad-code-insight {
+  position: absolute;
+  z-index: 5000;
+  background: #ffffff;
+  border: 1px solid #7f9db9;
+  box-shadow: 2px 2px 14px rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+  max-height: 240px;
+  width: 290px;
+  overflow-y: auto;
+  font-family: var(--toad-font-ui);
+  font-size: 11.5px;
+  display: none;
+  user-select: none;
+}
+
+.toad-code-insight.visible {
+  display: block;
+}
+
+.insight-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 60ms ease, color 60ms ease;
+}
+
+.insight-item:hover,
+.insight-item.selected {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+}
+
+.insight-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-item-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.insight-item-text {
+  font-weight: 600;
+}
+
+.insight-item-type {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-left: 8px;
+}
+
+.insight-item:hover .insight-item-type,
+.insight-item.selected .insight-item-type {
+  color: #e0f2fe !important;
+}

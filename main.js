@@ -209,15 +209,16 @@ async function applyGitHubUpdate(event) {
 
     // Garantir dependências no Python embutido após atualização
     const embeddedPy = path.join(appDir, 'python', 'python.exe');
+    const vendorDir = path.join(appDir, 'bridge', 'vendor');
     if (fs.existsSync(embeddedPy)) {
       if (event) event.sender.send('update-progress', { stage: 'deps', text: 'Verificando dependências Python (sshtunnel, oracledb)...' });
       try {
         const { execSync } = require('child_process');
-        execSync(`"${embeddedPy}" -c "import sshtunnel, paramiko, oracledb"`, { stdio: 'ignore', timeout: 5000 });
+        execSync(`"${embeddedPy}" -c "import sys; sys.path.insert(0, r'${vendorDir}'); import sshtunnel, paramiko, oracledb"`, { stdio: 'ignore', timeout: 5000 });
       } catch (e) {
         try {
           const { execSync } = require('child_process');
-          execSync(`"${embeddedPy}" -m pip install oracledb sshtunnel paramiko bcrypt --quiet --no-warn-script-location`, { stdio: 'ignore', timeout: 120000 });
+          execSync(`"${embeddedPy}" -m pip install oracledb sshtunnel paramiko bcrypt --quiet --no-warn-script-location`, { stdio: 'ignore', timeout: 30000 });
         } catch (e2) {}
       }
     }

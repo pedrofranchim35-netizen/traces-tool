@@ -70,18 +70,24 @@ END;`
     this.consoleDbms = document.getElementById('console-dbms-output');
     this.consoleScript = document.getElementById('console-script-output');
     this.autotraceTable = document.getElementById('autotrace-metrics-body');
+
+    this.initCodeInsight();
   }
 
   bindEvents() {
     if (this.textarea) {
-      this.textarea.addEventListener('input', () => {
+      this.textarea.addEventListener('input', (e) => {
         this.saveActiveTabContent();
         this.scheduleGutterUpdate();
         this.updateCursorPosition();
+        this.scheduleCodeInsight(e);
       });
 
       this.textarea.addEventListener('keyup', () => this.updateCursorPosition());
-      this.textarea.addEventListener('click', () => this.updateCursorPosition());
+      this.textarea.addEventListener('click', () => {
+        this.updateCursorPosition();
+        this.hideInsight();
+      });
       this.textarea.addEventListener('select', () => this.updateCursorPosition());
 
       this.textarea.addEventListener('scroll', () => {
@@ -92,10 +98,42 @@ END;`
         if (this.gutterEl) {
           this.gutterEl.scrollTop = this.textarea.scrollTop;
         }
+        this.hideInsight();
       });
 
       // Keyboard Shortcuts inside Editor
       this.textarea.addEventListener('keydown', (e) => {
+        // Handle Code Insight autocomplete navigation
+        if (this.isInsightVisible()) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.navigateInsight(1);
+            return;
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.navigateInsight(-1);
+            return;
+          }
+          if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            this.applySelectedInsight();
+            return;
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            this.hideInsight();
+            return;
+          }
+        }
+
+        // Trigger Code Insight manually via Ctrl+Space
+        if ((e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === ' ')) {
+          e.preventDefault();
+          this.triggerCodeInsight(true);
+          return;
+        }
+
         if (e.key === 'F9') {
           e.preventDefault();
           this.executeStatement();
@@ -866,6 +904,368 @@ END;`
     this.textarea.focus();
 
     window.TracesApp.notify(`Snippet "${text.split('(')[0]}" inserido no editor.`, 'info');
+  }
+
+  /* --------------------------------------------------------------------------
+     TOAD CODE INSIGHT (INTELLISENSE AUTOCOMPLETE ENGINE)
+     -------------------------------------------------------------------------- */
+  initCodeInsight() {
+    this.insightEl = document.getElementById('toad-code-insight');
+    if (!this.insightEl) {
+      this.insightEl = document.createElement('div');
+      this.insightEl.id = 'toad-code-insight';
+      this.insightEl.className = 'toad-code-insight';
+      const container = document.querySelector('.editor-textarea-container');
+      if (container) {
+        container.appendChild(this.insightEl);
+      } else {
+        document.body.appendChild(this.insightEl);
+      }
+    }
+
+    this.insightItems = [];
+    this.insightSelectedIndex = 0;
+    this.insightTimer = null;
+
+    // Toad Standard Oracle Autocomplete Dictionary
+    this.insightDictionary = [
+      // SQL & PL/SQL Keywords
+      { text: 'SELECT', type: 'Keyword', icon: '🔤' },
+      { text: 'FROM', type: 'Keyword', icon: '🔤' },
+      { text: 'WHERE', type: 'Keyword', icon: '🔤' },
+      { text: 'ORDER BY', type: 'Keyword', icon: '🔤' },
+      { text: 'GROUP BY', type: 'Keyword', icon: '🔤' },
+      { text: 'HAVING', type: 'Keyword', icon: '🔤' },
+      { text: 'INSERT INTO', type: 'Keyword', icon: '🔤' },
+      { text: 'VALUES', type: 'Keyword', icon: '🔤' },
+      { text: 'UPDATE', type: 'Keyword', icon: '🔤' },
+      { text: 'SET', type: 'Keyword', icon: '🔤' },
+      { text: 'DELETE FROM', type: 'Keyword', icon: '🔤' },
+      { text: 'MERGE INTO', type: 'Keyword', icon: '🔤' },
+      { text: 'CREATE TABLE', type: 'Keyword', icon: '🔤' },
+      { text: 'ALTER TABLE', type: 'Keyword', icon: '🔤' },
+      { text: 'DROP TABLE', type: 'Keyword', icon: '🔤' },
+      { text: 'TRUNCATE TABLE', type: 'Keyword', icon: '🔤' },
+      { text: 'BEGIN', type: 'Keyword', icon: '🔤' },
+      { text: 'DECLARE', type: 'Keyword', icon: '🔤' },
+      { text: 'END;', type: 'Keyword', icon: '🔤' },
+      { text: 'EXCEPTION', type: 'Keyword', icon: '🔤' },
+      { text: 'WHEN OTHERS THEN', type: 'Keyword', icon: '🔤' },
+      { text: 'COMMIT;', type: 'Keyword', icon: '🔤' },
+      { text: 'ROLLBACK;', type: 'Keyword', icon: '🔤' },
+      { text: 'DISTINCT', type: 'Keyword', icon: '🔤' },
+      { text: 'INNER JOIN', type: 'Keyword', icon: '🔤' },
+      { text: 'LEFT OUTER JOIN', type: 'Keyword', icon: '🔤' },
+      { text: 'RIGHT OUTER JOIN', type: 'Keyword', icon: '🔤' },
+      { text: 'UNION ALL', type: 'Keyword', icon: '🔤' },
+      { text: 'UNION', type: 'Keyword', icon: '🔤' },
+      { text: 'INTERSECT', type: 'Keyword', icon: '🔤' },
+      { text: 'MINUS', type: 'Keyword', icon: '🔤' },
+      { text: 'ROWNUM', type: 'Keyword', icon: '🔤' },
+      { text: 'ROWID', type: 'Keyword', icon: '🔤' },
+      { text: 'SYSDATE', type: 'Keyword', icon: '🔤' },
+      { text: 'SYSTIMESTAMP', type: 'Keyword', icon: '🔤' },
+      { text: 'DUAL', type: 'Table', icon: '📦' },
+
+      // Functions
+      { text: 'COUNT()', type: 'Function', icon: '⚙', snippet: 'COUNT(*)' },
+      { text: 'SUM()', type: 'Function', icon: '⚙', snippet: 'SUM()' },
+      { text: 'AVG()', type: 'Function', icon: '⚙', snippet: 'AVG()' },
+      { text: 'MIN()', type: 'Function', icon: '⚙', snippet: 'MIN()' },
+      { text: 'MAX()', type: 'Function', icon: '⚙', snippet: 'MAX()' },
+      { text: 'NVL()', type: 'Function', icon: '⚙', snippet: 'NVL(, 0)' },
+      { text: 'NVL2()', type: 'Function', icon: '⚙', snippet: 'NVL2(, , )' },
+      { text: 'COALESCE()', type: 'Function', icon: '⚙', snippet: 'COALESCE()' },
+      { text: 'DECODE()', type: 'Function', icon: '⚙', snippet: 'DECODE()' },
+      { text: 'TO_CHAR()', type: 'Function', icon: '⚙', snippet: "TO_CHAR(, 'YYYY-MM-DD')" },
+      { text: 'TO_DATE()', type: 'Function', icon: '⚙', snippet: "TO_DATE(, 'YYYY-MM-DD')" },
+      { text: 'TO_NUMBER()', type: 'Function', icon: '⚙', snippet: 'TO_NUMBER()' },
+      { text: 'SUBSTR()', type: 'Function', icon: '⚙', snippet: 'SUBSTR(, 1, )' },
+      { text: 'INSTR()', type: 'Function', icon: '⚙', snippet: 'INSTR()' },
+      { text: 'LENGTH()', type: 'Function', icon: '⚙', snippet: 'LENGTH()' },
+      { text: 'TRIM()', type: 'Function', icon: '⚙', snippet: 'TRIM()' },
+      { text: 'UPPER()', type: 'Function', icon: '⚙', snippet: 'UPPER()' },
+      { text: 'LOWER()', type: 'Function', icon: '⚙', snippet: 'LOWER()' },
+      { text: 'REPLACE()', type: 'Function', icon: '⚙', snippet: 'REPLACE()' },
+      { text: 'ROUND()', type: 'Function', icon: '⚙', snippet: 'ROUND(, 2)' },
+      { text: 'TRUNC()', type: 'Function', icon: '⚙', snippet: 'TRUNC()' },
+      { text: 'ROW_NUMBER()', type: 'Function', icon: '⚙', snippet: 'ROW_NUMBER() OVER (ORDER BY )' },
+      { text: 'LISTAGG()', type: 'Function', icon: '⚙', snippet: "LISTAGG(, ', ') WITHIN GROUP (ORDER BY )" },
+
+      // System / Data Dictionary Views
+      { text: 'V$SESSION', type: 'View', icon: '👁' },
+      { text: 'V$PROCESS', type: 'View', icon: '👁' },
+      { text: 'V$SQL', type: 'View', icon: '👁' },
+      { text: 'V$SQLAREA', type: 'View', icon: '👁' },
+      { text: 'V$INSTANCE', type: 'View', icon: '👁' },
+      { text: 'V$DATABASE', type: 'View', icon: '👁' },
+      { text: 'V$LOCK', type: 'View', icon: '👁' },
+      { text: 'V$LATCH', type: 'View', icon: '👁' },
+      { text: 'V$VERSION', type: 'View', icon: '👁' },
+      { text: 'ALL_TABLES', type: 'View', icon: '👁' },
+      { text: 'ALL_TAB_COLUMNS', type: 'View', icon: '👁' },
+      { text: 'ALL_VIEWS', type: 'View', icon: '👁' },
+      { text: 'ALL_OBJECTS', type: 'View', icon: '👁' },
+      { text: 'ALL_INDEXES', type: 'View', icon: '👁' },
+      { text: 'ALL_CONSTRAINTS', type: 'View', icon: '👁' },
+      { text: 'ALL_USERS', type: 'View', icon: '👁' },
+      { text: 'ALL_SOURCE', type: 'View', icon: '👁' },
+      { text: 'ALL_SEQUENCES', type: 'View', icon: '👁' },
+      { text: 'ALL_SYNONYMS', type: 'View', icon: '👁' },
+      { text: 'ALL_TRIGGERS', type: 'View', icon: '👁' },
+      { text: 'DBA_TABLES', type: 'View', icon: '👁' },
+      { text: 'DBA_USERS', type: 'View', icon: '👁' },
+      { text: 'DBA_DATA_FILES', type: 'View', icon: '👁' },
+      { text: 'DBA_TABLESPACES', type: 'View', icon: '👁' },
+      { text: 'USER_TABLES', type: 'View', icon: '👁' },
+      { text: 'USER_TAB_COLUMNS', type: 'View', icon: '👁' },
+      { text: 'USER_VIEWS', type: 'View', icon: '👁' },
+
+      // Common Packages
+      { text: 'DBMS_OUTPUT.PUT_LINE', type: 'Procedure', icon: '⚡', snippet: "DBMS_OUTPUT.PUT_LINE('');" },
+      { text: 'DBMS_OUTPUT.ENABLE', type: 'Procedure', icon: '⚡', snippet: 'DBMS_OUTPUT.ENABLE(NULL);' },
+      { text: 'DBMS_LOCK.SLEEP', type: 'Procedure', icon: '⚡', snippet: 'DBMS_LOCK.SLEEP(1);' },
+      { text: 'DBMS_METADATA.GET_DDL', type: 'Function', icon: '⚙', snippet: "DBMS_METADATA.GET_DDL('TABLE', 'TABLE_NAME', 'SCHEMA')" }
+    ];
+  }
+
+  isInsightVisible() {
+    return this.insightEl && this.insightEl.classList.contains('visible') && this.insightItems.length > 0;
+  }
+
+  scheduleCodeInsight(e) {
+    if (this.insightTimer) clearTimeout(this.insightTimer);
+    
+    // Se o usuário digitou espaço, quebra de linha ou pontuação final, esconde o insight
+    const char = e && e.data;
+    if (char === ' ' || char === '\n' || char === ';' || char === ',') {
+      this.hideInsight();
+      return;
+    }
+
+    this.insightTimer = setTimeout(() => {
+      this.triggerCodeInsight(false);
+    }, 70);
+  }
+
+  getWordBeforeCaret() {
+    if (!this.textarea) return { word: '', start: 0, end: 0, dotContext: null };
+    const pos = this.textarea.selectionStart || 0;
+    const text = this.textarea.value;
+    
+    let start = pos;
+    while (start > 0 && /[a-zA-Z0-9_$#.]/.test(text[start - 1])) {
+      start--;
+    }
+    const raw = text.substring(start, pos);
+    let dotContext = null;
+    let word = raw;
+    if (raw.includes('.')) {
+      const parts = raw.split('.');
+      word = parts.pop();
+      dotContext = parts.join('.');
+    }
+    return { word, start: pos - word.length, end: pos, dotContext, fullToken: raw };
+  }
+
+  triggerCodeInsight(force = false) {
+    if (!this.textarea || !this.insightEl) return;
+
+    const info = this.getWordBeforeCaret();
+    const token = info.word.toUpperCase();
+    const dot = info.dotContext ? info.dotContext.toUpperCase() : null;
+
+    if (!force && token.length < 2 && !dot) {
+      this.hideInsight();
+      return;
+    }
+
+    let candidates = [];
+
+    // Se temos contexto de ponto (ex: TABELA. ou DBMS_OUTPUT.)
+    if (dot) {
+      if (dot.includes('DBMS_OUTPUT')) {
+        candidates = [
+          { text: 'PUT_LINE', type: 'Procedure', icon: '⚡', snippet: "PUT_LINE('');" },
+          { text: 'ENABLE', type: 'Procedure', icon: '⚡', snippet: 'ENABLE(NULL);' },
+          { text: 'DISABLE', type: 'Procedure', icon: '⚡', snippet: 'DISABLE;' },
+          { text: 'GET_LINE', type: 'Procedure', icon: '⚡', snippet: 'GET_LINE(, );' }
+        ];
+      } else if (dot.includes('V$SESSION')) {
+        candidates = [
+          { text: 'SID', type: 'Column', icon: '📄' },
+          { text: 'SERIAL#', type: 'Column', icon: '📄' },
+          { text: 'USERNAME', type: 'Column', icon: '📄' },
+          { text: 'STATUS', type: 'Column', icon: '📄' },
+          { text: 'OSUSER', type: 'Column', icon: '📄' },
+          { text: 'MACHINE', type: 'Column', icon: '📄' },
+          { text: 'PROGRAM', type: 'Column', icon: '📄' },
+          { text: 'SQL_ID', type: 'Column', icon: '📄' },
+          { text: 'EVENT', type: 'Column', icon: '📄' }
+        ];
+      } else {
+        // Tentar obter colunas do Schema Browser
+        const sb = window.TracesApp && window.TracesApp.schemaBrowser;
+        if (sb && sb.tableColumns && sb.tableColumns[dot]) {
+          candidates = sb.tableColumns[dot].map(c => ({
+            text: c.name || c.COLUMN_NAME,
+            type: 'Column',
+            icon: '📄'
+          }));
+        } else {
+          // Colunas padrão genéricas para tabelas Oracle
+          candidates = [
+            { text: 'ID', type: 'Column', icon: '📄' },
+            { text: 'NAME', type: 'Column', icon: '📄' },
+            { text: 'STATUS', type: 'Column', icon: '📄' },
+            { text: 'CREATED_DATE', type: 'Column', icon: '📄' },
+            { text: 'UPDATED_DATE', type: 'Column', icon: '📄' },
+            { text: 'DESCRIPTION', type: 'Column', icon: '📄' }
+          ];
+        }
+      }
+    } else {
+      // Palavras do dicionário padrão
+      candidates = [...this.insightDictionary];
+
+      // Adicionar tabelas conhecidas do Schema Browser
+      const sb = window.TracesApp && window.TracesApp.schemaBrowser;
+      if (sb && Array.isArray(sb.cachedObjects)) {
+        sb.cachedObjects.slice(0, 100).forEach(obj => {
+          candidates.push({
+            text: obj.name || obj.OBJECT_NAME,
+            type: obj.type || 'Table',
+            icon: obj.type === 'VIEW' ? '👁' : (obj.type === 'PROCEDURE' ? '⚡' : '📦')
+          });
+        });
+      }
+    }
+
+    // Filtrar candidatos pelo que o usuário já digitou
+    let filtered = candidates.filter(item => {
+      if (!token) return true;
+      return item.text.toUpperCase().startsWith(token) || item.text.toUpperCase().includes(token);
+    });
+
+    if (filtered.length === 0) {
+      this.hideInsight();
+      return;
+    }
+
+    // Limitar a 18 sugestões para alta performance
+    this.insightItems = filtered.slice(0, 18);
+    this.insightSelectedIndex = 0;
+    this.renderInsightItems();
+
+    // Posicionar o popup perto do cursor
+    this.positionInsightPopup();
+    this.insightEl.classList.add('visible');
+  }
+
+  positionInsightPopup() {
+    if (!this.textarea || !this.insightEl) return;
+
+    const pos = this.textarea.selectionStart || 0;
+    const text = this.textarea.value.substring(0, pos);
+    const lines = text.split('\n');
+    const lineIndex = lines.length - 1;
+    const colIndex = lines[lineIndex].length;
+
+    const lineHeight = 19;
+    const charWidth = 7.8;
+
+    const container = this.textarea.parentElement || this.textarea;
+    const containerRect = container.getBoundingClientRect();
+
+    let top = (lineIndex * lineHeight) - this.textarea.scrollTop + lineHeight + 12;
+    let left = (colIndex * charWidth) - this.textarea.scrollLeft + 12;
+
+    // Manter dentro dos limites da tela/container
+    if (left + 300 > containerRect.width) {
+      left = Math.max(10, containerRect.width - 310);
+    }
+    if (top + 240 > containerRect.height && top > 240) {
+      top = top - 240 - lineHeight;
+    }
+
+    this.insightEl.style.top = `${Math.max(4, top)}px`;
+    this.insightEl.style.left = `${Math.max(4, left)}px`;
+  }
+
+  renderInsightItems() {
+    if (!this.insightEl) return;
+    this.insightEl.innerHTML = this.insightItems.map((item, idx) => `
+      <div class="insight-item ${idx === this.insightSelectedIndex ? 'selected' : ''}" data-index="${idx}" onmousedown="event.preventDefault(); window.TracesApp.sqlEditor.applyInsightByIndex(${idx})">
+        <div class="insight-item-left">
+          <span class="insight-item-icon">${item.icon || '🔤'}</span>
+          <span class="insight-item-text">${this.escapeHtml(item.text)}</span>
+        </div>
+        <span class="insight-item-type">${item.type}</span>
+      </div>
+    `).join('');
+
+    // Rolar item selecionado para a visão
+    const selEl = this.insightEl.querySelector('.insight-item.selected');
+    if (selEl) {
+      selEl.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  navigateInsight(delta) {
+    if (this.insightItems.length === 0) return;
+    this.insightSelectedIndex = (this.insightSelectedIndex + delta + this.insightItems.length) % this.insightItems.length;
+    this.renderInsightItems();
+  }
+
+  applyInsightByIndex(idx) {
+    this.insightSelectedIndex = idx;
+    this.applySelectedInsight();
+  }
+
+  applySelectedInsight() {
+    if (!this.isInsightVisible() || !this.insightItems[this.insightSelectedIndex]) {
+      this.hideInsight();
+      return;
+    }
+
+    const item = this.insightItems[this.insightSelectedIndex];
+    const info = this.getWordBeforeCaret();
+    const insertText = item.snippet || item.text;
+
+    const text = this.textarea.value;
+    const before = text.substring(0, info.start);
+    const after = text.substring(info.end);
+
+    this.textarea.value = before + insertText + after;
+    
+    // Posicionar cursor: se inseriu com parênteses, posicionar entre parênteses
+    let newCursorPos = before.length + insertText.length;
+    if (insertText.endsWith("');")) {
+      newCursorPos = before.length + insertText.length - 3;
+    } else if (insertText.endsWith(");")) {
+      newCursorPos = before.length + insertText.length - 2;
+    } else if (insertText.endsWith("')")) {
+      newCursorPos = before.length + insertText.length - 2;
+    } else if (insertText.endsWith(')')) {
+      newCursorPos = before.length + insertText.length - 1;
+    }
+
+    this.textarea.selectionStart = this.textarea.selectionEnd = newCursorPos;
+    this.hideInsight();
+    this.saveActiveTabContent();
+    this.updateHighlighting();
+    this.updateGutter();
+    this.textarea.focus();
+  }
+
+  hideInsight() {
+    if (this.insightTimer) clearTimeout(this.insightTimer);
+    if (this.insightEl) {
+      this.insightEl.classList.remove('visible');
+      this.insightEl.innerHTML = '';
+    }
+    this.insightItems = [];
+    this.insightSelectedIndex = 0;
   }
 }
 

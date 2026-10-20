@@ -39,23 +39,37 @@ import tempfile
 import ssl
 from datetime import datetime, date
 
+# ------------------------------------------------------------------------------
+# 1. CONFIGURAR DIRETÓRIO VENDOR EMBUTIDO (OFFLINE-FIRST / CORPORATIVO)
+# ------------------------------------------------------------------------------
+VENDOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
+if os.path.isdir(VENDOR_DIR) and VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
+
+ROOT_VENDOR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor")
+if os.path.isdir(ROOT_VENDOR) and ROOT_VENDOR not in sys.path:
+    sys.path.insert(0, ROOT_VENDOR)
+
 ORACLEDB_AVAILABLE = False
 SSHTUNNEL_AVAILABLE = False
 SSHTunnelForwarder = None
 
 def ensure_python_dependencies():
     """
-    Verifica e instala automaticamente dependências faltantes (sshtunnel, paramiko, oracledb, bcrypt)
-    para garantir que nenhuma funcionalidade do TOAD ou da ponte SSH falhe por falta de biblioteca.
+    Verifica e carrega automaticamente as dependências (sshtunnel, paramiko, oracledb, bcrypt).
+    Prioriza o diretório vendor embutido local (100% offline para redes corporativas/DMZ).
     """
     global ORACLEDB_AVAILABLE, SSHTUNNEL_AVAILABLE, SSHTunnelForwarder, oracledb, sshtunnel
-    missing = []
     
+    # Garantir caminhos vendor no sys.path
+    for v_dir in [VENDOR_DIR, ROOT_VENDOR]:
+        if os.path.isdir(v_dir) and v_dir not in sys.path:
+            sys.path.insert(0, v_dir)
+
     try:
         import oracledb
         ORACLEDB_AVAILABLE = True
     except ImportError:
-        missing.append("oracledb")
         ORACLEDB_AVAILABLE = False
 
     try:
@@ -65,36 +79,24 @@ def ensure_python_dependencies():
         sshtunnel.TUNNEL_TIMEOUT = 10.0
         SSHTUNNEL_AVAILABLE = True
     except ImportError:
-        missing.extend(["sshtunnel", "paramiko", "bcrypt"])
         SSHTUNNEL_AVAILABLE = False
 
-    if missing:
-        print(f"[TRACES Auto-Dependency] Bibliotecas ausentes: {missing}. Instalando automaticamente...")
+    # Se ainda faltar algo, tentar pip como fallback (caso tenha internet)
+    if not ORACLEDB_AVAILABLE or not SSHTUNNEL_AVAILABLE:
+        missing = []
+        if not ORACLEDB_AVAILABLE: missing.append("oracledb")
+        if not SSHTUNNEL_AVAILABLE: missing.extend(["sshtunnel", "paramiko", "bcrypt"])
+        
+        print(f"[TRACES Auto-Dependency] Bibliotecas ausentes: {missing}. Tentando pip online como fallback...")
         try:
-            import subprocess
             py_exe = sys.executable
             cmd = [py_exe, "-m", "pip", "install", *missing, "--quiet", "--no-warn-script-location"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
-            
-            if res.returncode != 0 and b"No module named pip" in res.stderr:
-                print("[TRACES Auto-Dependency] Instalando pip no Python embutido...")
-                import urllib.request
-                import tempfile
-                get_pip_path = os.path.join(tempfile.gettempdir(), "get-pip.py")
-                urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path)
-                subprocess.run([py_exe, get_pip_path, "--no-warn-script-location", "--quiet"], timeout=120)
-                try:
-                    os.remove(get_pip_path)
-                except Exception:
-                    pass
-                subprocess.run([py_exe, "-m", "pip", "install", *missing, "--quiet", "--no-warn-script-location"], timeout=120)
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
 
             try:
                 import oracledb
                 ORACLEDB_AVAILABLE = True
-                print("[TRACES Auto-Dependency] oracledb carregado com sucesso!")
-            except Exception as e:
-                print(f"[TRACES Auto-Dependency] oracledb aviso: {e}")
+            except Exception: pass
 
             try:
                 import sshtunnel
@@ -102,14 +104,16 @@ def ensure_python_dependencies():
                 sshtunnel.SSH_TIMEOUT = 10.0
                 sshtunnel.TUNNEL_TIMEOUT = 10.0
                 SSHTUNNEL_AVAILABLE = True
-                print("[TRACES Auto-Dependency] sshtunnel e paramiko carregados com sucesso!")
-            except Exception as e:
-                print(f"[TRACES Auto-Dependency] sshtunnel aviso: {e}")
+            except Exception: pass
         except Exception as e:
-            print(f"[TRACES Auto-Dependency] Falha na auto-instalação: {e}")
+            print(f"[TRACES Auto-Dependency] Falha no fallback pip online: {e}")
 
 # Executa verificação inicial de dependências no startup
 ensure_python_dependencies()
+if SSHTUNNEL_AVAILABLE:
+    print("[TRACES] Suporte a Túnel SSH Bastion / Ponte ativado com sucesso!")
+if ORACLEDB_AVAILABLE:
+    print("[TRACES] Driver Oracle Nativo (Thin/Thick) carregado com sucesso!")
 
 PORT = 3033
 WEB_ROOT = os.path.dirname(os.path.abspath(__file__))

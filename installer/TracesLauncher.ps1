@@ -187,7 +187,8 @@ if (-not $HasRealPython) {
 
 # 6. Instalar drivers python-oracledb, sshtunnel e paramiko (Ponte SSH)
 Write-Host "      Verificando drivers (oracledb, sshtunnel, paramiko)..." -ForegroundColor Gray
-& $PyExe -c "import oracledb, sshtunnel, paramiko" 2>$null
+$VendorDir = Join-Path $AppDir "bridge\vendor"
+& $PyExe -c "import sys; sys.path.insert(0, r'$VendorDir'); import oracledb, sshtunnel, paramiko" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      Instalando dependencias (oracledb, sshtunnel, paramiko)..." -ForegroundColor Yellow
     & $PyExe -m pip install oracledb sshtunnel paramiko --quiet 2>$null
