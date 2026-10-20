@@ -349,6 +349,130 @@ END GET_DEPT_HEADCOUNT;`
       ],
       triggers: [
         { name: 'SECURE_EMPLOYEES', status: 'VALID', table: 'EMPLOYEES', timing: 'BEFORE', event: 'INSERT OR UPDATE' }
+      ],
+      mviews: [
+        {
+          name: 'MV_EMP_SALARY_SUMMARY',
+          status: 'VALID',
+          refreshType: 'FAST',
+          refreshMode: 'ON COMMIT',
+          lastRefresh: '2026-10-20 00:00:00',
+          ddl: `CREATE MATERIALIZED VIEW "HR"."MV_EMP_SALARY_SUMMARY"
+BUILD IMMEDIATE
+REFRESH FAST ON COMMIT
+AS
+SELECT department_id, COUNT(*) as headcount, SUM(salary) as total_salary, AVG(salary) as avg_salary
+FROM employees
+GROUP BY department_id;`,
+          columns: [
+            { name: 'DEPARTMENT_ID', type: 'NUMBER(4,0)', nullable: 'N' },
+            { name: 'HEADCOUNT', type: 'NUMBER', nullable: 'N' },
+            { name: 'TOTAL_SALARY', type: 'NUMBER(12,2)', nullable: 'Y' },
+            { name: 'AVG_SALARY', type: 'NUMBER(10,2)', nullable: 'Y' }
+          ],
+          data: [
+            { DEPARTMENT_ID: 10, HEADCOUNT: 1, TOTAL_SALARY: 4400.00, AVG_SALARY: 4400.00 },
+            { DEPARTMENT_ID: 20, HEADCOUNT: 2, TOTAL_SALARY: 19000.00, AVG_SALARY: 9500.00 },
+            { DEPARTMENT_ID: 50, HEADCOUNT: 45, TOTAL_SALARY: 156400.00, AVG_SALARY: 3475.55 },
+            { DEPARTMENT_ID: 60, HEADCOUNT: 5, TOTAL_SALARY: 28800.00, AVG_SALARY: 5760.00 },
+            { DEPARTMENT_ID: 80, HEADCOUNT: 34, TOTAL_SALARY: 304500.00, AVG_SALARY: 8955.88 },
+            { DEPARTMENT_ID: 90, HEADCOUNT: 3, TOTAL_SALARY: 58000.00, AVG_SALARY: 19333.33 },
+            { DEPARTMENT_ID: 100, HEADCOUNT: 6, TOTAL_SALARY: 51608.00, AVG_SALARY: 8601.33 }
+          ]
+        }
+      ],
+      types: [
+        {
+          name: 'EMP_ADDRESS_TYP',
+          status: 'VALID',
+          ddl: `CREATE OR REPLACE TYPE "HR"."EMP_ADDRESS_TYP" AS OBJECT (
+  street_address VARCHAR2(40),
+  postal_code    VARCHAR2(10),
+  city           VARCHAR2(30),
+  state_province VARCHAR2(10),
+  country_id     CHAR(2)
+);`
+        }
+      ],
+      synonyms: [
+        {
+          name: 'SYN_DEPARTMENTS',
+          status: 'VALID',
+          targetSchema: 'HR',
+          targetObject: 'DEPARTMENTS',
+          ddl: `CREATE OR REPLACE SYNONYM "HR"."SYN_DEPARTMENTS" FOR "HR"."DEPARTMENTS";`
+        },
+        {
+          name: 'SYN_GLOBAL_SALES',
+          status: 'VALID',
+          targetSchema: 'SALES_ADMIN',
+          targetObject: 'SALES_TRANSACTIONS',
+          targetDbLink: 'ERP_PROD_LINK',
+          ddl: `CREATE OR REPLACE SYNONYM "HR"."SYN_GLOBAL_SALES" FOR "SALES_ADMIN"."SALES_TRANSACTIONS"@ERP_PROD_LINK;`
+        }
+      ],
+      indexes: [
+        { name: 'EMP_EMP_ID_PK', type: 'UNIQUE', columns: 'EMPLOYEE_ID', tablespace: 'USERS', status: 'VALID', clusteringFactor: 12 },
+        { name: 'EMP_EMAIL_UK', type: 'UNIQUE', columns: 'EMAIL', tablespace: 'USERS', status: 'VALID', clusteringFactor: 14 },
+        { name: 'EMP_NAME_IX', type: 'NONUNIQUE', columns: 'LAST_NAME, FIRST_NAME', tablespace: 'USERS', status: 'VALID', clusteringFactor: 18 },
+        { name: 'EMP_DEPT_IX', type: 'NONUNIQUE', columns: 'DEPARTMENT_ID', tablespace: 'USERS', status: 'VALID', clusteringFactor: 15 },
+        { name: 'EMP_JOB_IX', type: 'NONUNIQUE', columns: 'JOB_ID', tablespace: 'USERS', status: 'VALID', clusteringFactor: 21 },
+        { name: 'DEPT_ID_PK', type: 'UNIQUE', columns: 'DEPARTMENT_ID', tablespace: 'USERS', status: 'VALID', clusteringFactor: 4 },
+        { name: 'DEPT_LOCATION_IX', type: 'NONUNIQUE', columns: 'LOCATION_ID', tablespace: 'USERS', status: 'VALID', clusteringFactor: 6 }
+      ],
+      tablespaces: [
+        { name: 'SYSTEM', status: 'ONLINE', totalMb: 2048, usedMb: 1740, autoextend: 'YES', datafiles: 1, pct: 85, contents: 'PERMANENT', extentManagement: 'LOCAL' },
+        { name: 'SYSAUX', status: 'ONLINE', totalMb: 4096, usedMb: 2867, autoextend: 'YES', datafiles: 2, pct: 70, contents: 'PERMANENT', extentManagement: 'LOCAL' },
+        { name: 'USERS', status: 'ONLINE', totalMb: 8192, usedMb: 3440, autoextend: 'YES', datafiles: 2, pct: 42, contents: 'PERMANENT', extentManagement: 'LOCAL' },
+        { name: 'SALES_2026', status: 'ONLINE', totalMb: 32768, usedMb: 28835, autoextend: 'YES', datafiles: 4, pct: 88, contents: 'PERMANENT', extentManagement: 'LOCAL' },
+        { name: 'UNDOTBS1', status: 'ONLINE', totalMb: 4096, usedMb: 940, autoextend: 'YES', datafiles: 1, pct: 23, contents: 'UNDO', extentManagement: 'LOCAL' },
+        { name: 'TEMP', status: 'ONLINE', totalMb: 8192, usedMb: 1230, autoextend: 'YES', datafiles: 1, pct: 15, contents: 'TEMPORARY', extentManagement: 'LOCAL' }
+      ],
+      dblinks: [
+        { name: 'ERP_PROD_LINK', status: 'VALID', host: 'erp-db.corp:1521/PROD', user: 'ERP_USER', created: '2025-01-15' },
+        { name: 'DATA_LAKE_REMOTE', status: 'VALID', host: 'datalake-gateway:1521/ANALYTICS', user: 'LAKE_READER', created: '2025-06-20' },
+        { name: 'CLOUD_AZURE_SYNC', status: 'VALID', host: 'azure-oracle.cloud:1521/DW', user: 'SYNC_SVC', created: '2026-03-10' }
+      ],
+      users: [
+        { name: 'SYS', status: 'OPEN', defaultTablespace: 'SYSTEM', tempTablespace: 'TEMP', profile: 'DEFAULT', created: '2023-01-01' },
+        { name: 'SYSTEM', status: 'OPEN', defaultTablespace: 'SYSTEM', tempTablespace: 'TEMP', profile: 'DEFAULT', created: '2023-01-01' },
+        { name: 'HR', status: 'OPEN', defaultTablespace: 'USERS', tempTablespace: 'TEMP', profile: 'DEFAULT', created: '2024-04-12' },
+        { name: 'SALES_ADMIN', status: 'OPEN', defaultTablespace: 'SALES_2026', tempTablespace: 'TEMP', profile: 'APP_PROFILE', created: '2024-05-18' },
+        { name: 'SCOTT', status: 'EXPIRED', defaultTablespace: 'USERS', tempTablespace: 'TEMP', profile: 'DEFAULT', created: '2023-08-01' },
+        { name: 'APEX_PUBLIC_USER', status: 'LOCKED', defaultTablespace: 'SYSAUX', tempTablespace: 'TEMP', profile: 'DEFAULT', created: '2024-01-10' }
+      ],
+      roles: [
+        { name: 'CONNECT', status: 'VALID', authentication: 'NONE' },
+        { name: 'RESOURCE', status: 'VALID', authentication: 'NONE' },
+        { name: 'DBA', status: 'VALID', authentication: 'NONE' },
+        { name: 'SELECT_CATALOG_ROLE', status: 'VALID', authentication: 'NONE' },
+        { name: 'SALES_READER_ROLE', status: 'VALID', authentication: 'NONE' },
+        { name: 'FINANCE_ADMIN', status: 'VALID', authentication: 'NONE' }
+      ],
+      jobs: [
+        { name: 'PURGE_AUDIT_LOGS_JOB', status: 'SCHEDULED', jobType: 'PLSQL_BLOCK', repeatInterval: 'FREQ=DAILY;BYHOUR=2', nextRun: '2026-10-21 02:00:00', state: 'SCHEDULED' },
+        { name: 'GATHER_SCHEMA_STATS_JOB', status: 'SCHEDULED', jobType: 'STORED_PROCEDURE', repeatInterval: 'FREQ=WEEKLY;BYDAY=SUN;BYHOUR=1', nextRun: '2026-10-25 01:00:00', state: 'SCHEDULED' },
+        { name: 'REFRESH_SALES_MVIEWS_JOB', status: 'RUNNING', jobType: 'PLSQL_BLOCK', repeatInterval: 'FREQ=HOURLY;INTERVAL=4', nextRun: '2026-10-20 04:00:00', state: 'RUNNING' }
+      ],
+      directories: [
+        { name: 'DATA_PUMP_DIR', status: 'VALID', path: '/u01/app/oracle/admin/sales/dpdump' },
+        { name: 'ORACLE_BASE_DIR', status: 'VALID', path: '/u01/app/oracle' },
+        { name: 'LOG_EXTRACT_DIR', status: 'VALID', path: '/u02/exports/logs' }
+      ],
+      queues: [
+        { name: 'AQ$_HR_EVENT_QUEUE', status: 'VALID', queueType: 'NORMAL_QUEUE', maxRetries: 5 },
+        { name: 'SALES_ORDER_QUEUE', status: 'VALID', queueType: 'NORMAL_QUEUE', maxRetries: 3 }
+      ],
+      recyclebin: [
+        { name: 'BIN$9d8a3910$0 (TMP_CUSTOMERS_OCT)', originalName: 'TMP_CUSTOMERS_OCT', status: 'DROPPED', type: 'TABLE', tablespace: 'USERS', dropTime: '2026-10-18 11:42:19' },
+        { name: 'BIN$aa11094f$0 (BACKUP_EMPLOYEES_Q3)', originalName: 'BACKUP_EMPLOYEES_Q3', status: 'DROPPED', type: 'TABLE', tablespace: 'USERS', dropTime: '2026-10-16 09:15:33' }
+      ],
+      java: [
+        { name: 'OracleJsonUtil', status: 'VALID', type: 'JAVA SOURCE' },
+        { name: 'CryptoProvider', status: 'VALID', type: 'JAVA CLASS' }
+      ],
+      clusters: [
+        { name: 'EMP_DEPT_CLUSTER', status: 'VALID', tablespace: 'USERS' }
       ]
     },
 
