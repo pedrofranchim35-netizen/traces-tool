@@ -75,8 +75,6 @@ def ensure_python_dependencies():
     try:
         import sshtunnel
         from sshtunnel import SSHTunnelForwarder
-        sshtunnel.SSH_TIMEOUT = 10.0
-        sshtunnel.TUNNEL_TIMEOUT = 10.0
         SSHTUNNEL_AVAILABLE = True
     except ImportError:
         SSHTUNNEL_AVAILABLE = False
@@ -101,8 +99,6 @@ def ensure_python_dependencies():
             try:
                 import sshtunnel
                 from sshtunnel import SSHTunnelForwarder
-                sshtunnel.SSH_TIMEOUT = 10.0
-                sshtunnel.TUNNEL_TIMEOUT = 10.0
                 SSHTUNNEL_AVAILABLE = True
             except Exception: pass
         except Exception as e:
@@ -376,6 +372,31 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             }, status=500)
             return
 
+        # Pré-validação TCP de conectividade com o Host da Ponte (porta 22)
+        try:
+            pre_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            pre_sock.settimeout(4.0)
+            pre_sock.connect((bridge_host, bridge_port))
+            pre_sock.close()
+        except (socket.timeout, TimeoutError):
+            self.send_api_response({
+                "success": False,
+                "error": f"Tempo esgotado (timeout) ao conectar na máquina de ponte {bridge_host}:{bridge_port}. Verifique se a sua VPN corporativa está conectada e se o host está acessível da sua estação."
+            }, status=400)
+            return
+        except ConnectionRefusedError:
+            self.send_api_response({
+                "success": False,
+                "error": f"Conexão recusada pelo host {bridge_host} na porta {bridge_port}. O host respondeu mas o serviço SSH (sshd) não está rodando nessa porta."
+            }, status=400)
+            return
+        except Exception as sock_err:
+            self.send_api_response({
+                "success": False,
+                "error": f"Não foi possível alcançar o Host da Ponte {bridge_host}:{bridge_port}: {str(sock_err)}"
+            }, status=400)
+            return
+
         test_tunnel = None
         try:
             print(f"[Bridge-Test] Testando ponte SSH {bridge_host}:{bridge_port} -> destino {target_host}:{target_port}...")
@@ -383,8 +404,9 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 "ssh_address_or_host": (bridge_host, bridge_port),
                 "remote_bind_address": (target_host, target_port),
                 "local_bind_address": ("127.0.0.1", 0),
-                "set_keepalive": 10.0,
-                "allow_agent": True
+                "set_keepalive": 5.0,
+                "allow_agent": False,
+                "host_pkey_directories": []
             }
             if bridge_user:
                 tunnel_kwargs["ssh_username"] = bridge_user
@@ -397,7 +419,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             test_tunnel.start()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(6.0)
+            sock.settimeout(4.0)
             sock_result = sock.connect_ex(('127.0.0.1', test_tunnel.local_bind_port))
             sock.close()
 
@@ -424,7 +446,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     pass
             self.send_api_response({
                 "success": False,
-                "error": f"Falha na conexão com a Ponte SSH ({bridge_host}:{bridge_port}): {str(e)}"
+                "error": f"Falha na autenticação ou conexão com a Ponte SSH ({bridge_host}:{bridge_port}): {str(e)}"
             }, status=400)
 
     def handle_connect(self, payload):
@@ -486,8 +508,9 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         "ssh_address_or_host": (bridge_host, bridge_port),
                         "remote_bind_address": (host, port),
                         "local_bind_address": ("127.0.0.1", 0),
-                        "set_keepalive": 10.0,
-                        "allow_agent": True
+                        "set_keepalive": 5.0,
+                        "allow_agent": False,
+                        "host_pkey_directories": []
                     }
                     if bridge_user:
                         tunnel_kwargs["ssh_username"] = bridge_user
