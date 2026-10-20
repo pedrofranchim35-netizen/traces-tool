@@ -481,15 +481,31 @@
               </div>
             </div>
 
-            <!-- Categories Scroller -->
-            <div class="category-tabs-scroller" id="browser-category-pills"></div>
+            <!-- Toad View Style Bar (Tree / Dropdown / Tabs) -->
+            <div class="toad-browser-style-bar" id="browser-style-bar">
+              <button class="browser-style-btn active" id="btn-browser-style-tree" onclick="window.TracesApp.schemaBrowser.switchViewMode('tree')" title="Menu Expandido (Toad Tree View)">
+                <span>🌲</span><span>Menu Expandido</span>
+              </button>
+              <button class="browser-style-btn" id="btn-browser-style-dropdown" onclick="window.TracesApp.schemaBrowser.switchViewMode('dropdown')" title="Seleção por Dropdown (Toad Combobox)">
+                <span>📋</span><span>Dropdown</span>
+              </button>
+              <button class="browser-style-btn" id="btn-browser-style-tabs" onclick="window.TracesApp.schemaBrowser.switchViewMode('tabs')" title="Abas Tradicionais">
+                <span>📑</span><span>Abas</span>
+              </button>
+            </div>
+
+            <!-- Dropdown Mode Container -->
+            <div class="browser-dropdown-row" id="browser-dropdown-container" style="display: none;"></div>
+
+            <!-- Categories Scroller (Tabs Mode) -->
+            <div class="category-tabs-scroller" id="browser-category-pills" style="display: none;"></div>
 
             <!-- Filter Box -->
             <div class="object-search-bar">
               <input type="text" class="object-search-input" id="browser-object-search" placeholder="Filter objects...">
             </div>
 
-            <!-- Object List -->
+            <!-- Object List / Tree View -->
             <div class="object-list-view" id="browser-object-list"></div>
           </div>
 

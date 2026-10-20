@@ -6,6 +6,8 @@ class SchemaBrowser {
   constructor() {
     this.currentSchema = window.TRACES_DB ? window.TRACES_DB.activeSchema : 'SYS';
     this.currentCategory = 'tables';
+    this.viewMode = 'tree'; // Default: authentic Toad Menu Expandido
+    this.expandedCategories = { tables: true };
     this.selectedObject = null;
     this.currentDetailTab = 'columns';
     this.searchQuery = '';
@@ -20,6 +22,8 @@ class SchemaBrowser {
 
   initElements() {
     this.schemaSelect = document.getElementById('browser-schema-select');
+    this.styleBar = document.getElementById('browser-style-bar');
+    this.dropdownContainer = document.getElementById('browser-dropdown-container');
     this.categoryScroller = document.getElementById('browser-category-pills');
     this.searchInput = document.getElementById('browser-object-search');
     this.objectList = document.getElementById('browser-object-list');
@@ -29,6 +33,16 @@ class SchemaBrowser {
   }
 
   bindEvents() {
+    if (this.styleBar) {
+      this.styleBar.addEventListener('click', (e) => {
+        const btn = e.target.closest('.browser-style-btn');
+        if (btn) {
+          const style = btn.getAttribute('data-style');
+          if (style) this.switchViewMode(style);
+        }
+      });
+    }
+
     if (this.schemaSelect) {
       this.schemaSelect.addEventListener('change', async (e) => {
         this.currentSchema = e.target.value;
@@ -46,7 +60,11 @@ class SchemaBrowser {
     if (this.searchInput) {
       this.searchInput.addEventListener('input', (e) => {
         this.searchQuery = e.target.value.toLowerCase().trim();
-        this.renderObjectList();
+        if (this.viewMode === 'tree') {
+          this.renderTreeView();
+        } else {
+          this.renderObjectList();
+        }
       });
     }
 
@@ -56,6 +74,41 @@ class SchemaBrowser {
         this.switchDetailTab(targetTab);
       });
     });
+  }
+
+  switchViewMode(mode) {
+    this.viewMode = mode;
+    this.render();
+  }
+
+  toggleCategory(catKey) {
+    this.expandedCategories[catKey] = !this.expandedCategories[catKey];
+    this.currentCategory = catKey;
+    this.renderTreeView();
+  }
+
+  renderStyleBar() {
+    const btns = document.querySelectorAll('.browser-style-btn');
+    btns.forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-style') === this.viewMode);
+    });
+  }
+
+  getCategories() {
+    const isConn = window.TracesApp && window.TracesApp.isConnected();
+    const data = isConn ? this.getSchemaData() : {};
+    return [
+      { key: 'tables', label: 'Tables', icon: '📦', count: data.tables?.length || 0 },
+      { key: 'views', label: 'Views', icon: '👁', count: data.views?.length || 0 },
+      { key: 'packages', label: 'Packages', icon: '📦', count: data.packages?.length || 0 },
+      { key: 'procedures', label: 'Procedures', icon: '⚡', count: data.procedures?.length || 0 },
+      { key: 'functions', label: 'Functions', icon: '⚙', count: data.functions?.length || 0 },
+      { key: 'sequences', label: 'Sequences', icon: '🔢', count: data.sequences?.length || 0 },
+      { key: 'synonyms', label: 'Synonyms', icon: '🔀', count: data.synonyms?.length || 0 },
+      { key: 'triggers', label: 'Triggers', icon: '⚡', count: data.triggers?.length || 0 },
+      { key: 'types', label: 'Types', icon: '🏷', count: data.types?.length || 0 },
+      { key: 'indexes', label: 'Indexes', icon: '📑', count: data.indexes?.length || 0 }
+    ];
   }
 
   async loadRealSchemas() {
@@ -110,8 +163,7 @@ class SchemaBrowser {
           types: data.objects.filter(o => o.type === 'TYPE' || o.type === 'TYPE BODY'),
           indexes: data.objects.filter(o => o.type === 'INDEX')
         };
-        this.renderCategoryPills();
-        this.renderObjectList();
+        this.render();
       }
     } catch (e) {
       console.warn('Real objects load error', e);
@@ -136,48 +188,130 @@ class SchemaBrowser {
   }
 
   render() {
-    this.renderCategoryPills();
-    this.renderObjectList();
+    this.renderStyleBar();
+    if (this.viewMode === 'tree') {
+      if (this.dropdownContainer) this.dropdownContainer.style.display = 'none';
+      if (this.categoryScroller) this.categoryScroller.style.display = 'none';
+      this.renderTreeView();
+    } else if (this.viewMode === 'dropdown') {
+      if (this.categoryScroller) this.categoryScroller.style.display = 'none';
+      if (this.dropdownContainer) {
+        this.dropdownContainer.style.display = 'block';
+        this.renderDropdown();
+      }
+      this.renderObjectList();
+    } else { // 'tabs'
+      if (this.dropdownContainer) this.dropdownContainer.style.display = 'none';
+      if (this.categoryScroller) {
+        this.categoryScroller.style.display = 'flex';
+        this.renderCategoryPills();
+      }
+      this.renderObjectList();
+    }
   }
 
-  renderCategoryPills() {
+  renderDropdown() {
+    if (!this.dropdownContainer) return;
+    const categories = this.getCategories();
+    this.dropdownContainer.innerHTML = `
+      <div class="browser-dropdown-row">
+        <label class="browser-dropdown-label" for="browser-category-dropdown">Tipo de Objeto:</label>
+        <select class="browser-dropdown-select" id="browser-category-dropdown">
+          ${categories.map(c => `
+            <option value="${c.key}" ${this.currentCategory === c.key ? 'selected' : ''}>
+              ${c.label} (${c.count})
+            </option>
+          `).join('')}
+        </select>
+      </div>
+    `;
+    const sel = document.getElementById('browser-category-dropdown');
+    if (sel) {
+      sel.addEventListener('change', (e) => {
+        this.selectCategory(e.target.value);
+      });
+    }
+  }
+
+  renderTreeView() {
     if (!window.TracesApp || !window.TracesApp.isConnected()) {
-      const categories = [
-        { key: 'tables', label: 'Tables', count: 0 },
-        { key: 'views', label: 'Views', count: 0 },
-        { key: 'packages', label: 'Packages', count: 0 },
-        { key: 'procedures', label: 'Procedures', count: 0 },
-        { key: 'functions', label: 'Functions', count: 0 },
-        { key: 'sequences', label: 'Sequences', count: 0 },
-        { key: 'synonyms', label: 'Synonyms', count: 0 },
-        { key: 'triggers', label: 'Triggers', count: 0 },
-        { key: 'types', label: 'Types', count: 0 },
-        { key: 'indexes', label: 'Indexes', count: 0 }
-      ];
-      this.categoryScroller.innerHTML = categories.map(cat => `
-        <div class="category-tab-pill ${this.currentCategory === cat.key ? 'active' : ''}" 
-             onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}')">
-          <span>${cat.label}</span>
-          <span class="category-count">0</span>
-        </div>
-      `).join('');
+      if (this.objectList) {
+        this.objectList.innerHTML = `
+          <div style="padding: 40px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
+            <div style="font-size: 24px; margin-bottom: 8px;">🔌</div>
+            <strong style="font-size: 12px; color: #1e293b;">Schema Browser - Desconectado</strong><br><br>
+            Conecte-se a uma instância Oracle para carregar schemas, tabelas, views e procedures.<br>
+            <button class="btn btn-primary" style="margin-top: 12px; padding: 4px 14px; font-weight: 600;" onclick="window.TracesApp.connectionManager.openModal();">
+              ⚡ Conectar ao Banco de Dados...
+            </button>
+          </div>
+        `;
+      }
+      if (this.detailTitle) this.detailTitle.textContent = 'Nenhum Objeto Selecionado';
+      const detailContainer = document.getElementById('browser-detail-content');
+      if (detailContainer) detailContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: #888; font-size: 11px;">Desconectado do banco de dados.</div>';
       return;
     }
 
     const data = this.getSchemaData();
-    const categories = [
-      { key: 'tables', label: 'Tables', count: data.tables?.length || 0 },
-      { key: 'views', label: 'Views', count: data.views?.length || 0 },
-      { key: 'packages', label: 'Packages', count: data.packages?.length || 0 },
-      { key: 'procedures', label: 'Procedures', count: data.procedures?.length || 0 },
-      { key: 'functions', label: 'Functions', count: data.functions?.length || 0 },
-      { key: 'sequences', label: 'Sequences', count: data.sequences?.length || 0 },
-      { key: 'synonyms', label: 'Synonyms', count: data.synonyms?.length || 0 },
-      { key: 'triggers', label: 'Triggers', count: data.triggers?.length || 0 },
-      { key: 'types', label: 'Types', count: data.types?.length || 0 },
-      { key: 'indexes', label: 'Indexes', count: data.indexes?.length || 0 }
-    ];
+    const categories = this.getCategories();
 
+    let html = '';
+    for (const cat of categories) {
+      const items = data[cat.key] || [];
+      const isSearching = !!this.searchQuery;
+      const filtered = isSearching
+        ? items.filter(obj => obj.name.toLowerCase().includes(this.searchQuery))
+        : items;
+
+      const isExpanded = isSearching ? (filtered.length > 0) : !!this.expandedCategories[cat.key];
+
+      html += `
+        <div class="toad-tree-category ${isExpanded ? 'expanded' : ''}" data-category="${cat.key}">
+          <div class="toad-tree-category-header" onclick="window.TracesApp.schemaBrowser.toggleCategory('${cat.key}')">
+            <span class="toad-tree-arrow ${isExpanded ? 'expanded' : ''}">▶</span>
+            <span class="toad-tree-category-title">${cat.icon} ${cat.label}</span>
+            <span class="toad-tree-category-count">${items.length}</span>
+          </div>
+          ${isExpanded ? `
+            <div class="toad-tree-category-items">
+              ${filtered.length === 0 ? `
+                <div style="padding: 6px 16px 6px 36px; font-size: 11px; color: var(--text-muted); font-style: italic;">
+                  ${isSearching ? 'Nenhum resultado' : 'Nenhum objeto'}
+                </div>
+              ` : filtered.map(obj => `
+                <div class="toad-tree-item ${this.selectedObject?.name === obj.name && this.currentCategory === cat.key ? 'active' : ''}"
+                     onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}', '${cat.key}')">
+                  <div class="toad-tree-item-name">
+                    <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      ${this.getCategoryIcon(cat.key)}
+                    </svg>
+                    <span>${obj.name}</span>
+                  </div>
+                  <span class="status-indicator ${obj.status ? obj.status.toLowerCase() : 'valid'}">
+                    ${obj.status || 'VALID'}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    this.objectList.innerHTML = html;
+
+    if (!this.selectedObject) {
+      const firstCat = categories.find(c => (data[c.key] || []).length > 0);
+      if (firstCat && data[firstCat.key].length > 0) {
+        this.selectObject(data[firstCat.key][0].name, firstCat.key);
+      }
+    }
+  }
+
+  renderCategoryPills() {
+    if (!this.categoryScroller) return;
+    const categories = this.getCategories();
     this.categoryScroller.innerHTML = categories.map(cat => `
       <div class="category-tab-pill ${this.currentCategory === cat.key ? 'active' : ''}" 
            onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}')">
@@ -190,8 +324,7 @@ class SchemaBrowser {
   selectCategory(categoryKey) {
     this.currentCategory = categoryKey;
     this.selectedObject = null;
-    this.renderCategoryPills();
-    this.renderObjectList();
+    this.render();
 
     // Contextual tab switching
     if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
@@ -284,20 +417,23 @@ class SchemaBrowser {
     }
   }
 
-  async selectObject(objectName) {
+  async selectObject(objectName, categoryKey) {
+    if (categoryKey) {
+      this.currentCategory = categoryKey;
+    }
     const data = this.getSchemaData();
     const items = data[this.currentCategory] || [];
     this.selectedObject = items.find(o => o.name === objectName) || { name: objectName };
 
     // Update active highlight in list
-    const allItems = this.objectList.querySelectorAll('.object-item');
+    const allItems = this.objectList.querySelectorAll('.object-item, .toad-tree-item');
     allItems.forEach(el => el.classList.remove('active'));
     const matched = Array.from(allItems).find(el => el.textContent.includes(objectName));
     if (matched) matched.classList.add('active');
 
     // Update detail pane header
-    this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
-    this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
+    if (this.detailTitle) this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
+    if (this.detailTypePill) this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
 
     // If connected to real Oracle DB, fetch complete live object details
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
