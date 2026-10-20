@@ -841,3 +841,120 @@
   line-height: 1.5;
   margin-bottom: 16px;
 }
+
+/* --------------------------------------------------------------------------
+   TOAD FLOATING CONTEXT MENUS (DESKTOP NATIVE AESTHETICS)
+   -------------------------------------------------------------------------- */
+.toad-context-menu {
+  position: fixed;
+  z-index: 99999;
+  background: #fdfdfd;
+  border: 1px solid #999999;
+  box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.28);
+  min-width: 220px;
+  max-width: 320px;
+  padding: 3px 0;
+  font-family: var(--toad-font-family, 'Segoe UI', Tahoma, sans-serif);
+  font-size: 11px;
+  color: #1e293b;
+  user-select: none;
+  border-radius: 2px;
+  animation: toadFadeIn 0.08s ease-out;
+}
+
+@keyframes toadFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.toad-context-item {
+  padding: 4px 14px 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toad-context-item:hover {
+  background: #0078d7;
+  color: #ffffff;
+}
+
+.toad-context-item.disabled {
+  color: #a0a0a0;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.toad-context-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.toad-context-label {
+  flex: 1;
+}
+
+.toad-context-shortcut {
+  font-size: 10px;
+  color: #64748b;
+  margin-left: 12px;
+}
+
+.toad-context-item:hover .toad-context-shortcut {
+  color: #e0f2fe;
+}
+
+.toad-context-sep {
+  height: 1px;
+  background: #d4d4d4;
+  margin: 3px 6px;
+}
+
+/* --------------------------------------------------------------------------
+   TOAD SINGLE RECORD VIEWER (F7)
+   -------------------------------------------------------------------------- */
+.record-viewer-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #bfbfbf;
+  font-size: 11px;
+}
+
+.record-viewer-nav button {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #7f9db9;
+  background: #fdfdfd;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.record-viewer-nav button:hover:not(:disabled) {
+  background: #e5f1fb;
+  border-color: #0078d7;
+}
+
+.record-viewer-nav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.record-viewer-search {
+  margin-left: auto;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #7f9db9;
+  font-size: 11px;
+  border-radius: 2px;
+  width: 180px;
+}
+

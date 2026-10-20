@@ -501,8 +501,13 @@
             <div class="category-tabs-scroller" id="browser-category-pills" style="display: none;"></div>
 
             <!-- Filter Box -->
-            <div class="object-search-bar">
-              <input type="text" class="object-search-input" id="browser-object-search" placeholder="Filter objects...">
+            <div class="object-search-bar" style="display: flex; gap: 4px; padding: 4px 6px; background: #f0f0f0; border-bottom: 1px solid #adadad;">
+              <input type="text" class="object-search-input" id="browser-object-search" placeholder="Filter objects (e.g. EMP*)..." style="flex: 1; height: 22px; padding: 0 6px;">
+              <select id="browser-status-filter" style="height: 22px; font-size: 10.5px; border: 1px solid #adadad; border-radius: 2px; background: #fff;" title="Filtrar por Status do Objeto" onchange="window.TracesApp.schemaBrowser.setStatusFilter(this.value)">
+                <option value="ALL" selected>Status: Todos</option>
+                <option value="VALID">Válidos</option>
+                <option value="INVALID">Inválidos</option>
+              </select>
             </div>
 
             <!-- Object List / Tree View -->
@@ -517,6 +522,9 @@
                 <span class="detail-object-type-pill" id="browser-detail-type">TABLE</span>
               </div>
               <div class="detail-actions-group">
+                <button class="btn" title="Contar registros da tabela" onclick="window.TracesApp.schemaBrowser.countCurrentTableRows()">
+                  📊 Contar Linhas
+                </button>
                 <button class="btn" onclick="window.TracesApp.schemaBrowser.recompileCurrentObject()">
                   Recompile
                 </button>
@@ -891,8 +899,9 @@
          TOAD CLASSIC STATUS BAR (WITH TRACES LOGO)
          ==================================================================== -->
     <footer class="toad-statusbar">
-      <div class="status-cell" style="width: 70px;">1 : 1</div>
-      <div class="status-cell" style="width: 80px;">Modified</div>
+      <div class="status-cell" id="status-editor-pos" style="width: 85px;" title="Editor Cursor Position">Ln 1, Col 1</div>
+      <div class="status-cell" id="status-editor-mode" style="width: 45px; text-align: center;" title="Insert / Overwrite">INS</div>
+      <div class="status-cell" id="status-grid-rows" style="width: 90px;" title="Data Grid Rows">0 rows</div>
       <div class="status-cell cell-tx" id="status-db-transaction" style="width: 140px;">[Transaction: Idle]</div>
       <div class="status-cell" id="status-db-user" style="width: 220px;">[Desconectado]</div>
       <div class="status-cell cell-grow" id="status-db-version">Pronto para conectar ao banco de dados</div>
@@ -901,6 +910,9 @@
         <img src="assets/traces-logo.png" alt="TRACES" style="height: 12px; width: auto;">
       </div>
     </footer>
+
+    <!-- Floating Desktop Context Menu -->
+    <div id="toad-context-menu" class="toad-context-menu" style="display: none;"></div>
 
     <!-- ====================================================================
          MODAL: CONNECTION PROFILES

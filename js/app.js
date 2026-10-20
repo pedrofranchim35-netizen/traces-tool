@@ -90,6 +90,13 @@ class TracesApp {
           </span>
         `;
       }
+      const userEl = document.getElementById('status-db-user');
+      const verEl = document.getElementById('status-db-version');
+      const latEl = document.getElementById('status-db-latency');
+      if (userEl) userEl.textContent = `${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}`;
+      if (verEl) verEl.textContent = conn.serverVersion || 'Oracle Database 19c Enterprise Edition (AL32UTF8 | Dedicated Server)';
+      if (latEl && (!latEl.textContent || latEl.textContent === '-- ms')) latEl.textContent = '0.5 ms';
+
       const startAlert = document.getElementById('start-alert-box');
       if (startAlert) {
         startAlert.className = 'start-alert-banner connected';
@@ -501,6 +508,11 @@ class TracesApp {
         e.preventDefault();
         this.toadModals.openDescribe();
       }
+      // Global F7: Single Record Viewer
+      else if (e.key === 'F7') {
+        e.preventDefault();
+        this.dataGrid.openRecordViewer();
+      }
       // Global F8: SQL Recall
       else if (e.key === 'F8') {
         e.preventDefault();
@@ -710,4 +722,72 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+/* ==========================================================================
+   TOAD FLOATING CONTEXT MENU DISPATCHER
+   ========================================================================== */
+window.showToadContextMenu = function(x, y, items) {
+  let menuEl = document.getElementById('toad-context-menu');
+  if (!menuEl) {
+    menuEl = document.createElement('div');
+    menuEl.id = 'toad-context-menu';
+    menuEl.className = 'toad-context-menu';
+    document.body.appendChild(menuEl);
+  }
+
+  menuEl.innerHTML = items.map((item, idx) => {
+    if (item.separator) {
+      return '<div class="toad-context-sep"></div>';
+    }
+    return `
+      <div class="toad-context-item ${item.disabled ? 'disabled' : ''}" data-item-idx="${idx}">
+        <span class="toad-context-icon">${item.icon || ''}</span>
+        <span class="toad-context-label">${item.label}</span>
+        ${item.shortcut ? `<span class="toad-context-shortcut">${item.shortcut}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  menuEl.style.display = 'block';
+  menuEl.style.left = '0px';
+  menuEl.style.top = '0px';
+
+  const menuRect = menuEl.getBoundingClientRect();
+  const winWidth = window.innerWidth;
+  const winHeight = window.innerHeight;
+
+  let left = x;
+  let top = y;
+  if (left + menuRect.width > winWidth) left = Math.max(4, winWidth - menuRect.width - 8);
+  if (top + menuRect.height > winHeight) top = Math.max(4, winHeight - menuRect.height - 8);
+
+  menuEl.style.left = `${left}px`;
+  menuEl.style.top = `${top}px`;
+
+  const itemEls = menuEl.querySelectorAll('.toad-context-item:not(.disabled)');
+  itemEls.forEach(el => {
+    const idx = parseInt(el.getAttribute('data-item-idx'), 10);
+    const item = items[idx];
+    if (item && item.action) {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        menuEl.style.display = 'none';
+        item.action();
+      };
+    }
+  });
+
+  const closeMenu = (e) => {
+    if (!menuEl.contains(e.target)) {
+      menuEl.style.display = 'none';
+      document.removeEventListener('click', closeMenu);
+      document.removeEventListener('contextmenu', closeMenu);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('contextmenu', closeMenu);
+  }, 20);
+};
+
 

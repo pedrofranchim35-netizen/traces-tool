@@ -78,7 +78,12 @@ END;`
         this.saveActiveTabContent();
         this.updateHighlighting();
         this.updateGutter();
+        this.updateCursorPosition();
       });
+
+      this.textarea.addEventListener('keyup', () => this.updateCursorPosition());
+      this.textarea.addEventListener('click', () => this.updateCursorPosition());
+      this.textarea.addEventListener('select', () => this.updateCursorPosition());
 
       this.textarea.addEventListener('scroll', () => {
         if (this.highlightEl) {
@@ -108,6 +113,9 @@ END;`
           const match = text.slice(Math.max(0, pos - 20), pos + 20).match(/[a-zA-Z0-9_.]+/);
           const objName = match ? match[0] : 'HR.EMPLOYEES';
           window.TracesApp.toadModals.openDescribe(objName);
+        } else if (e.key === 'F7') {
+          e.preventDefault();
+          window.TracesApp.dataGrid.openRecordViewer();
         } else if (e.key === 'F8') {
           e.preventDefault();
           window.TracesApp.toadModals.openSqlRecall();
@@ -400,6 +408,8 @@ END;`
     
     // Switch to Data Grid tab
     this.switchOutputTab('grid');
+    const latEl = document.getElementById('status-db-latency');
+    if (latEl) latEl.textContent = `${elapsedMs} ms`;
     window.TracesApp.notify(`Executado em ${elapsedMs} ms (Modo Local). Conecte ao banco real no botão ⚡ Connect para dados ao vivo.`, 'success');
 
     this.updateAutotrace();
@@ -456,6 +466,10 @@ END;`
       }
 
       this.logScriptOutput(`[${new Date().toLocaleTimeString()}] Real Oracle execution completed in ${data.elapsedMs || elapsedMs} ms. Rows returned: ${data.rows ? data.rows.length : (data.rowsAffected || 0)}`);
+      const latEl = document.getElementById('status-db-latency');
+      if (latEl) latEl.textContent = `${data.elapsedMs || elapsedMs} ms`;
+      const rowsEl = document.getElementById('status-grid-rows');
+      if (rowsEl && data.rows) rowsEl.textContent = `${data.rows.length.toLocaleString()} rows`;
       window.TracesApp.notify(`Real query executed in ${data.elapsedMs || elapsedMs} ms (${data.rows ? data.rows.length : (data.rowsAffected || 0)} rows).`, 'success');
       
       if (data.autotrace) {
@@ -684,12 +698,23 @@ END;`
     const badge = document.getElementById('status-db-transaction');
     if (!badge) return;
     if (this.transactionActive) {
-      badge.textContent = 'TRANS: ACTIVE';
-      badge.className = 'status-badge badge-tx';
+      badge.textContent = '[Transaction: Active]';
+      badge.className = 'status-cell cell-tx active';
     } else {
-      badge.textContent = 'TRANS: IDLE';
-      badge.className = 'status-badge';
+      badge.textContent = '[Transaction: Idle]';
+      badge.className = 'status-cell cell-tx';
     }
+  }
+
+  updateCursorPosition() {
+    if (!this.textarea) return;
+    const pos = this.textarea.selectionStart || 0;
+    const text = this.textarea.value.substring(0, pos);
+    const lines = text.split('\n');
+    const line = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+    const posEl = document.getElementById('status-editor-pos');
+    if (posEl) posEl.textContent = `Ln ${line}, Col ${col}`;
   }
 
   switchOutputTab(tabKey) {

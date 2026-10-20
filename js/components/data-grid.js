@@ -92,6 +92,9 @@ class DataGrid {
     this.selectedRowIdx = null;
     this.pendingChanges = { updates: [], inserts: [], deletes: [] };
     this.render();
+
+    const rowsEl = document.getElementById('status-grid-rows');
+    if (rowsEl) rowsEl.textContent = `${this.data.length.toLocaleString()} rows`;
   }
 
   getFilteredData() {
@@ -172,7 +175,9 @@ class DataGrid {
             const strVal = isNull ? '' : String(val);
             const isLong = strVal.length > 50 || strVal.includes('\n') || strVal.startsWith('{') || strVal.startsWith('<');
             return `
-              <td ondblclick="window.TracesApp.dataGrid.handleCellDoubleClick(${globalIdx}, '${col}', this)" style="cursor: cell;">
+              <td ondblclick="window.TracesApp.dataGrid.handleCellDoubleClick(${globalIdx}, '${col}', this)" 
+                  oncontextmenu="window.TracesApp.dataGrid.handleContextMenu(event, ${globalIdx}, '${col}', this); return false;"
+                  style="cursor: cell;">
                 ${isNull ? '<span class="cell-null">(null)</span>' : this.escapeHtml(strVal)}
                 ${isLong ? '<span title="View LOB/JSON/XML in Popup" onclick="event.stopPropagation(); window.TracesApp.dataGrid.openLobViewer(\'' + col + '\', ' + globalIdx + ');" style="margin-left: 4px; font-size: 10px; cursor: pointer; color: #0078d7;">📄</span>' : ''}
               </td>
@@ -688,6 +693,190 @@ TRAILING NULLCOLS
     a.click();
     URL.revokeObjectURL(url);
     window.TracesApp.notify(`Exported ${fileName} successfully.`, 'success');
+  }
+
+  handleContextMenu(e, rowIdx, colKey, tdElement) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    this.selectRow(rowIdx);
+    const row = this.data[rowIdx] || {};
+    const cellVal = row[colKey];
+    const strVal = cellVal === null || cellVal === undefined ? '' : String(cellVal);
+    const isNumeric = cellVal !== null && cellVal !== undefined && !isNaN(Number(cellVal));
+
+    const items = [
+      { label: 'Single Record Viewer (F7)', icon: '🔍', shortcut: 'F7', action: () => this.openRecordViewer(rowIdx) },
+      { separator: true },
+      { label: `Copy Cell Value ("${strVal.length > 25 ? strVal.slice(0, 25) + '...' : strVal}")`, icon: '📋', shortcut: 'Ctrl+C', action: () => {
+        navigator.clipboard.writeText(strVal);
+        window.TracesApp?.notify(`Valor copiado: "${strVal.slice(0, 40)}"`, 'info');
+      }},
+      { label: 'Copy Row with Headers', icon: '📑', shortcut: '', action: () => {
+        const text = Object.entries(row).map(([k, v]) => `${k}: ${v}`).join('\n');
+        navigator.clipboard.writeText(text);
+        window.TracesApp?.notify(`Registro #${rowIdx + 1} copiado com cabeçalhos.`, 'info');
+      }},
+      { label: 'Copy Row as Tab-Separated (TSV)', icon: '📄', shortcut: '', action: () => {
+        const text = Object.values(row).join('\t');
+        navigator.clipboard.writeText(text);
+        window.TracesApp?.notify(`Registro #${rowIdx + 1} copiado como TSV.`, 'info');
+      }},
+      { label: 'Export Dataset (Excel, CSV, HTML, JSON, INSERT)...', icon: '📤', shortcut: '', action: () => this.showExportMenu() },
+      { separator: true },
+      { label: `Filter by Cell Value (WHERE ${colKey} = '${strVal}')`, icon: '🔍', shortcut: '', action: () => {
+        if (this.searchInput) {
+          this.searchInput.value = strVal;
+          this.filterText = strVal.toLowerCase().trim();
+          this.page = 1;
+          this.render();
+        }
+      }},
+      { label: `Exclude Cell Value (WHERE ${colKey} <> '${strVal}')`, icon: '🚫', shortcut: '', action: () => {
+        this.data = this.data.filter(r => String(r[colKey]) !== strVal);
+        this.render();
+        window.TracesApp?.notify(`Registros onde ${colKey} = '${strVal}' foram filtrados.`, 'info');
+      }}
+    ];
+
+    if (isNumeric) {
+      items.push({
+        label: `Quick Math on Column "${colKey}"...`,
+        icon: '🧮',
+        shortcut: '',
+        action: () => this.showColumnMath(colKey)
+      });
+    }
+
+    items.push(
+      { separator: true },
+      { label: 'Add New Row', icon: '➕', shortcut: '', action: () => this.addNewRow() },
+      { label: `Delete Selected Row (#${rowIdx + 1})`, icon: '❌', shortcut: '', action: () => this.deleteSelectedRow() },
+      { separator: true },
+      { label: `Total Rows in Grid: ${this.data.length.toLocaleString()}`, icon: '📊', disabled: true, shortcut: '' }
+    );
+
+    if (typeof window.showToadContextMenu === 'function') {
+      window.showToadContextMenu(e.clientX, e.clientY, items);
+    }
+  }
+
+  showColumnMath(colKey) {
+    const vals = this.data.map(r => Number(r[colKey])).filter(v => !isNaN(v));
+    if (vals.length === 0) return;
+    const count = vals.length;
+    const sum = vals.reduce((a, b) => a + b, 0);
+    const avg = sum / count;
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+
+    alert(`TOAD QUICK COLUMN MATH [${colKey}]:\n\n` +
+      `Count: ${count.toLocaleString()}\n` +
+      `Sum:   ${sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}\n` +
+      `Avg:   ${avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}\n` +
+      `Min:   ${min.toLocaleString()}\n` +
+      `Max:   ${max.toLocaleString()}`
+    );
+  }
+
+  openRecordViewer(targetIdx) {
+    if (this.data.length === 0) {
+      window.TracesApp?.notify('Nenhum registro no Data Grid para exibir.', 'warning');
+      return;
+    }
+    const idx = (typeof targetIdx === 'number' && targetIdx >= 0 && targetIdx < this.data.length)
+      ? targetIdx
+      : (this.selectedRowIdx !== null ? this.selectedRowIdx : 0);
+
+    this.currentViewerIdx = idx;
+    this.viewerSearchFilter = '';
+    this.renderRecordViewerModal();
+  }
+
+  renderRecordViewerModal() {
+    const total = this.data.length;
+    const current = this.currentViewerIdx;
+    const row = this.data[current] || {};
+    const columns = Object.keys(row);
+    const filteredCols = this.viewerSearchFilter
+      ? columns.filter(c => c.toLowerCase().includes(this.viewerSearchFilter.toLowerCase()))
+      : columns;
+
+    const bodyHtml = `
+      <div class="record-viewer-nav">
+        <button onclick="window.TracesApp.dataGrid.navigateRecord(0)" ${current === 0 ? 'disabled' : ''} title="First Record">|◀</button>
+        <button onclick="window.TracesApp.dataGrid.navigateRecord(${current - 1})" ${current === 0 ? 'disabled' : ''} title="Previous Record">◀</button>
+        <span style="font-weight: 700; color: #1e293b; padding: 0 4px;">
+          Registro <b>${current + 1}</b> de <b>${total.toLocaleString()}</b>
+        </span>
+        <button onclick="window.TracesApp.dataGrid.navigateRecord(${current + 1})" ${current >= total - 1 ? 'disabled' : ''} title="Next Record">▶</button>
+        <button onclick="window.TracesApp.dataGrid.navigateRecord(${total - 1})" ${current >= total - 1 ? 'disabled' : ''} title="Last Record">▶|</button>
+        <input type="text" class="record-viewer-search" placeholder="Filtrar colunas..." value="${this.viewerSearchFilter || ''}" oninput="window.TracesApp.dataGrid.onViewerSearch(this.value)">
+      </div>
+      <div style="max-height: 440px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
+        <table class="meta-table" style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 38px; text-align: center;">#</th>
+              <th style="width: 180px;">Nome da Coluna</th>
+              <th style="width: 110px;">Tipo de Dado</th>
+              <th>Valor do Campo</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredCols.map((col, cIdx) => {
+              const val = row[col];
+              const isNull = val === null || val === undefined;
+              const strVal = isNull ? '(null)' : String(val);
+              let inferredType = 'VARCHAR2';
+              if (typeof val === 'number') inferredType = 'NUMBER';
+              else if (typeof val === 'boolean') inferredType = 'BOOLEAN';
+              else if (strVal.match(/^\\d{4}-\\d{2}-\\d{2}/)) inferredType = 'DATE';
+              else if (strVal.length > 4000) inferredType = 'CLOB';
+
+              return `
+                <tr>
+                  <td style="text-align: center; color: #888; font-family: var(--toad-font-code); font-size: 10px;">${cIdx + 1}</td>
+                  <td style="font-weight: 700; color: #003366; font-family: var(--toad-font-code);">${col}</td>
+                  <td style="color: #64748b; font-size: 10px;">${inferredType}</td>
+                  <td style="font-family: var(--toad-font-code); color: ${isNull ? '#888' : '#111'}; font-style: ${isNull ? 'italic' : 'normal'}; word-break: break-all;">
+                    ${this.escapeHtml(strVal)}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    const footerHtml = `
+      <button class="btn" onclick="navigator.clipboard.writeText(JSON.stringify(window.TracesApp.dataGrid.data[${current}], null, 2)); window.TracesApp.notify('Registro copiado como JSON.', 'info');">
+        📑 Copiar JSON
+      </button>
+      <button class="btn btn-primary" onclick="window.TracesApp.toadModals.close()">Fechar</button>
+    `;
+
+    window.TracesApp.toadModals.show(`Single Record Viewer - ${this.tableName} [${current + 1} de ${total}]`, bodyHtml, footerHtml, '680px');
+  }
+
+  navigateRecord(idx) {
+    if (idx >= 0 && idx < this.data.length) {
+      this.currentViewerIdx = idx;
+      this.selectRow(idx);
+      this.renderRecordViewerModal();
+    }
+  }
+
+  onViewerSearch(val) {
+    this.viewerSearchFilter = val;
+    this.renderRecordViewerModal();
+    const searchInput = document.querySelector('.record-viewer-search');
+    if (searchInput) {
+      searchInput.focus();
+      searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
+    }
   }
 
   escapeHtml(str) {

@@ -11,6 +11,7 @@ class SchemaBrowser {
     this.selectedObject = null;
     this.currentDetailTab = 'columns';
     this.searchQuery = '';
+    this.statusFilter = 'ALL';
     this.realSchemas = [];
     this.realObjects = null;
     this.isLoadingDetails = false;
@@ -18,6 +19,15 @@ class SchemaBrowser {
     this.initElements();
     this.bindEvents();
     this.render();
+  }
+
+  setStatusFilter(filter) {
+    this.statusFilter = (filter || 'ALL').toUpperCase();
+    if (this.viewMode === 'tree') {
+      this.renderTreeView();
+    } else {
+      this.renderObjectList();
+    }
   }
 
   initElements() {
@@ -306,11 +316,15 @@ class SchemaBrowser {
     let html = '';
     for (const cat of categories) {
       const items = data[cat.key] || [];
-      const isSearching = !!this.searchQuery;
-      const filtered = isSearching
-        ? items.filter(obj => obj.name.toLowerCase().includes(this.searchQuery))
-        : items;
+      let filtered = items;
+      if (this.searchQuery) {
+        filtered = filtered.filter(obj => obj.name.toLowerCase().includes(this.searchQuery));
+      }
+      if (this.statusFilter && this.statusFilter !== 'ALL') {
+        filtered = filtered.filter(obj => (obj.status || 'VALID').toUpperCase() === this.statusFilter);
+      }
 
+      const isSearching = !!this.searchQuery || (this.statusFilter && this.statusFilter !== 'ALL');
       const isExpanded = isSearching ? (filtered.length > 0) : !!this.expandedCategories[cat.key];
 
       html += `
@@ -328,7 +342,8 @@ class SchemaBrowser {
                 </div>
               ` : filtered.map(obj => `
                 <div class="toad-tree-item ${this.selectedObject?.name === obj.name && this.currentCategory === cat.key ? 'active' : ''}"
-                     onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}', '${cat.key}')">
+                     onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}', '${cat.key}')"
+                     oncontextmenu="window.TracesApp.schemaBrowser.handleContextMenu(event, '${obj.name}', '${cat.key}'); return false;">
                   <div class="toad-tree-item-name">
                     <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       ${this.getCategoryIcon(cat.key)}
@@ -404,14 +419,18 @@ class SchemaBrowser {
     const data = this.getSchemaData();
     const items = data[this.currentCategory] || [];
 
-    const filtered = items.filter(obj => 
-      obj.name.toLowerCase().includes(this.searchQuery)
-    );
+    let filtered = items;
+    if (this.searchQuery) {
+      filtered = filtered.filter(obj => obj.name.toLowerCase().includes(this.searchQuery));
+    }
+    if (this.statusFilter && this.statusFilter !== 'ALL') {
+      filtered = filtered.filter(obj => (obj.status || 'VALID').toUpperCase() === this.statusFilter);
+    }
 
     if (filtered.length === 0) {
       this.objectList.innerHTML = `
         <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
-          Nenhum objeto "${this.currentCategory}" encontrado com "${this.searchQuery}"
+          Nenhum objeto "${this.currentCategory}" encontrado com filtro ativo
         </div>
       `;
       return;
@@ -419,7 +438,8 @@ class SchemaBrowser {
 
     this.objectList.innerHTML = filtered.map(obj => `
       <div class="object-item ${this.selectedObject?.name === obj.name ? 'active' : ''}"
-           onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}')">
+           onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}')"
+           oncontextmenu="window.TracesApp.schemaBrowser.handleContextMenu(event, '${obj.name}', '${this.currentCategory}'); return false;">
         <div class="object-item-left">
           <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             ${this.getCategoryIcon(this.currentCategory)}
@@ -1152,6 +1172,405 @@ class SchemaBrowser {
       }
     } else {
       window.TracesApp.notify(`ALTER ${cat} "${this.currentSchema}"."${this.selectedObject.name}" COMPILE: SUCESSO (Modo Local)`, 'success');
+    }
+  }
+
+  async countCurrentTableRows() {
+    if (!this.selectedObject) {
+      window.TracesApp?.notify('Nenhum objeto selecionado para contar linhas.', 'warning');
+      return;
+    }
+    if (this.currentCategory !== 'tables') {
+      window.TracesApp?.notify(`Contagem de registros aplica-se apenas a Tabelas (objeto selecionado: ${this.selectedObject.type || this.currentCategory}).`, 'info');
+      return;
+    }
+    await this.countRows(this.currentSchema, this.selectedObject.name);
+  }
+
+  async countRows(schema, tableName) {
+    window.TracesApp?.notify(`Contando registros em ${schema}.${tableName}...`, 'info');
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: `SELECT COUNT(*) AS TOTAL_ROWS FROM "${schema}"."${tableName}"` })
+        });
+        const data = await resp.json();
+        if (data.rows && data.rows.length > 0) {
+          const count = data.rows[0].TOTAL_ROWS !== undefined ? data.rows[0].TOTAL_ROWS : Object.values(data.rows[0])[0];
+          window.TracesApp.notify(`📊 Tabela ${schema}.${tableName}: ${Number(count).toLocaleString()} registros.`, 'success');
+        } else if (data.error) {
+          window.TracesApp.notify(`Erro ao contar linhas: ${data.error}`, 'error');
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Falha ao consultar contagem: ${e.message}`, 'error');
+      }
+    } else {
+      const data = this.getSchemaData();
+      const tbl = (data.tables || []).find(t => t.name === tableName);
+      const count = tbl?.data ? tbl.data.length : (tbl?.rows || 107);
+      window.TracesApp?.notify(`📊 Tabela ${schema}.${tableName}: ${Number(count).toLocaleString()} registros (Modo Local).`, 'success');
+    }
+  }
+
+  handleContextMenu(e, objName, catKey) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const schema = this.currentSchema;
+    const cat = catKey || this.currentCategory;
+    const obj = (this.getSchemaData()[cat] || []).find(o => o.name === objName) || { name: objName, type: cat.toUpperCase() };
+
+    this.selectObject(objName, cat);
+
+    const items = [];
+
+    if (cat === 'tables') {
+      items.push(
+        { label: `Select * from ${objName}`, icon: '📝', shortcut: 'Ctrl+Enter', action: () => {
+          window.TracesApp.openWindow('editor');
+          window.TracesApp.sqlEditor.addNewTab(`SELECT * FROM "${schema}"."${objName}";\n`, `${objName}.sql`);
+          window.TracesApp.sqlEditor.executeStatement();
+        }},
+        { label: 'Count Rows...', icon: '📊', shortcut: '', action: () => this.countRows(schema, objName) },
+        { label: 'Describe (F4)', icon: '🔎', shortcut: 'F4', action: () => window.TracesApp.toadModals.openDescribe(`${schema}.${objName}`) },
+        { separator: true },
+        { label: 'Generate DDL Script', icon: '📜', shortcut: '', action: () => this.switchDetailTab('ddl') },
+        { label: 'Gather Table Statistics', icon: '⚡', shortcut: '', action: () => this.gatherStatistics(schema, objName) },
+        { label: 'Export Dataset (XLSX, CSV)...', icon: '📤', shortcut: '', action: () => {
+          this.switchDetailTab('data');
+          window.TracesApp.dataGrid.showExportMenu();
+        }},
+        { separator: true },
+        { label: 'Truncate Table...', icon: '⚠️', shortcut: '', action: () => this.truncateTable(schema, objName) },
+        { label: 'Drop Table...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'TABLE') }
+      );
+    } else if (['views', 'mviews'].includes(cat)) {
+      items.push(
+        { label: `Select * from ${objName}`, icon: '📝', shortcut: '', action: () => {
+          window.TracesApp.openWindow('editor');
+          window.TracesApp.sqlEditor.addNewTab(`SELECT * FROM "${schema}"."${objName}";\n`, `${objName}.sql`);
+          window.TracesApp.sqlEditor.executeStatement();
+        }},
+        { label: 'Recompile View', icon: '🔄', shortcut: 'F9', action: () => this.recompileObject(schema, objName, 'VIEW') },
+        { label: 'Describe (F4)', icon: '🔎', shortcut: 'F4', action: () => window.TracesApp.toadModals.openDescribe(`${schema}.${objName}`) },
+        { label: 'Generate DDL', icon: '📜', shortcut: '', action: () => this.switchDetailTab('ddl') },
+        { separator: true },
+        { label: 'Drop View...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'VIEW') }
+      );
+    } else if (['packages', 'procedures', 'functions', 'triggers', 'types'].includes(cat)) {
+      const typeSingular = cat.slice(0, -1).toUpperCase();
+      items.push(
+        { label: `Load ${objName} in Editor`, icon: '📝', shortcut: '', action: () => {
+          window.TracesApp.openWindow('editor');
+          window.TracesApp.sqlEditor.addNewTab(obj.ddl || `-- Source for ${typeSingular} ${objName}\n`, `${objName}.sql`);
+        }},
+        { label: `Recompile (F9)`, icon: '🔄', shortcut: 'F9', action: () => this.recompileObject(schema, objName, typeSingular) },
+        { label: `Compile with Debug`, icon: '🐞', shortcut: '', action: () => this.recompileObject(schema, objName, typeSingular, true) },
+        { label: 'View Source (Code)', icon: '👁️', shortcut: '', action: () => this.switchDetailTab('source') },
+        { separator: true },
+        { label: `Drop ${typeSingular}...`, icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, typeSingular) }
+      );
+    } else if (cat === 'tablespaces') {
+      items.push(
+        { label: 'Show in Tablespace Map', icon: '🗺️', shortcut: '', action: () => window.TracesApp.openWindow('dba', 'tablespacemap') },
+        { label: 'Add Datafile to Tablespace...', icon: '➕', shortcut: '', action: () => {
+          const df = prompt(`Caminho e nome do novo datafile para ${objName}:`, `/u01/app/oracle/oradata/ORCL/${objName.toLowerCase()}02.dbf`);
+          if (df) {
+            const size = prompt('Tamanho inicial (ex: 500M, 1G):', '500M');
+            if (size) {
+              const sql = `ALTER TABLESPACE "${objName}" ADD DATAFILE '${df}' SIZE ${size} AUTOEXTEND ON NEXT 50M MAXSIZE 10G;`;
+              window.TracesApp.openWindow('editor');
+              window.TracesApp.sqlEditor.addNewTab(sql, `add_datafile_${objName}.sql`);
+              window.TracesApp.notify(`Script de adição de datafile carregado na Worksheet.`, 'success');
+            }
+          }
+        }},
+        { label: 'Alter Tablespace Read Only', icon: '🔒', shortcut: '', action: () => {
+          if (confirm(`Colocar tablespace ${objName} em READ ONLY?`)) {
+            window.TracesApp.openWindow('editor');
+            window.TracesApp.sqlEditor.addNewTab(`ALTER TABLESPACE "${objName}" READ ONLY;`, `alter_${objName}.sql`);
+          }
+        }},
+        { separator: true },
+        { label: 'Drop Tablespace...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'TABLESPACE') }
+      );
+    } else if (cat === 'dblinks') {
+      items.push(
+        { label: `Test Connection (${objName})`, icon: '🔌', shortcut: '', action: () => this.testDbLink(objName) },
+        { label: 'Show DDL Definition', icon: '📜', shortcut: '', action: () => this.switchDetailTab('ddl') },
+        { separator: true },
+        { label: 'Drop DB Link...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'DATABASE LINK') }
+      );
+    } else if (cat === 'users') {
+      items.push(
+        { label: `Lock / Unlock User (${objName})`, icon: '🔒', shortcut: '', action: () => {
+          const action = prompt(`Digite LOCK para bloquear ou UNLOCK para desbloquear o usuário ${objName}:`, 'ACCOUNT LOCK');
+          if (action) {
+            const sql = `ALTER USER "${objName}" ${action.includes('UNLOCK') ? 'ACCOUNT UNLOCK' : 'ACCOUNT LOCK'};`;
+            window.TracesApp.openWindow('editor');
+            window.TracesApp.sqlEditor.addNewTab(sql, `alter_user_${objName}.sql`);
+          }
+        }},
+        { label: 'Expire Password...', icon: '🔑', shortcut: '', action: () => {
+          const sql = `ALTER USER "${objName}" PASSWORD EXPIRE;`;
+          window.TracesApp.openWindow('editor');
+          window.TracesApp.sqlEditor.addNewTab(sql, `expire_user_${objName}.sql`);
+        }},
+        { label: 'Clone User (Create Like)...', icon: '👤', shortcut: '', action: () => window.TracesApp.toadModals.openCloneUser(objName) },
+        { separator: true },
+        { label: 'Drop User...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'USER') }
+      );
+    } else if (cat === 'jobs') {
+      items.push(
+        { label: `Run Job Now (${objName})`, icon: '▶️', shortcut: '', action: () => this.runSchedulerJob(objName) },
+        { label: 'Enable / Disable Job', icon: '⏸️', shortcut: '', action: () => {
+          const sql = `BEGIN DBMS_SCHEDULER.ENABLE(name => '${objName}'); END;`;
+          window.TracesApp.openWindow('editor');
+          window.TracesApp.sqlEditor.addNewTab(sql, `enable_job_${objName}.sql`);
+        }},
+        { separator: true },
+        { label: 'Drop Job...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'JOB') }
+      );
+    } else if (cat === 'recyclebin') {
+      items.push(
+        { label: `Flashback Undrop (${objName})`, icon: '⏪', shortcut: '', action: () => this.flashbackUndrop(objName) },
+        { label: `Purge Object from Recyclebin`, icon: '🗑️', shortcut: '', action: () => this.purgeRecyclebinObject(objName) },
+        { separator: true },
+        { label: 'Purge Entire Recyclebin (PURGE RECYCLEBIN)', icon: '💥', shortcut: '', action: () => {
+          if (confirm('Tem certeza que deseja purgar toda a lixeira (DBA_RECYCLEBIN)?')) {
+            window.TracesApp.openWindow('editor');
+            window.TracesApp.sqlEditor.addNewTab('PURGE RECYCLEBIN;', 'purge_recyclebin.sql');
+            window.TracesApp.sqlEditor.executeStatement();
+          }
+        }}
+      );
+    } else {
+      items.push(
+        { label: 'Describe (F4)', icon: '🔎', shortcut: 'F4', action: () => window.TracesApp.toadModals.openDescribe(`${schema}.${objName}`) },
+        { label: 'Show DDL', icon: '📜', shortcut: '', action: () => this.switchDetailTab('ddl') }
+      );
+    }
+
+    items.push(
+      { separator: true },
+      { label: `Copy Object Name (${objName})`, icon: '📋', shortcut: 'Ctrl+C', action: () => {
+        navigator.clipboard.writeText(objName);
+        window.TracesApp?.notify(`Nome "${objName}" copiado para a área de transferência.`, 'info');
+      }},
+      { label: `Filter for "${objName}"`, icon: '🔍', shortcut: '', action: () => {
+        if (this.searchInput) {
+          this.searchInput.value = objName;
+          this.searchQuery = objName.toLowerCase();
+          if (this.viewMode === 'tree') this.renderTreeView();
+          else this.renderObjectList();
+        }
+      }}
+    );
+
+    if (typeof window.showToadContextMenu === 'function') {
+      window.showToadContextMenu(e.clientX, e.clientY, items);
+    }
+  }
+
+  async gatherStatistics(schema, tableName) {
+    const sql = `BEGIN DBMS_STATS.GATHER_TABLE_STATS(ownname => '${schema}', tabname => '${tableName}', cascade => TRUE, estimate_percent => DBMS_STATS.AUTO_SAMPLE_SIZE); END;`;
+    window.TracesApp?.notify(`Coletando estatísticas da tabela ${schema}.${tableName}...`, 'info');
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro ao coletar estatísticas: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`Estatísticas de ${tableName} atualizadas com sucesso.`, 'success');
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`DBMS_STATS.GATHER_TABLE_STATS(${schema}.${tableName}): Concluído com sucesso (Modo Local).`, 'success');
+    }
+  }
+
+  async truncateTable(schema, tableName) {
+    if (!confirm(`AVISO TOAD: Deseja realmente executar TRUNCATE TABLE "${schema}"."${tableName}"?\nTodos os registros serão apagados imediatamente sem rollback.`)) return;
+    const sql = `TRUNCATE TABLE "${schema}"."${tableName}";`;
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro ao truncar tabela: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`Tabela "${schema}"."${tableName}" truncada com sucesso.`, 'success');
+          this.switchDetailTab('data');
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`Tabela "${schema}"."${tableName}" truncada (Modo Local).`, 'success');
+    }
+  }
+
+  async dropObject(schema, objName, type) {
+    if (!confirm(`CONFIRMAÇÃO TOAD: Deseja realmente excluir permanentemente ${type} "${schema}"."${objName}"?`)) return;
+    const sql = `DROP ${type} "${schema}"."${objName}"${type === 'TABLE' ? ' CASCADE CONSTRAINTS' : ''};`;
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro ao excluir: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`${type} "${objName}" excluído com sucesso.`, 'success');
+          await this.loadRealObjects(schema);
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`${type} "${objName}" removido (Modo Local).`, 'success');
+    }
+  }
+
+  async testDbLink(linkName) {
+    window.TracesApp?.notify(`Testando Database Link "${linkName}"...`, 'info');
+    const start = performance.now();
+    const sql = `SELECT * FROM dual@"${linkName}"`;
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        const elapsed = (performance.now() - start).toFixed(1);
+        if (data.error) {
+          window.TracesApp.notify(`Falha no DB Link ${linkName}: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`✓ DB Link "${linkName}" ativo e operante (latência: ${elapsed} ms).`, 'success');
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`✓ DB Link "${linkName}" ativo e operante (Modo Local - 0.4 ms).`, 'success');
+    }
+  }
+
+  async runSchedulerJob(jobName) {
+    window.TracesApp?.notify(`Disparando execução imediata de ${jobName}...`, 'info');
+    const sql = `BEGIN DBMS_SCHEDULER.RUN_JOB(job_name => '${jobName}', use_current_session => FALSE); END;`;
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro ao executar job: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`Job "${jobName}" disparado com sucesso em segundo plano.`, 'success');
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`Job "${jobName}" executado com sucesso (Modo Local).`, 'success');
+    }
+  }
+
+  async flashbackUndrop(tableName) {
+    const sql = `FLASHBACK TABLE "${tableName}" TO BEFORE DROP;`;
+    window.TracesApp?.notify(`Restaurando ${tableName} da lixeira...`, 'info');
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro no flashback: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`Tabela "${tableName}" restaurada com sucesso com Flashback Drop!`, 'success');
+          await this.loadRealObjects(this.currentSchema);
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`Tabela "${tableName}" restaurada da lixeira (Modo Local).`, 'success');
+    }
+  }
+
+  async purgeRecyclebinObject(objName) {
+    if (!confirm(`Deseja realmente purgar o objeto "${objName}" da lixeira? Esta ação não pode ser desfeita.`)) return;
+    const sql = `PURGE TABLE "${objName}";`;
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro ao purgar: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`Objeto "${objName}" purgado da lixeira com sucesso.`, 'success');
+          await this.loadRealObjects(this.currentSchema);
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`Objeto "${objName}" purgado da lixeira (Modo Local).`, 'success');
+    }
+  }
+
+  async recompileObject(schema, objName, type, isDebug = false) {
+    const debugClause = isDebug ? ' DEBUG' : '';
+    const sql = `ALTER ${type} "${schema}"."${objName}" COMPILE${debugClause};`;
+    window.TracesApp?.notify(`Recompilando ${type} "${schema}"."${objName}"...`, 'info');
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro de compilação: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`${type} "${objName}" recompilado com sucesso.`, 'success');
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Erro: ${e.message}`, 'error');
+      }
+    } else {
+      window.TracesApp?.notify(`${type} "${objName}" recompilado com sucesso (Modo Local).`, 'success');
     }
   }
 
