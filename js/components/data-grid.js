@@ -21,10 +21,12 @@ class DataGrid {
     this.initElements();
     this.bindEvents();
     
-    // Initial data
-    if (window.TRACES_DB && window.TRACES_DB.schemas && window.TRACES_DB.schemas['HR']) {
+    // Initial data: only load if connected
+    if (window.TracesApp && window.TracesApp.isConnected() && window.TRACES_DB && window.TRACES_DB.schemas && window.TRACES_DB.schemas['HR']) {
       const initialData = window.TRACES_DB.schemas['HR'].tables[0].data;
       this.setData(initialData, 'EMPLOYEES');
+    } else {
+      this.render();
     }
   }
 
@@ -105,8 +107,16 @@ class DataGrid {
     if (!this.tableHeader || !this.tableBody) return;
 
     if (this.data.length === 0) {
-      this.tableHeader.innerHTML = '<tr><th>No Data</th></tr>';
-      this.tableBody.innerHTML = '<tr><td style="padding: 24px; text-align: center; color: var(--text-muted);">No records found</td></tr>';
+      this.tableHeader.innerHTML = '<tr><th style="padding: 6px 12px;">Resultado de Dados</th></tr>';
+      this.tableBody.innerHTML = `
+        <tr>
+          <td style="padding: 36px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
+            ${window.TracesApp && window.TracesApp.isConnected() 
+              ? 'Nenhum registro para exibir. Execute uma consulta SQL (F9) na worksheet para carregar dados.' 
+              : 'Desconectado do banco de dados. Conecte-se e execute uma consulta SQL (F9) para visualizar dados no grid.'}
+          </td>
+        </tr>
+      `;
       if (this.countLabel) this.countLabel.textContent = 'Rows: 0';
       if (this.pageLabel) this.pageLabel.textContent = 'Record 0 of 0';
       return;
@@ -259,6 +269,11 @@ class DataGrid {
   }
 
   addNewRow() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Conecte-se a um banco de dados para editar dados de tabelas.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
     if (this.data.length === 0) return;
     const newRow = {};
     Object.keys(this.data[0]).forEach(k => newRow[k] = null);
@@ -272,6 +287,11 @@ class DataGrid {
   }
 
   deleteSelectedRow() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Conecte-se a um banco de dados para editar dados de tabelas.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
     if (this.selectedRowIdx === null) {
       window.TracesApp.notify('Please click a row to select it for deletion.', 'warning');
       return;

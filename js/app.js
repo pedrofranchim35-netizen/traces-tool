@@ -1,13 +1,18 @@
 /* ==========================================================================
    TRACES ORACLE STUDIO - APPLICATION CONTROLLER & BOOTSTRAP
+   Toad for Oracle 1:1 Parity: Full MDI Window Manager, Connection State Guarding,
+   Cascading Menus, and Authenticated Oracle Workspace Lifecycle.
    ========================================================================== */
 
 class TracesApp {
   constructor() {
     window.TracesApp = this;
-    this.currentView = 'editor';
+    this.currentView = 'start';
+    this.openWindows = [];
+    this.activeWindowId = null;
     this.isRealDatabase = false;
     this.realDatabaseConfig = null;
+    this.autoCommit = false;
     this.init();
   }
 
@@ -43,13 +48,267 @@ class TracesApp {
       this.bindGlobalShortcuts();
       this.initSplitter();
 
-      // 6. Check Real Bridge Status
+      // 6. Show Toad Start Page and initialize connection state
+      this.showStartPage();
+      this.updateConnectionState();
+
+      // 7. Check Real Bridge Status (background)
       this.checkRealBridgeStatus();
 
-      this.notify('Toad for Oracle 2026 (Traces Edition) initialized. Ready.', 'success');
+      this.notify('Toad for Oracle 2026 (Traces Edition) inicializado com sucesso.', 'success');
     } catch (err) {
       console.error('TracesApp initialization error:', err);
     }
+  }
+
+  isConnected() {
+    return Boolean(this.isRealDatabase || (this.connectionManager && this.connectionManager.activeConn));
+  }
+
+  updateConnectionState() {
+    const isConn = this.isConnected();
+    const conn = this.isRealDatabase ? this.realDatabaseConfig : this.connectionManager?.getActive();
+
+    // 1. Update Title & Status Bar
+    if (isConn && conn) {
+      const connStr = `${conn.user}@${conn.host || 'localhost'}:${conn.port || 1521}/${conn.serviceName || conn.service_name || 'ORCL'}`;
+      document.title = `Toad for Oracle - [${connStr}]`;
+      const titleEl = document.getElementById('toad-window-title');
+      if (titleEl) titleEl.textContent = `Toad for Oracle - [${connStr}]`;
+      
+      const mbStatus = document.getElementById('toad-mb-status');
+      if (mbStatus) {
+        mbStatus.className = 'toad-menubar-status connected';
+        mbStatus.innerHTML = `<span class="mb-status-dot"></span><span>${conn.user}@${conn.serviceName || conn.service_name || 'ORCL'}</span>`;
+      }
+    } else {
+      document.title = 'Toad for Oracle - [Desconectado]';
+      const titleEl = document.getElementById('toad-window-title');
+      if (titleEl) titleEl.textContent = 'Toad for Oracle - [Desconectado]';
+      
+      const mbStatus = document.getElementById('toad-mb-status');
+      if (mbStatus) {
+        mbStatus.className = 'toad-menubar-status disconnected';
+        mbStatus.innerHTML = `<span class="mb-status-dot"></span><span>Desconectado</span>`;
+      }
+      const userEl = document.getElementById('status-db-user');
+      const verEl = document.getElementById('status-db-version');
+      const latEl = document.getElementById('status-db-latency');
+      if (userEl) userEl.textContent = '[Desconectado]';
+      if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
+      if (latEl) latEl.textContent = '-- ms';
+    }
+
+    // 2. Enable or Disable Execution and Transaction Controls
+    const execButtonIds = [
+      'btn-run-statement',
+      'btn-run-script',
+      'btn-run-cursor',
+      'btn-commit',
+      'btn-rollback',
+      'btn-explain-plan',
+      'toad-chk-autocommit'
+    ];
+    execButtonIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        if (el.tagName === 'INPUT' && el.type === 'checkbox') {
+          el.disabled = !isConn;
+        } else {
+          el.disabled = !isConn;
+          el.classList.toggle('disabled', !isConn);
+        }
+      }
+    });
+
+    const btnDisconnect = document.getElementById('btn-disconnect');
+    if (btnDisconnect) {
+      btnDisconnect.disabled = !isConn;
+      btnDisconnect.classList.toggle('disabled', !isConn);
+    }
+
+    // 3. Update Start Page saved connections
+    this.renderStartPageConnections();
+
+    // 4. Update Header Pill and Selector Dropdown
+    if (this.connectionManager) {
+      this.connectionManager.renderHeaderPill();
+      this.connectionManager.updateSelectorDropdown();
+    }
+
+    // 5. If disconnected, refresh open views
+    if (!isConn) {
+      if (this.currentView === 'dba' && this.dbaTools) {
+        this.dbaTools.render();
+      }
+      if (this.currentView === 'sessions' && this.sessionMonitor) {
+        this.sessionMonitor.render();
+      }
+      if (this.currentView === 'browser' && this.schemaBrowser) {
+        this.schemaBrowser.render();
+      }
+    } else {
+      if (this.currentView === 'dba' && this.dbaTools) {
+        this.dbaTools.render();
+        this.dbaTools.loadSubtabData(this.dbaTools.currentSubtab);
+      }
+      if (this.currentView === 'sessions' && this.sessionMonitor) {
+        this.sessionMonitor.refresh();
+      }
+      if (this.currentView === 'browser' && this.schemaBrowser) {
+        this.schemaBrowser.loadRealSchemas();
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // DYNAMIC MDI WINDOW MANAGEMENT (TOAD FOR ORACLE 1:1 PARITY)
+  // ---------------------------------------------------------------------------
+  openWindow(viewKey, subtabKey = null, customTitle = null) {
+    const winDefs = {
+      'editor': { title: 'SQL Editor', icon: '📝' },
+      'browser': { title: 'Schema Browser', icon: '📂' },
+      'explain': { title: 'Explain Plan', icon: '🌲' },
+      'sessions': { title: 'Session Browser', icon: '👥' },
+      'probe': { title: 'Database Probe', icon: '📡' },
+      'rules': { title: 'Rule Universe', icon: '📜' },
+      'spotlight': { title: 'Spotlight on Oracle', icon: '💡' },
+      'modeler': { title: 'Toad Data Modeler', icon: '📐' },
+      'dba': { title: 'DBA Administration Hub', icon: '🏛' },
+      'optimizer': { title: 'Quest SQL Optimizer', icon: '⚡' },
+      'automation': { title: 'Automation Designer', icon: '⚙' },
+      'profiler': { title: 'PL/SQL Profiler', icon: '🔬' },
+      'copilot': { title: 'Traces Copilot', icon: '🤖' }
+    };
+
+    const def = winDefs[viewKey] || { title: viewKey.toUpperCase(), icon: '🪟' };
+    const winTitle = customTitle || def.title;
+    const winId = `win-${viewKey}`;
+
+    let win = this.openWindows.find(w => w.id === winId);
+    if (!win) {
+      win = {
+        id: winId,
+        viewKey: viewKey,
+        title: winTitle,
+        icon: def.icon,
+        subtab: subtabKey
+      };
+      this.openWindows.push(win);
+    } else {
+      if (customTitle) win.title = customTitle;
+      if (subtabKey) win.subtab = subtabKey;
+    }
+
+    this.activeWindowId = winId;
+    this.renderMdiTabs();
+    this.switchDockView(viewKey, subtabKey);
+  }
+
+  activateWindow(winId) {
+    const win = this.openWindows.find(w => w.id === winId);
+    if (!win) return;
+    this.activeWindowId = winId;
+    this.renderMdiTabs();
+    this.switchDockView(win.viewKey, win.subtab);
+  }
+
+  closeWindow(winId) {
+    const idx = this.openWindows.findIndex(w => w.id === winId);
+    if (idx === -1) return;
+
+    this.openWindows.splice(idx, 1);
+
+    if (this.activeWindowId === winId) {
+      if (this.openWindows.length > 0) {
+        const nextWin = this.openWindows[Math.max(0, idx - 1)];
+        this.activeWindowId = nextWin.id;
+        this.renderMdiTabs();
+        this.switchDockView(nextWin.viewKey, nextWin.subtab);
+      } else {
+        this.activeWindowId = null;
+        this.showStartPage();
+      }
+    } else {
+      this.renderMdiTabs();
+    }
+  }
+
+  closeActiveWindow() {
+    if (this.activeWindowId) {
+      this.closeWindow(this.activeWindowId);
+    }
+  }
+
+  closeAllWindows() {
+    this.openWindows = [];
+    this.activeWindowId = null;
+    this.showStartPage();
+  }
+
+  showStartPage() {
+    this.currentView = 'start';
+    this.activeWindowId = null;
+    document.querySelectorAll('.workspace-view').forEach(v => {
+      v.classList.toggle('active', v.id === 'view-start');
+    });
+    this.renderMdiTabs();
+    this.renderStartPageConnections();
+    const titleEl = document.getElementById('toad-window-title');
+    if (titleEl) {
+      titleEl.textContent = this.isConnected()
+        ? `Toad for Oracle - [Página Inicial]`
+        : `Toad for Oracle - [Desconectado]`;
+    }
+  }
+
+  renderMdiTabs() {
+    const container = document.getElementById('toad-mdi-tabs');
+    if (!container) return;
+
+    let html = `
+      <div class="toad-window-tab ${this.currentView === 'start' ? 'active' : ''}" onclick="window.TracesApp.showStartPage();" title="Página Inicial do Toad">
+        <span style="font-size: 11px;">🏠</span>
+        <span style="font-weight: 600;">Start Page</span>
+      </div>
+    `;
+
+    html += this.openWindows.map(w => {
+      const isActive = this.activeWindowId === w.id && this.currentView !== 'start';
+      return `
+        <div class="toad-window-tab ${isActive ? 'active' : ''}" 
+             data-win-id="${w.id}"
+             onclick="window.TracesApp.activateWindow('${w.id}');"
+             title="${w.title}">
+          <span style="font-size: 11px;">${w.icon}</span>
+          <span style="font-weight: 600;">${w.title}</span>
+          <span class="mdi-tab-close" onclick="event.stopPropagation(); window.TracesApp.closeWindow('${w.id}');" title="Fechar Janela (Ctrl+F4)">×</span>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = html;
+  }
+
+  renderStartPageConnections() {
+    const listEl = document.getElementById('start-saved-connections-list');
+    if (!listEl) return;
+    const conns = this.connectionManager?.connections || [];
+    if (conns.length === 0) {
+      listEl.innerHTML = `<div style="font-size: 11px; color: #888; font-style: italic;">Nenhum perfil cadastrado.</div>`;
+      return;
+    }
+    listEl.innerHTML = conns.map(c => `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #fff; border: 1px solid #d1d5db; border-radius: 4px; font-size: 11px;">
+        <div>
+          <span style="font-weight: 700; color: #1e293b;">${c.name || 'Conexão Oracle'}</span>
+          <span style="color: #64748b; margin-left: 6px;">(${c.user}@${c.host}:${c.port}/${c.serviceName})</span>
+        </div>
+        <button class="btn btn-primary" style="padding: 2px 10px; font-size: 11px;" onclick="window.TracesApp.connectionManager.selectProfile('${c.id}'); window.TracesApp.connectionManager.openModal();">
+          ⚡ Conectar
+        </button>
+      </div>
+    `).join('');
   }
 
   async checkRealBridgeStatus() {
@@ -59,15 +318,7 @@ class TracesApp {
       if (data.connection && data.connection.status === 'CONNECTED') {
         this.isRealDatabase = true;
         this.realDatabaseConfig = data.connection.config;
-        const cfg = data.connection.config;
-        const titleEl = document.getElementById('toad-window-title');
-        if (titleEl) {
-          titleEl.textContent = `Toad for Oracle - [REAL ORACLE: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.service_name}]`;
-        }
-        const dbVerEl = document.getElementById('status-db-version');
-        const userEl = document.getElementById('status-db-user');
-        if (dbVerEl && data.connection.banner) dbVerEl.textContent = data.connection.banner.split('\n')[0];
-        if (userEl) userEl.textContent = `${cfg.user}@${cfg.service_name}`;
+        this.updateConnectionState();
 
         // Automatically sync live components with Oracle Database
         if (this.schemaBrowser && typeof this.schemaBrowser.loadRealSchemas === 'function') {
@@ -85,12 +336,7 @@ class TracesApp {
       } else {
         this.isRealDatabase = false;
         this.realDatabaseConfig = null;
-        const titleEl = document.getElementById('toad-window-title');
-        if (titleEl) titleEl.textContent = 'Toad for Oracle - [Desconectado]';
-        const userEl = document.getElementById('status-db-user');
-        const verEl = document.getElementById('status-db-version');
-        if (userEl) userEl.textContent = '[Desconectado]';
-        if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
+        this.updateConnectionState();
       }
     } catch (e) {
       // Bridge server offline or starting
@@ -98,22 +344,17 @@ class TracesApp {
   }
 
   bindDockNavigation() {
-    const tabs = document.querySelectorAll('.toad-window-tab[data-view], .dock-item[data-view]');
+    const tabs = document.querySelectorAll('.dock-item[data-view]');
     tabs.forEach(item => {
       item.onclick = (e) => {
         const view = e.currentTarget.getAttribute('data-view');
-        this.switchDockView(view);
+        this.openWindow(view);
       };
     });
   }
 
   switchDockView(viewKey, subtabKey = null) {
     this.currentView = viewKey;
-
-    // Update MDI tabs highlight
-    document.querySelectorAll('.toad-window-tab[data-view], .dock-item[data-view]').forEach(item => {
-      item.classList.toggle('active', item.getAttribute('data-view') === viewKey);
-    });
 
     // Update workspace views
     document.querySelectorAll('.workspace-view').forEach(v => {
@@ -145,53 +386,53 @@ class TracesApp {
           'dba': `Toad for Oracle - [DBA Administration Hub (${conn.user}@${conn.serviceName})]`,
           'optimizer': `Toad for Oracle - [Quest SQL Optimizer (${conn.user}@${conn.serviceName})]`,
           'automation': `Toad for Oracle - [Automation Designer (App Designer)]`,
-          'profiler': `Toad for Oracle - [PL/SQL Profiler & Code Analysis]`
+          'profiler': `Toad for Oracle - [PL/SQL Profiler & Code Analysis]`,
+          'copilot': `Toad for Oracle - [Traces Copilot AI Assistant]`
         };
         titleEl.textContent = titles[viewKey] || `Toad for Oracle - [${viewKey.toUpperCase()}]`;
       }
     }
 
-    // Component-specific hooks on switch (instant auto-render & live reactivity)
+    this.renderMdiTabs();
+
+    // Component-specific hooks on switch
     if (viewKey === 'sessions' && this.sessionMonitor) {
-      this.sessionMonitor.render();
-      if (this.isRealDatabase) {
-        this.sessionMonitor.loadRealSessions();
-      }
-    } else if (viewKey === 'browser' && this.schemaBrowser) {
-      if (this.isRealDatabase && (!this.schemaBrowser.realObjects || Object.keys(this.schemaBrowser.realObjects).length === 0)) {
-        this.schemaBrowser.loadRealSchemas();
-      } else {
-        this.schemaBrowser.render();
-      }
-    } else if (viewKey === 'probe' && this.databaseProbe) {
-      if (this.isRealDatabase) this.databaseProbe.loadRealProbe();
-      else this.databaseProbe.render();
-    } else if (viewKey === 'spotlight' && this.spotlightOracle) {
-      this.spotlightOracle.render();
-    } else if (viewKey === 'dba' && this.dbaTools) {
-      if (this.isRealDatabase) this.dbaTools.loadRealData();
-      else this.dbaTools.render();
+      this.sessionMonitor.renderGauges();
     }
   }
 
   bindGlobalShortcuts() {
     window.addEventListener('keydown', (e) => {
+      // Close active window: Ctrl+F4
+      if ((e.ctrlKey || e.metaKey) && e.key === 'F4') {
+        e.preventDefault();
+        this.closeActiveWindow();
+        return;
+      }
+
+      // Close all windows: Ctrl+Shift+F4
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F4') {
+        e.preventDefault();
+        this.closeAllWindows();
+        return;
+      }
+
       // Global F9: Run statement in editor
       if (e.key === 'F9') {
         e.preventDefault();
-        this.switchDockView('editor');
+        this.openWindow('editor');
         this.sqlEditor.executeStatement();
       }
       // Global F5: Run script in editor
       else if (e.key === 'F5') {
         e.preventDefault();
-        this.switchDockView('editor');
+        this.openWindow('editor');
         this.sqlEditor.executeScript();
       }
       // Global Ctrl+Enter: Execute at cursor
       else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        this.switchDockView('editor');
+        this.openWindow('editor');
         this.sqlEditor.executeStatement();
       }
       // Global F4: Toad Describe Object
@@ -217,13 +458,13 @@ class TracesApp {
       // Global Ctrl+E / Cmd+E: Explain Plan
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        this.switchDockView('explain');
+        this.openWindow('explain');
         this.explainPlan.generatePlan(this.sqlEditor.textarea.value);
       }
       // Global Ctrl+B / Cmd+B: Schema Browser
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        this.switchDockView('browser');
+        this.openWindow('browser');
       }
       // Global Ctrl+Shift+F: Format Code
       else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {

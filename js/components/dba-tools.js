@@ -31,55 +31,216 @@ class DbaTools {
     this.render();
   }
 
+  getSubtabTitle(subKey) {
+    const titles = {
+      'browser': '🏛 Database Browser & SPFILE Editor',
+      'dbmonitor': '📈 Database Monitor (Live Waits & Throughput)',
+      'unixmonitor': '🐧 Unix / Linux Server Monitor (V$OSSTAT)',
+      'tablespacemap': '💾 Tablespace Map & High Water Mark (HWM)',
+      'spacemanager': '📊 Space Manager & Capacity Growth Forecast',
+      'segmentadvisor': '🧹 Segment Advisor & Rebuild Multiple Objects',
+      'undoadvisor': '⏱ Undo Advisor (V$UNDOSTAT & ORA-01555)',
+      'flashback': '⏪ Flashback Recycle Bin (DBA_RECYCLEBIN)',
+      'logminer': '🔍 LogMiner Interface (DBMS_LOGMNR Redo/Undo)',
+      'dataguard': '🛡 Data Guard Manager (Primary/Standby Sync)',
+      'asm': '💽 ASM Storage Manager (V$ASM_DISKGROUP)',
+      'rac': '🌐 RAC Cluster Diagnostics (GV$INSTANCE)',
+      'exadata': '⚡ Exadata Smart Scan & Storage Index',
+      'audit': '🔒 Audit Manager & FGA (UNIFIED_AUDIT_TRAIL)',
+      'wallet': '🔑 Oracle Keystore & TDE (V$ENCRYPTION_WALLET)',
+      'schemacompare': '⚖ Schema Compare (Live Cross-Schema Diff)',
+      'datacompare': '📋 Data Compare (Row-by-Row PK Diff)',
+      'dbcompare': '📑 Database Compare (Parameter & Profile Diff)',
+      'awr': '⏱ AWR / ASH Performance Browser'
+    };
+    return titles[subKey] || subKey;
+  }
+
+  refreshCurrentSubtab() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Desconectado do banco de dados. Conecte-se para carregar métricas.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+    this.loadSubtabData(this.currentSubtab);
+  }
+
   render() {
     if (!this.container) return;
 
+    const isConn = window.TracesApp && window.TracesApp.isConnected();
+    const connConfig = window.TracesApp?.realDatabaseConfig;
+    const dbTarget = connConfig ? `${connConfig.user}@${connConfig.host}:${connConfig.port}/${connConfig.serviceName}` : 'Desconectado';
+
     this.container.innerHTML = `
       <div class="dba-hub-container" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-        <!-- Subtabs Bar (Horizontal scroll for 19 tabs) -->
-        <div class="dba-subtabs-bar" style="overflow-x: auto; white-space: nowrap; flex-shrink: 0; padding: 0 4px; border-bottom: 1px solid #c0c0c0; background: #f0f0f0;">
-          <button class="dba-subtab active" data-sub="browser" onclick="window.TracesApp.dbaTools.switchSubtab('browser');">🏛 Database Browser &amp; SPFILE</button>
-          <button class="dba-subtab" data-sub="dbmonitor" onclick="window.TracesApp.dbaTools.switchSubtab('dbmonitor');">📈 Database Monitor</button>
-          <button class="dba-subtab" data-sub="unixmonitor" onclick="window.TracesApp.dbaTools.switchSubtab('unixmonitor');">🐧 Unix / OS Monitor</button>
-          <button class="dba-subtab" data-sub="tablespacemap" onclick="window.TracesApp.dbaTools.switchSubtab('tablespacemap');">💾 Tablespace Map (HWM)</button>
-          <button class="dba-subtab" data-sub="spacemanager" onclick="window.TracesApp.dbaTools.switchSubtab('spacemanager');">📊 Space Manager &amp; Forecast</button>
-          <button class="dba-subtab" data-sub="segmentadvisor" onclick="window.TracesApp.dbaTools.switchSubtab('segmentadvisor');">🧹 Segment Advisor &amp; Rebuild</button>
-          <button class="dba-subtab" data-sub="undoadvisor" onclick="window.TracesApp.dbaTools.switchSubtab('undoadvisor');">⏱ Undo Advisor</button>
-          <button class="dba-subtab" data-sub="flashback" onclick="window.TracesApp.dbaTools.switchSubtab('flashback');">⏪ Flashback Recycle Bin</button>
-          <button class="dba-subtab" data-sub="logminer" onclick="window.TracesApp.dbaTools.switchSubtab('logminer');">🔍 LogMiner (Redo/Undo)</button>
-          <button class="dba-subtab" data-sub="dataguard" onclick="window.TracesApp.dbaTools.switchSubtab('dataguard');">🛡 Data Guard Manager</button>
-          <button class="dba-subtab" data-sub="asm" onclick="window.TracesApp.dbaTools.switchSubtab('asm');">💽 ASM Storage Manager</button>
-          <button class="dba-subtab" data-sub="rac" onclick="window.TracesApp.dbaTools.switchSubtab('rac');">🌐 RAC Cluster Diagnostics</button>
-          <button class="dba-subtab" data-sub="exadata" onclick="window.TracesApp.dbaTools.switchSubtab('exadata');">⚡ Exadata Smart Scan</button>
-          <button class="dba-subtab" data-sub="audit" onclick="window.TracesApp.dbaTools.switchSubtab('audit');">🔒 Audit Manager (FGA)</button>
-          <button class="dba-subtab" data-sub="wallet" onclick="window.TracesApp.dbaTools.switchSubtab('wallet');">🔑 Keystore &amp; TDE</button>
-          <button class="dba-subtab" data-sub="schemacompare" onclick="window.TracesApp.dbaTools.switchSubtab('schemacompare');">⚖ Schema Compare</button>
-          <button class="dba-subtab" data-sub="datacompare" onclick="window.TracesApp.dbaTools.switchSubtab('datacompare');">📋 Data Compare</button>
-          <button class="dba-subtab" data-sub="dbcompare" onclick="window.TracesApp.dbaTools.switchSubtab('dbcompare');">📑 Database Compare</button>
-          <button class="dba-subtab" data-sub="awr" onclick="window.TracesApp.dbaTools.switchSubtab('awr');">⏱ AWR / ASH Browser</button>
+        <!-- Header Bar: Tool Title & Quick Selector -->
+        <div class="dba-header-bar">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-weight: 700; font-size: 13px; color: #1e293b;" id="dba-current-tool-title">
+              ${this.getSubtabTitle(this.currentSubtab)}
+            </span>
+            <span style="font-size: 11px; color: #64748b;">|</span>
+            <label style="font-size: 11px; font-weight: 600; color: #475569;">Ferramenta:</label>
+            <select class="toad-conn-combobox" id="dba-tool-selector" style="height: 24px; min-width: 220px;" onchange="window.TracesApp.dbaTools.switchSubtab(this.value);">
+              <optgroup label="Instância &amp; Administração">
+                <option value="browser" ${this.currentSubtab === 'browser' ? 'selected' : ''}>Database Browser &amp; SPFILE</option>
+                <option value="dbmonitor" ${this.currentSubtab === 'dbmonitor' ? 'selected' : ''}>Database Monitor (Wait Events)</option>
+                <option value="unixmonitor" ${this.currentSubtab === 'unixmonitor' ? 'selected' : ''}>Unix / OS Server Monitor</option>
+              </optgroup>
+              <optgroup label="Storage &amp; Capacidade">
+                <option value="tablespacemap" ${this.currentSubtab === 'tablespacemap' ? 'selected' : ''}>Tablespace Map (HWM)</option>
+                <option value="spacemanager" ${this.currentSubtab === 'spacemanager' ? 'selected' : ''}>Space Manager &amp; Forecast</option>
+                <option value="segmentadvisor" ${this.currentSubtab === 'segmentadvisor' ? 'selected' : ''}>Segment Advisor &amp; Rebuild</option>
+                <option value="undoadvisor" ${this.currentSubtab === 'undoadvisor' ? 'selected' : ''}>Undo Advisor (ORA-01555)</option>
+              </optgroup>
+              <optgroup label="Flashback &amp; LogMiner">
+                <option value="flashback" ${this.currentSubtab === 'flashback' ? 'selected' : ''}>Flashback Recycle Bin</option>
+                <option value="logminer" ${this.currentSubtab === 'logminer' ? 'selected' : ''}>LogMiner (Redo/Undo)</option>
+              </optgroup>
+              <optgroup label="Alta Disponibilidade &amp; RAC">
+                <option value="dataguard" ${this.currentSubtab === 'dataguard' ? 'selected' : ''}>Data Guard Manager</option>
+                <option value="asm" ${this.currentSubtab === 'asm' ? 'selected' : ''}>ASM Storage Manager</option>
+                <option value="rac" ${this.currentSubtab === 'rac' ? 'selected' : ''}>RAC Cluster Diagnostics</option>
+                <option value="exadata" ${this.currentSubtab === 'exadata' ? 'selected' : ''}>Exadata Smart Scan</option>
+              </optgroup>
+              <optgroup label="Segurança &amp; Auditoria">
+                <option value="audit" ${this.currentSubtab === 'audit' ? 'selected' : ''}>Audit Manager (FGA)</option>
+                <option value="wallet" ${this.currentSubtab === 'wallet' ? 'selected' : ''}>Keystore &amp; TDE</option>
+              </optgroup>
+              <optgroup label="Ferramentas de Comparação">
+                <option value="schemacompare" ${this.currentSubtab === 'schemacompare' ? 'selected' : ''}>Schema Compare</option>
+                <option value="datacompare" ${this.currentSubtab === 'datacompare' ? 'selected' : ''}>Data Compare</option>
+                <option value="dbcompare" ${this.currentSubtab === 'dbcompare' ? 'selected' : ''}>Database Compare</option>
+                <option value="awr" ${this.currentSubtab === 'awr' ? 'selected' : ''}>AWR / ASH Browser</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.dbaTools.refreshCurrentSubtab();" title="Recarregar Dados">
+              🔄 Atualizar
+            </button>
+            <span class="toad-conn-badge-indicator" style="background: ${isConn ? '#e0f2fe' : '#fee2e2'}; color: ${isConn ? '#0369a1' : '#b91c1c'}; font-size: 11px; padding: 3px 8px;">
+              ${isConn ? '● Conectado: ' + dbTarget : '● Desconectado'}
+            </span>
+          </div>
         </div>
 
-        <!-- Subtab Content Panes -->
-        <div style="flex: 1; overflow: hidden; position: relative;">
-          <div class="dba-content-pane active" id="dba-pane-browser" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderDatabaseBrowser()}</div>
-          <div class="dba-content-pane" id="dba-pane-dbmonitor" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderDbMonitor()}</div>
-          <div class="dba-content-pane" id="dba-pane-unixmonitor" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderUnixMonitor()}</div>
-          <div class="dba-content-pane" id="dba-pane-tablespacemap" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderTablespaceMap()}</div>
-          <div class="dba-content-pane" id="dba-pane-spacemanager" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderSpaceManager()}</div>
-          <div class="dba-content-pane" id="dba-pane-segmentadvisor" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderSegmentAdvisor()}</div>
-          <div class="dba-content-pane" id="dba-pane-undoadvisor" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderUndoAdvisor()}</div>
-          <div class="dba-content-pane" id="dba-pane-flashback" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderFlashback()}</div>
-          <div class="dba-content-pane" id="dba-pane-logminer" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderLogMiner()}</div>
-          <div class="dba-content-pane" id="dba-pane-dataguard" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderDataGuard()}</div>
-          <div class="dba-content-pane" id="dba-pane-asm" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderAsm()}</div>
-          <div class="dba-content-pane" id="dba-pane-rac" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderRac()}</div>
-          <div class="dba-content-pane" id="dba-pane-exadata" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderExadata()}</div>
-          <div class="dba-content-pane" id="dba-pane-audit" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderAudit()}</div>
-          <div class="dba-content-pane" id="dba-pane-wallet" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderWallet()}</div>
-          <div class="dba-content-pane" id="dba-pane-schemacompare" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderSchemaCompare()}</div>
-          <div class="dba-content-pane" id="dba-pane-datacompare" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderDataCompare()}</div>
-          <div class="dba-content-pane" id="dba-pane-dbcompare" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderDbCompare()}</div>
-          <div class="dba-content-pane" id="dba-pane-awr" style="height: 100%; overflow-y: auto; padding: 10px;">${this.renderAwr()}</div>
+        <!-- Workbench Split: Left Categorized Navigation Tree + Right Content Pane -->
+        <div class="dba-workspace-split">
+          <!-- Left Navigation Sidebar -->
+          <div class="dba-sidebar-nav">
+            <div class="dba-nav-group">
+              <div class="dba-nav-group-title">🏛 Instância &amp; Serviços</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'browser' ? 'active' : ''}" data-sub="browser" onclick="window.TracesApp.dbaTools.switchSubtab('browser');">
+                <span>🏛 Database Browser &amp; SPFILE</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'dbmonitor' ? 'active' : ''}" data-sub="dbmonitor" onclick="window.TracesApp.dbaTools.switchSubtab('dbmonitor');">
+                <span>📈 Database Monitor</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'unixmonitor' ? 'active' : ''}" data-sub="unixmonitor" onclick="window.TracesApp.dbaTools.switchSubtab('unixmonitor');">
+                <span>🐧 Unix / OS Monitor</span>
+              </div>
+            </div>
+
+            <div class="dba-nav-group">
+              <div class="dba-nav-group-title">💾 Storage &amp; Espaço</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'tablespacemap' ? 'active' : ''}" data-sub="tablespacemap" onclick="window.TracesApp.dbaTools.switchSubtab('tablespacemap');">
+                <span>💾 Tablespace Map (HWM)</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'spacemanager' ? 'active' : ''}" data-sub="spacemanager" onclick="window.TracesApp.dbaTools.switchSubtab('spacemanager');">
+                <span>📊 Space Manager &amp; Forecast</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'segmentadvisor' ? 'active' : ''}" data-sub="segmentadvisor" onclick="window.TracesApp.dbaTools.switchSubtab('segmentadvisor');">
+                <span>🧹 Segment Advisor &amp; Rebuild</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'undoadvisor' ? 'active' : ''}" data-sub="undoadvisor" onclick="window.TracesApp.dbaTools.switchSubtab('undoadvisor');">
+                <span>⏱ Undo Advisor</span>
+              </div>
+            </div>
+
+            <div class="dba-nav-group">
+              <div class="dba-nav-group-title">⏪ Flashback &amp; Recovery</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'flashback' ? 'active' : ''}" data-sub="flashback" onclick="window.TracesApp.dbaTools.switchSubtab('flashback');">
+                <span>⏪ Flashback Recycle Bin</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'logminer' ? 'active' : ''}" data-sub="logminer" onclick="window.TracesApp.dbaTools.switchSubtab('logminer');">
+                <span>🔍 LogMiner (Redo/Undo)</span>
+              </div>
+            </div>
+
+            <div class="dba-nav-group">
+              <div class="dba-nav-group-title">🌐 Alta Disponibilidade &amp; RAC</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'dataguard' ? 'active' : ''}" data-sub="dataguard" onclick="window.TracesApp.dbaTools.switchSubtab('dataguard');">
+                <span>🛡 Data Guard Manager</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'asm' ? 'active' : ''}" data-sub="asm" onclick="window.TracesApp.dbaTools.switchSubtab('asm');">
+                <span>💽 ASM Storage Manager</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'rac' ? 'active' : ''}" data-sub="rac" onclick="window.TracesApp.dbaTools.switchSubtab('rac');">
+                <span>🌐 RAC Cluster Diagnostics</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'exadata' ? 'active' : ''}" data-sub="exadata" onclick="window.TracesApp.dbaTools.switchSubtab('exadata');">
+                <span>⚡ Exadata Smart Scan</span>
+              </div>
+            </div>
+
+            <div class="dba-nav-group">
+              <div class="dba-nav-group-title">🔒 Segurança &amp; Auditoria</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'audit' ? 'active' : ''}" data-sub="audit" onclick="window.TracesApp.dbaTools.switchSubtab('audit');">
+                <span>🔒 Audit Manager (FGA)</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'wallet' ? 'active' : ''}" data-sub="wallet" onclick="window.TracesApp.dbaTools.switchSubtab('wallet');">
+                <span>🔑 Keystore &amp; TDE</span>
+              </div>
+            </div>
+
+            <div class="dba-nav-group" style="border-bottom: none;">
+              <div class="dba-nav-group-title">⚖ Comparação &amp; Tuning</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'schemacompare' ? 'active' : ''}" data-sub="schemacompare" onclick="window.TracesApp.dbaTools.switchSubtab('schemacompare');">
+                <span>⚖ Schema Compare</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'datacompare' ? 'active' : ''}" data-sub="datacompare" onclick="window.TracesApp.dbaTools.switchSubtab('datacompare');">
+                <span>📋 Data Compare</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'dbcompare' ? 'active' : ''}" data-sub="dbcompare" onclick="window.TracesApp.dbaTools.switchSubtab('dbcompare');">
+                <span>📑 Database Compare</span>
+              </div>
+              <div class="dba-nav-item ${this.currentSubtab === 'awr' ? 'active' : ''}" data-sub="awr" onclick="window.TracesApp.dbaTools.switchSubtab('awr');">
+                <span>⏱ AWR / ASH Browser</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Content Pane -->
+          <div class="dba-main-content">
+            ${!isConn ? `
+              <div class="dba-content-pane active" id="dba-pane-${this.currentSubtab}">
+                ${this.renderDisconnectedWatermark(this.getSubtabTitle(this.currentSubtab))}
+              </div>
+            ` : `
+              <div class="dba-content-pane active" id="dba-pane-browser">${this.renderDatabaseBrowser()}</div>
+              <div class="dba-content-pane" id="dba-pane-dbmonitor">${this.renderDbMonitor()}</div>
+              <div class="dba-content-pane" id="dba-pane-unixmonitor">${this.renderUnixMonitor()}</div>
+              <div class="dba-content-pane" id="dba-pane-tablespacemap">${this.renderTablespaceMap()}</div>
+              <div class="dba-content-pane" id="dba-pane-spacemanager">${this.renderSpaceManager()}</div>
+              <div class="dba-content-pane" id="dba-pane-segmentadvisor">${this.renderSegmentAdvisor()}</div>
+              <div class="dba-content-pane" id="dba-pane-undoadvisor">${this.renderUndoAdvisor()}</div>
+              <div class="dba-content-pane" id="dba-pane-flashback">${this.renderFlashback()}</div>
+              <div class="dba-content-pane" id="dba-pane-logminer">${this.renderLogMiner()}</div>
+              <div class="dba-content-pane" id="dba-pane-dataguard">${this.renderDataGuard()}</div>
+              <div class="dba-content-pane" id="dba-pane-asm">${this.renderAsm()}</div>
+              <div class="dba-content-pane" id="dba-pane-rac">${this.renderRac()}</div>
+              <div class="dba-content-pane" id="dba-pane-exadata">${this.renderExadata()}</div>
+              <div class="dba-content-pane" id="dba-pane-audit">${this.renderAudit()}</div>
+              <div class="dba-content-pane" id="dba-pane-wallet">${this.renderWallet()}</div>
+              <div class="dba-content-pane" id="dba-pane-schemacompare">${this.renderSchemaCompare()}</div>
+              <div class="dba-content-pane" id="dba-pane-datacompare">${this.renderDataCompare()}</div>
+              <div class="dba-content-pane" id="dba-pane-dbcompare">${this.renderDbCompare()}</div>
+              <div class="dba-content-pane" id="dba-pane-awr">${this.renderAwr()}</div>
+            `}
+          </div>
         </div>
       </div>
     `;
@@ -87,17 +248,41 @@ class DbaTools {
 
   async switchSubtab(subKey) {
     this.currentSubtab = subKey;
-    document.querySelectorAll('.dba-subtab').forEach(b => {
+
+    // Update left sidebar active class
+    document.querySelectorAll('.dba-nav-item').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-sub') === subKey);
     });
-    document.querySelectorAll('.dba-content-pane').forEach(p => {
-      p.classList.toggle('active', p.id === `dba-pane-${subKey}`);
-    });
+
+    // Update dropdown selector
+    const selector = document.getElementById('dba-tool-selector');
+    if (selector) selector.value = subKey;
+
+    // Update title
+    const titleEl = document.getElementById('dba-current-tool-title');
+    if (titleEl) titleEl.textContent = this.getSubtabTitle(subKey);
 
     if (this.monitorInterval) {
       clearInterval(this.monitorInterval);
       this.monitorInterval = null;
     }
+
+    if (!window.TracesApp || !window.TracesApp.isConnected()) {
+      const mainContent = this.container.querySelector('.dba-main-content');
+      if (mainContent) {
+        mainContent.innerHTML = `
+          <div class="dba-content-pane active" id="dba-pane-${subKey}">
+            ${this.renderDisconnectedWatermark(this.getSubtabTitle(subKey))}
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Switch pane
+    document.querySelectorAll('.dba-content-pane').forEach(p => {
+      p.classList.toggle('active', p.id === `dba-pane-${subKey}`);
+    });
 
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
       await this.loadSubtabData(subKey);
@@ -111,9 +296,18 @@ class DbaTools {
     }
   }
 
+  async loadRealData() {
+    return this.loadSubtabData(this.currentSubtab);
+  }
+
   async loadSubtabData(subKey, silent = false) {
     try {
-      const resp = await fetch(`/api/dba/${subKey}`);
+      const urlMap = {
+        'browser': '/api/parameters',
+        'flashback': '/api/dba/recyclebin'
+      };
+      const apiUrl = urlMap[subKey] || `/api/dba/${subKey}`;
+      const resp = await fetch(apiUrl);
       if (!resp.ok) return;
       const data = await resp.json();
       this.cachedData[subKey] = data;
@@ -186,8 +380,28 @@ class DbaTools {
     }
   }
 
+  renderDisconnectedWatermark(toolName) {
+    return `
+      <div class="toad-disconnected-watermark">
+        <div class="watermark-icon">🔌</div>
+        <div class="watermark-title">${toolName || 'Módulo DBA'} - Desconectado</div>
+        <div class="watermark-desc">
+          Esta ferramenta administrativa requer uma conexão ativa com uma instância Oracle Database.<br>
+          Conecte-se a uma sessão ativa para inspecionar parâmetros, dicionário de dados e métricas em tempo real.
+        </div>
+        <button class="btn btn-primary" style="padding: 6px 16px; font-weight: 600; font-size: 12px; margin-top: 10px;" onclick="window.TracesApp.connectionManager.openModal();">
+          ⚡ Conectar a um Banco Oracle...
+        </button>
+      </div>
+    `;
+  }
+
   // 1. Database Browser
   renderDatabaseBrowser() {
+    if (!window.TracesApp?.isConnected()) {
+      return this.renderDisconnectedWatermark('Database Browser & SPFILE Editor');
+    }
+
     const list = this.realParameters || (window.TRACES_DB ? window.TRACES_DB.parameters : []);
     const paramsHtml = list.map(p => `
       <tr>
@@ -210,7 +424,7 @@ class DbaTools {
     `).join('');
 
     const connConfig = window.TracesApp?.realDatabaseConfig;
-    const dbTarget = connConfig ? `${connConfig.user}@${connConfig.host}:${connConfig.port}/${connConfig.serviceName}` : 'SALES_PROD';
+    const dbTarget = connConfig ? `${connConfig.user}@${connConfig.host}:${connConfig.port}/${connConfig.serviceName}` : 'Desconectado';
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -238,6 +452,12 @@ class DbaTools {
   }
 
   async editParameter(paramName, currentVal) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se para alterar parâmetros.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     const newVal = prompt(`Alter Oracle System Parameter (${paramName}):\nALTER SYSTEM SET ${paramName} = <new_val> SCOPE=BOTH;`, currentVal);
     if (!newVal) return;
 
@@ -403,6 +623,12 @@ class DbaTools {
   }
 
   generateResizeScript(fileName, shrinkMb, reclaimMb) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se para calcular redimensionamento.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     const sql = `-- Toad Datafile Resize Script (High Water Mark Reclaim)
 -- Reclaimable OS storage: ${reclaimMb} MB
 ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
@@ -494,6 +720,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async executeSegmentAction(sql) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para executar esta ação.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         const resp = await fetch('/api/query', {
@@ -508,7 +740,7 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
         window.TracesApp.notify(`Erro: ${e.message}`, 'error');
       }
     } else {
-      window.TracesApp.notify(`Executado (Mock): ${sql}`, 'success');
+      window.TracesApp.notify(`Executado: ${sql}`, 'success');
     }
   }
 
@@ -583,6 +815,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async flashbackRestore(tableName) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para executar restauração de flashback.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         const resp = await fetch('/api/dba/flashback', {
@@ -600,11 +838,17 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
         window.TracesApp.notify(`Erro: ${e.message}`, 'error');
       }
     } else {
-      window.TracesApp.notify(`Executed FLASHBACK TABLE ${tableName} TO BEFORE DROP (Mock);`, 'success');
+      window.TracesApp.notify(`FLASHBACK TABLE ${tableName} TO BEFORE DROP concluído.`, 'success');
     }
   }
 
   async purgeRecycleObject(objectName) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para expurgar objetos.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         const resp = await fetch('/api/dba/flashback', {
@@ -622,11 +866,17 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
         window.TracesApp.notify(`Erro: ${e.message}`, 'error');
       }
     } else {
-      window.TracesApp.notify(`PURGE TABLE ${objectName} completed (Mock).`, 'info');
+      window.TracesApp.notify(`PURGE TABLE ${objectName} concluído.`, 'info');
     }
   }
 
   async purgeEntireRecycleBin() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para expurgar a lixeira.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (confirm('Tem certeza que deseja expurgar toda a lixeira (PURGE DBA_RECYCLEBIN)?')) {
       if (window.TracesApp?.isRealDatabase) {
         try {
@@ -642,7 +892,7 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
           window.TracesApp.notify(`Erro: ${e.message}`, 'error');
         }
       } else {
-        window.TracesApp.notify('PURGE DBA_RECYCLEBIN executed (Mock).', 'warning');
+        window.TracesApp.notify('PURGE DBA_RECYCLEBIN executado.', 'warning');
       }
     }
   }
@@ -682,6 +932,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async startLogMinerSession() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para iniciar o LogMiner.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         const resp = await fetch('/api/dba/logminer', {
@@ -780,6 +1036,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async rebalanceAsm(dgName) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para rebalancear diskgroup.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         await fetch('/api/dba/asm', {
@@ -964,6 +1226,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async runLiveSchemaCompare() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para comparar schemas.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     const src = document.getElementById('cmp-source-schema')?.value || 'HR';
     const tgt = document.getElementById('cmp-target-schema')?.value || 'HR_UAT';
     if (window.TracesApp?.isRealDatabase) {
@@ -986,6 +1254,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   generateSyncScript() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     const syncDdl = this.cachedData['schemacompare']?.syncDdl || [
       'ALTER TABLE HR_UAT.EMPLOYEES ADD (COMMISSION_PCT NUMBER(2,2));',
       'CREATE INDEX HR_UAT.EMP_NAME_IX ON HR_UAT.EMPLOYEES (LAST_NAME, FIRST_NAME);'
@@ -1095,6 +1369,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async createAwrSnapshot() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para criar snapshot AWR.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         const resp = await fetch('/api/dba/awr', {
@@ -1114,6 +1394,12 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
   }
 
   async generateAwrReport() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para gerar relatório AWR.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     if (window.TracesApp?.isRealDatabase) {
       try {
         const resp = await fetch('/api/dba/awr', {

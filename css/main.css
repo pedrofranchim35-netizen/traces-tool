@@ -13,95 +13,99 @@
 }
 
 /* --------------------------------------------------------------------------
-   CLASSIC WINDOW TITLEBAR
-   -------------------------------------------------------------------------- */
-.toad-titlebar {
-  height: 28px;
-  background: #ffffff;
-  border-bottom: 1px solid #dcdcdc;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 8px;
-  font-size: 12px;
-  color: #333333;
-}
-
-.toad-titlebar-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-}
-
-/* TRACES Logo in Toad Titlebar */
-.toad-traces-logo-img {
-  height: 16px;
-  width: auto;
-  display: block;
-}
-
-.toad-title-text {
-  font-weight: 600;
-  white-space: nowrap;
-  color: #111111;
-  font-size: 12px;
-}
-
-.toad-window-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.win-btn {
-  width: 28px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  font-size: 11px;
-  color: #555;
-  cursor: pointer;
-  border-radius: 2px;
-}
-
-.win-btn:hover {
-  background: #e5e5e5;
-  color: #000;
-}
-
-.win-btn.win-close:hover {
-  background: #e81123;
-  color: #fff;
-}
-
-/* --------------------------------------------------------------------------
-   CLASSIC TOAD MENU BAR
+   CLASSIC TOAD MENU BAR (NATIVE TOP BAR)
    -------------------------------------------------------------------------- */
 .toad-menubar {
-  height: 24px;
+  height: 26px;
   background: var(--toad-chrome-bg);
   border-bottom: 1px solid var(--toad-toolbar-border);
   display: flex;
   align-items: center;
   padding: 0 4px;
   font-size: 12px;
+  position: relative;
+  z-index: 1000;
+  user-select: none;
+}
+
+.toad-menubar-brand {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px 0 2px;
+  border-right: 1px solid #dcdcdc;
+  margin-right: 4px;
+}
+
+.toad-menubar-brand img {
+  height: 14px;
+  width: auto;
+  display: block;
 }
 
 .toad-menu-item {
-  padding: 2px 8px;
+  padding: 2px 7px;
   cursor: pointer;
   border: 1px solid transparent;
   border-radius: 2px;
   color: #222;
+  position: relative;
 }
 
 .toad-menu-item:hover {
   background: var(--toad-menu-hover);
   border-color: var(--toad-menu-hover-border);
+}
+
+.toad-menubar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.toad-conn-pill {
+  cursor: pointer;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.12);
+  transition: all 150ms ease;
+}
+
+.toad-conn-pill:hover {
+  background: rgba(0,0,0,0.09);
+}
+
+.toad-conn-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9ca3af;
+  display: inline-block;
+}
+
+.toad-menubar-action-btn {
+  height: 20px;
+  font-size: 10.5px;
+  padding: 0 6px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  border-radius: 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 600;
+}
+
+.toad-menubar-action-btn:hover {
+  background: #bae6fd;
 }
 
 /* --------------------------------------------------------------------------
@@ -212,47 +216,43 @@
    TOAD MDI WINDOW TABS (DIRECTLY UNDER TOOLBAR)
    -------------------------------------------------------------------------- */
 .toad-window-tabs-bar {
-  min-height: 27px;
+  height: 27px;
   background: #e4e4e4;
   border-bottom: 1px solid var(--toad-border-gray);
   display: flex;
   align-items: flex-end;
   padding: 0 6px;
   gap: 2px;
-  flex-wrap: wrap;
 }
 
 .toad-window-tab {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 24px;
-  padding: 0 8px;
-  background: #cbd5e1;
-  border: 1px solid #94a3b8;
+  padding: 0 12px;
+  background: #d8d8d8;
+  border: 1px solid #ababab;
   border-bottom: none;
-  border-radius: 4px 4px 0 0;
+  border-radius: 3px 3px 0 0;
   font-size: 11px;
-  color: #334155;
+  color: #444;
   cursor: pointer;
   margin-bottom: -1px;
   position: relative;
-  transition: all var(--transition-fast);
-  user-select: none;
 }
 
 .toad-window-tab:hover {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: #eaeaea;
+  color: #000;
 }
 
 .toad-window-tab.active {
   background: #ffffff;
-  border-color: #cbd5e1;
-  border-top: 2.5px solid #0284c7;
+  border-color: #8c8c8c;
   border-bottom: 1px solid #ffffff;
-  color: #0284c7;
-  font-weight: 700;
+  color: #000;
+  font-weight: 600;
   height: 25px;
   z-index: 2;
 }
@@ -495,107 +495,335 @@
   gap: 8px;
 }
 
-/* Classic Windows Buttons with Modern Micro-Interactions */
+/* Classic Windows Buttons */
 .btn {
   height: 24px;
   padding: 0 12px;
   font-size: 11px;
   font-family: var(--toad-font-ui);
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  color: #334155;
+  background: #e1e1e1;
+  border: 1px solid #adadad;
+  border-radius: 2px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  font-weight: 500;
-  transition: all var(--transition-fast);
-  user-select: none;
 }
 
 .btn:hover {
-  background: #e2e8f0;
-  border-color: #94a3b8;
-  color: #0f172a;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-.btn:active {
-  transform: scale(0.98);
+  background: #e5f1fb;
+  border-color: #0078d7;
 }
 
 .btn-primary {
-  background: #0284c7;
+  background: #0078d7;
   color: #ffffff;
-  border-color: #0284c7;
+  border-color: #005a9e;
   font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: #0369a1;
-  border-color: #0369a1;
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.25);
-}
-
-.btn-danger {
-  background: #ef4444;
-  color: #ffffff;
-  border-color: #dc2626;
-  font-weight: 600;
-}
-
-.btn-danger:hover {
-  background: #dc2626;
-  border-color: #b91c1c;
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.25);
+  background: #106ebe;
 }
 
 /* Toast Notifications */
 .toast-container {
   position: fixed;
-  bottom: 32px;
-  right: 14px;
+  bottom: 30px;
+  right: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  z-index: 99999;
+  gap: 6px;
+  z-index: 2000;
   pointer-events: none;
 }
 
 .toast {
   pointer-events: auto;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  padding: 8px 14px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  background: #ffffcc;
+  border: 1px solid #cccc88;
+  padding: 6px 12px;
+  box-shadow: 1px 1px 4px rgba(0,0,0,0.2);
   font-size: 11px;
-  color: #0f172a;
+  color: #000;
   display: flex;
   align-items: center;
   gap: 8px;
+  border-radius: 2px;
+}
+.toast.toast-success { background: #e6ffec; border-color: #5cd67d; }
+.toast.toast-error { background: #ffe6e6; border-color: #ff8080; }
+.toast.toast-info { background: #e6f7ff; border-color: #91d5ff; }
+
+/* --------------------------------------------------------------------------
+   TOOLBAR EXPANDABLE DROPDOWNS
+   -------------------------------------------------------------------------- */
+.toad-toolbar-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.toad-btn-dropdown {
+  padding-right: 4px;
+}
+
+.toad-dropdown-arrow {
+  font-size: 8px;
+  color: #555555;
+  margin-left: 2px;
+}
+
+.toad-toolbar-dropdown .toad-dropdown-menu {
+  top: 100%;
+  left: 0;
+  margin-top: 1px;
+}
+
+/* Disabled Toolbar Buttons (Disconnected State) */
+.toad-btn:disabled,
+.toad-btn.disabled {
+  opacity: 0.42;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  filter: grayscale(1);
+}
+
+/* --------------------------------------------------------------------------
+   MDI DYNAMIC WINDOW TABS
+   -------------------------------------------------------------------------- */
+.toad-window-tab .mdi-tab-icon {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.toad-window-tab .mdi-tab-title {
+  white-space: nowrap;
+}
+
+.toad-window-tab .mdi-tab-close {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 1;
+  color: #777;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0;
+}
+
+.toad-window-tab .mdi-tab-close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   TOAD DESKTOP START / WELCOME PAGE (view-start)
+   -------------------------------------------------------------------------- */
+.toad-start-view {
+  flex: 1;
+  background: #475569;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+  overflow-y: auto;
+  padding: 24px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.toad-start-container {
+  width: 100%;
+  max-width: 980px;
+  background: #ffffff;
   border-radius: 6px;
-  font-weight: 500;
-  transition: all 0.2s ease;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  border: 1px solid #cbd5e1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.toast.toast-success {
-  background: #f0fdf4;
-  border-color: #86efac;
-  color: #15803d;
+.toad-start-header {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--traces-red);
 }
 
-.toast.toast-error {
+.toad-start-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.toad-start-brand img {
+  height: 28px;
+  width: auto;
+}
+
+.toad-start-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: #ffffff;
+}
+
+.toad-start-subtitle {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.toad-start-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Start Page Disconnected Alert Banner */
+.start-alert-banner {
+  padding: 12px 16px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.start-alert-banner.disconnected {
   background: #fef2f2;
-  border-color: #fca5a5;
-  color: #b91c1c;
+  border: 1px solid #fecaca;
+  color: #991b1b;
 }
 
-.toast.toast-info {
-  background: #f0f9ff;
-  border-color: #7dd3fc;
-  color: #0369a1;
+.start-alert-banner.connected {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+/* 6-Tile Feature Grid */
+.start-features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.start-tile {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.start-tile:hover {
+  background: #ffffff;
+  border-color: #0078d7;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.start-tile-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: #0f172a;
+}
+
+.start-tile-desc {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Saved Connections Quick Launch */
+.start-connections-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+}
+
+.start-section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.start-conn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.start-conn-table th {
+  text-align: left;
+  padding: 6px 10px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+  color: #475569;
+  font-weight: 600;
+}
+
+.start-conn-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+
+.start-conn-table tr:hover td {
+  background: #f8fafc;
+}
+
+/* --------------------------------------------------------------------------
+   TOAD DISCONNECTED WATERMARK (INSIDE MODULES)
+   -------------------------------------------------------------------------- */
+.toad-disconnected-watermark {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  background: #fafafa;
+}
+
+.toad-disconnected-watermark .disconnected-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+
+.toad-disconnected-watermark .disconnected-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 6px;
+}
+
+.toad-disconnected-watermark .disconnected-desc {
+  font-size: 11.5px;
+  color: #64748b;
+  max-width: 440px;
+  line-height: 1.5;
+  margin-bottom: 16px;
 }

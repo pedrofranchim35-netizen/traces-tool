@@ -685,8 +685,8 @@ class ConnectionManager {
         }
 
         // Refresh DBA Hub with real parameters
-        if (window.TracesApp.dbaTools && typeof window.TracesApp.dbaTools.loadRealData === 'function') {
-          window.TracesApp.dbaTools.loadRealData();
+        if (window.TracesApp && typeof window.TracesApp.updateConnectionState === 'function') {
+          window.TracesApp.updateConnectionState();
         }
       } else {
         window.TracesApp.notify(`Falha na conexão: ${data.error}`, 'error');
@@ -761,6 +761,9 @@ class ConnectionManager {
     if (userEl) userEl.textContent = '[Desconectado]';
     if (verEl) verEl.textContent = 'Pronto para conectar ao banco de dados';
     if (latEl) latEl.textContent = '-- ms';
+    if (window.TracesApp && typeof window.TracesApp.updateConnectionState === 'function') {
+      window.TracesApp.updateConnectionState();
+    }
     window.TracesApp?.notify('Sessão desconectada e túnel encerrado.', 'info');
   }
 

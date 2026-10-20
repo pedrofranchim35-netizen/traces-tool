@@ -1,29 +1,25 @@
-# Python caches & build
+# Dependencies
+node_modules/
+python/
+
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Build & Installers
+dist/
 build/
-dist/
-*.egg-info/
-*.spec
+*.exe
+!TracesToad.exe
+*.zip
 
-# macOS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-
-# Windows
-Thumbs.db
-ehthumbs.db
-
-# Logs & temp files
+# Logs
 *.log
-scratch/
-dist-win/
-dist/
-python/
+npm-debug.log*
 
-
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -290,33 +290,82 @@
   background: #ffffff;
 }
 
-.dba-subtabs-bar {
-  height: 28px;
+.dba-header-bar {
+  height: 32px;
   background: #f0f0f0;
   border-bottom: 1px solid #c0c0c0;
   display: flex;
   align-items: center;
-  padding: 0 4px;
-  gap: 2px;
+  justify-content: space-between;
+  padding: 0 10px;
+  flex-shrink: 0;
 }
 
-.dba-subtab {
-  padding: 4px 10px;
+.dba-workspace-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.dba-sidebar-nav {
+  width: 240px;
+  background: #f8fafc;
+  border-right: 1px solid #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.dba-nav-group {
+  padding: 6px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dba-nav-group-title {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dba-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
   font-size: 11px;
+  color: #334155;
   cursor: pointer;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 3px 3px 0 0;
-  background: transparent;
-  color: #333333;
+  border-left: 3px solid transparent;
+  transition: all 120ms ease;
+  user-select: none;
 }
 
-.dba-subtab.active {
+.dba-nav-item:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.dba-nav-item.active {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 700;
+  border-left-color: #0284c7;
+}
+
+.dba-main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
-  border-color: #c0c0c0;
-  font-weight: 600;
-  color: #000000;
-  box-shadow: 0 -1px 0 #0078d7 inset;
 }
 
 .dba-content-pane {

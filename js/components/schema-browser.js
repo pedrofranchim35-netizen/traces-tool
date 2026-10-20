@@ -12,7 +12,6 @@ class SchemaBrowser {
     this.realSchemas = [];
     this.realObjects = null;
     this.isLoadingDetails = false;
-    this.objectDetailsCache = new Map();
 
     this.initElements();
     this.bindEvents();
@@ -27,11 +26,6 @@ class SchemaBrowser {
     this.detailTitle = document.getElementById('browser-detail-title');
     this.detailTypePill = document.getElementById('browser-detail-type');
     this.detailTabs = document.querySelectorAll('.detail-tab');
-    this.categoryDropdown = document.getElementById('browser-category-dropdown');
-    this.accordionContainer = document.getElementById('browser-accordion-drawers');
-    this.navMode = 'drawers'; // default to TOAD Gavetas Expansíveis!
-    this.expandedDrawers = new Set(['tablespaces', 'tables', 'users']);
-    this.isCategoryDrawerOpen = false;
   }
 
   bindEvents() {
@@ -52,11 +46,7 @@ class SchemaBrowser {
     if (this.searchInput) {
       this.searchInput.addEventListener('input', (e) => {
         this.searchQuery = e.target.value.toLowerCase().trim();
-        if (this.navMode === 'drawers') {
-          this.renderAccordionDrawers();
-        } else {
-          this.renderObjectList();
-        }
+        this.renderObjectList();
       });
     }
 
@@ -122,16 +112,10 @@ class SchemaBrowser {
         };
         this.renderCategoryPills();
         this.renderObjectList();
-
-        // Auto-select top item of active category immediately
-        const catItems = this.getSchemaData()[this.currentCategory] || [];
-        if (catItems.length > 0) {
-          this.selectObject(catItems[0].name);
-        }
       }
     } catch (e) {
       console.warn('Real objects load error', e);
-      this.objectList.innerHTML = `<div style="padding: 24px 16px; text-align: center; color: #dc2626; font-size: 11px;">Erro ao carregar objetos: ${e.message}</div>`;
+      this.objectList.innerHTML = `<div style="padding: 24px 16px; text-align: center; color: #c00000; font-size: 11px;">Erro ao carregar objetos: ${e.message}</div>`;
     }
   }
 
@@ -145,62 +129,6 @@ class SchemaBrowser {
   }
 
   getSchemaData() {
-    if (this.currentCategory === 'tablespaces') {
-      const tsList = (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces : [
-        { name: 'SYSTEM', status: 'ONLINE', totalMb: 2048, usedMb: 1740, autoextend: 'YES', datafiles: 1, pct: 85 },
-        { name: 'SYSAUX', status: 'ONLINE', totalMb: 4096, usedMb: 2867, autoextend: 'YES', datafiles: 2, pct: 70 },
-        { name: 'USERS', status: 'ONLINE', totalMb: 8192, usedMb: 3440, autoextend: 'YES', datafiles: 2, pct: 42 },
-        { name: 'SALES_2026', status: 'ONLINE', totalMb: 32768, usedMb: 28835, autoextend: 'YES', datafiles: 4, pct: 88 },
-        { name: 'UNDOTBS1', status: 'ONLINE', totalMb: 4096, usedMb: 940, autoextend: 'YES', datafiles: 1, pct: 23 },
-        { name: 'TEMP', status: 'ONLINE', totalMb: 8192, usedMb: 1230, autoextend: 'YES', datafiles: 1, pct: 15 }
-      ];
-      return {
-        tablespaces: tsList.map(t => ({
-          name: t.name,
-          status: t.status || 'ONLINE',
-          totalMb: t.totalMb,
-          usedMb: t.usedMb,
-          freeMb: t.totalMb - t.usedMb,
-          autoextend: t.autoextend || 'YES',
-          datafiles: t.datafiles || 1,
-          pct: t.pct || Math.round((t.usedMb / t.totalMb) * 100),
-          ddl: `-- DDL for Tablespace ${t.name}\nCREATE TABLESPACE "${t.name}"\n  DATAFILE '+DATA/${t.name.toLowerCase()}.dbf' SIZE ${t.totalMb}M\n  AUTOEXTEND ON NEXT 128M MAXSIZE UNLIMITED\n  EXTENT MANAGEMENT LOCAL AUTOALLOCATE\n  SEGMENT SPACE MANAGEMENT AUTO;`,
-          columns: [
-            { id: 1, name: 'TABLESPACE_NAME', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: t.name, pk: true, comments: 'Name of the tablespace' },
-            { id: 2, name: 'TOTAL_SPACE_MB', type: 'NUMBER', nullable: 'N', defaultVal: `${t.totalMb} MB`, pk: false, comments: 'Allocated storage on disk' },
-            { id: 3, name: 'USED_SPACE_MB', type: 'NUMBER', nullable: 'N', defaultVal: `${t.usedMb} MB`, pk: false, comments: 'Consumed storage by segments' },
-            { id: 4, name: 'FREE_SPACE_MB', type: 'NUMBER', nullable: 'N', defaultVal: `${t.totalMb - t.usedMb} MB`, pk: false, comments: 'Available free extents' },
-            { id: 5, name: 'AUTOEXTEND', type: 'VARCHAR2(3)', nullable: 'N', defaultVal: t.autoextend || 'YES', pk: false, comments: 'Autoextend enabled' },
-            { id: 6, name: 'DATAFILES_COUNT', type: 'NUMBER', nullable: 'N', defaultVal: `${t.datafiles || 1}`, pk: false, comments: 'Number of physical data files' }
-          ]
-        }))
-      };
-    }
-
-    if (this.currentCategory === 'users') {
-      const uList = [
-        { name: 'SYS', status: 'OPEN', defaultTs: 'SYSTEM', tempTs: 'TEMP' },
-        { name: 'SYSTEM', status: 'OPEN', defaultTs: 'SYSTEM', tempTs: 'TEMP' },
-        { name: 'HR', status: 'OPEN', defaultTs: 'USERS', tempTs: 'TEMP' },
-        { name: 'SALES_ADMIN', status: 'OPEN', defaultTs: 'SALES_2026', tempTs: 'TEMP' },
-        { name: 'SCOTT', status: 'OPEN', defaultTs: 'USERS', tempTs: 'TEMP' },
-        { name: 'APEX_PUBLIC_USER', status: 'LOCKED', defaultTs: 'SYSAUX', tempTs: 'TEMP' }
-      ];
-      return {
-        users: uList.map(u => ({
-          name: u.name,
-          status: u.status,
-          ddl: `-- User definition\nCREATE USER "${u.name}" IDENTIFIED BY VALUES '...'\n  DEFAULT TABLESPACE "${u.defaultTs}"\n  TEMPORARY TABLESPACE "${u.tempTs}"\n  ACCOUNT ${u.status};`,
-          columns: [
-            { id: 1, name: 'USERNAME', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: u.name, pk: true, comments: 'User or schema name' },
-            { id: 2, name: 'ACCOUNT_STATUS', type: 'VARCHAR2(32)', nullable: 'N', defaultVal: u.status, pk: false, comments: 'Account status' },
-            { id: 3, name: 'DEFAULT_TABLESPACE', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: u.defaultTs, pk: false, comments: 'Default tablespace' },
-            { id: 4, name: 'TEMPORARY_TABLESPACE', type: 'VARCHAR2(30)', nullable: 'N', defaultVal: u.tempTs, pk: false, comments: 'Temp tablespace' }
-          ]
-        }))
-      };
-    }
-
     if (window.TracesApp && window.TracesApp.isRealDatabase && this.realObjects) {
       return this.realObjects;
     }
@@ -209,123 +137,33 @@ class SchemaBrowser {
 
   render() {
     this.renderCategoryPills();
-    if (this.navMode === 'drawers') {
-      if (this.accordionContainer) this.accordionContainer.style.display = 'block';
-      if (this.objectList) this.objectList.style.display = 'none';
-      this.renderAccordionDrawers();
-    } else {
-      if (this.accordionContainer) this.accordionContainer.style.display = 'none';
-      if (this.objectList) this.objectList.style.display = 'block';
-      this.renderObjectList();
-    }
-  }
-
-  setNavMode(mode) {
-    this.navMode = mode;
-    const btnDrawers = document.getElementById('btn-mode-drawers');
-    const btnFlat = document.getElementById('btn-mode-flat');
-    if (btnDrawers && btnFlat) {
-      btnDrawers.style.background = mode === 'drawers' ? '#0284c7' : '';
-      btnDrawers.style.color = mode === 'drawers' ? '#ffffff' : '';
-      btnFlat.style.background = mode === 'flat' ? '#0284c7' : '';
-      btnFlat.style.color = mode === 'flat' ? '#ffffff' : '';
-    }
-
-    if (this.accordionContainer) this.accordionContainer.style.display = mode === 'drawers' ? 'block' : 'none';
-    if (this.objectList) this.objectList.style.display = mode === 'flat' ? 'block' : 'none';
-
-    if (mode === 'drawers') {
-      this.renderAccordionDrawers();
-    } else {
-      this.renderObjectList();
-    }
-  }
-
-  toggleDrawer(catKey) {
-    if (this.expandedDrawers.has(catKey)) {
-      this.expandedDrawers.delete(catKey);
-    } else {
-      this.expandedDrawers.add(catKey);
-    }
-    this.renderAccordionDrawers();
-  }
-
-  renderAccordionDrawers() {
-    if (!this.accordionContainer) return;
-    const data = this.getSchemaData();
-
-    const categories = [
-      { key: 'tablespaces', label: 'Tablespaces', icon: '💾', count: (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces.length : 6 },
-      { key: 'users', label: 'Users', icon: '👥', count: 6 },
-      { key: 'tables', label: 'Tables', icon: '📋', count: data.tables?.length || 0 },
-      { key: 'views', label: 'Views', icon: '👁', count: data.views?.length || 0 },
-      { key: 'packages', label: 'Packages', icon: '📦', count: data.packages?.length || 0 },
-      { key: 'procedures', label: 'Procedures', icon: '⚙', count: data.procedures?.length || 0 },
-      { key: 'functions', label: 'Functions', icon: 'ƒ', count: data.functions?.length || 0 },
-      { key: 'triggers', label: 'Triggers', icon: '⚡', count: data.triggers?.length || 0 },
-      { key: 'indexes', label: 'Indexes', icon: '🗂', count: data.indexes?.length || 0 },
-      { key: 'sequences', label: 'Sequences', icon: '🔢', count: data.sequences?.length || 0 },
-      { key: 'synonyms', label: 'Synonyms', icon: '🔗', count: data.synonyms?.length || 0 },
-      { key: 'types', label: 'Types', icon: '🏷', count: data.types?.length || 0 }
-    ];
-
-    const html = categories.map(cat => {
-      let items = (data[cat.key] || []);
-      if (this.searchQuery) {
-        items = items.filter(it => it.name.toLowerCase().includes(this.searchQuery));
-      }
-
-      const hasMatchingSearch = Boolean(this.searchQuery && items.length > 0);
-      const isExpanded = hasMatchingSearch || this.expandedDrawers.has(cat.key);
-      const isCurrentCat = this.currentCategory === cat.key;
-      const isMasterForThisCat = isCurrentCat && this.selectedObject === null;
-
-      return `
-        <div class="toad-accordion-drawer ${isExpanded ? 'expanded' : ''}" data-cat="${cat.key}">
-          <div class="toad-accordion-header" onclick="window.TracesApp.schemaBrowser.toggleDrawer('${cat.key}')">
-            <div class="accordion-title-group">
-              <span class="accordion-chevron">${isExpanded ? '▼' : '▶'}</span>
-              <span><strong>${cat.icon} ${cat.label}</strong></span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span class="accordion-badge">${items.length}</span>
-              <button class="btn" style="height: 18px; padding: 0 5px; font-size: 9px;" onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.selectCategory('${cat.key}'); window.TracesApp.schemaBrowser.showMasterOverview();" title="Ver Dashboard de Todas">
-                🌐
-              </button>
-            </div>
-          </div>
-          <div class="toad-accordion-body" style="${isExpanded ? 'display:block;' : 'display:none;'}">
-            <!-- Item Mestre de Todas -->
-            <div class="accordion-subitem master-overview-subitem ${isMasterForThisCat ? 'active' : ''}"
-                 onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}'); window.TracesApp.schemaBrowser.showMasterOverview();">
-              <span>🌐 [ Ver Todas as ${cat.label} ]</span>
-              <span style="font-size: 10px; font-weight: 700; color: ${isMasterForThisCat ? '#ffffff' : '#0284c7'};">Dashboard</span>
-            </div>
-            <!-- Subitens individuais -->
-            ${items.map(item => {
-              const isSel = isCurrentCat && this.selectedObject && this.selectedObject.name === item.name;
-              return `
-                <div class="accordion-subitem ${isSel ? 'active' : ''}"
-                     onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}'); window.TracesApp.schemaBrowser.selectObject('${item.name}');">
-                  <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;" title="${item.name}">${item.name}</span>
-                  <span style="font-size: 9px; opacity: 0.8;">${item.status || ''}</span>
-                </div>
-              `;
-            }).join('')}
-            ${items.length === 0 ? `
-              <div style="padding: 6px 12px 6px 26px; font-size: 10px; color: #94a3b8; font-style: italic;">
-                Nenhum objeto encontrado
-              </div>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    this.accordionContainer.innerHTML = html;
+    this.renderObjectList();
   }
 
   renderCategoryPills() {
+    if (!window.TracesApp || !window.TracesApp.isConnected()) {
+      const categories = [
+        { key: 'tables', label: 'Tables', count: 0 },
+        { key: 'views', label: 'Views', count: 0 },
+        { key: 'packages', label: 'Packages', count: 0 },
+        { key: 'procedures', label: 'Procedures', count: 0 },
+        { key: 'functions', label: 'Functions', count: 0 },
+        { key: 'sequences', label: 'Sequences', count: 0 },
+        { key: 'synonyms', label: 'Synonyms', count: 0 },
+        { key: 'triggers', label: 'Triggers', count: 0 },
+        { key: 'types', label: 'Types', count: 0 },
+        { key: 'indexes', label: 'Indexes', count: 0 }
+      ];
+      this.categoryScroller.innerHTML = categories.map(cat => `
+        <div class="category-tab-pill ${this.currentCategory === cat.key ? 'active' : ''}" 
+             onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}')">
+          <span>${cat.label}</span>
+          <span class="category-count">0</span>
+        </div>
+      `).join('');
+      return;
+    }
+
     const data = this.getSchemaData();
     const categories = [
       { key: 'tables', label: 'Tables', count: data.tables?.length || 0 },
@@ -337,9 +175,7 @@ class SchemaBrowser {
       { key: 'synonyms', label: 'Synonyms', count: data.synonyms?.length || 0 },
       { key: 'triggers', label: 'Triggers', count: data.triggers?.length || 0 },
       { key: 'types', label: 'Types', count: data.types?.length || 0 },
-      { key: 'indexes', label: 'Indexes', count: data.indexes?.length || 0 },
-      { key: 'tablespaces', label: 'Tablespaces', count: (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces.length : 6 },
-      { key: 'users', label: 'Users', count: 6 }
+      { key: 'indexes', label: 'Indexes', count: data.indexes?.length || 0 }
     ];
 
     this.categoryScroller.innerHTML = categories.map(cat => `
@@ -351,57 +187,40 @@ class SchemaBrowser {
     `).join('');
   }
 
-  toggleCategoryDrawer() {
-    if (!this.categoryScroller) return;
-    this.isCategoryDrawerOpen = !this.isCategoryDrawerOpen;
-    this.categoryScroller.classList.toggle('drawer-hidden', !this.isCategoryDrawerOpen);
-    const btn = document.getElementById('btn-toggle-cat-drawer');
-    if (btn) {
-      btn.style.background = this.isCategoryDrawerOpen ? '#0284c7' : '';
-      btn.style.color = this.isCategoryDrawerOpen ? '#ffffff' : '';
-    }
-  }
-
   selectCategory(categoryKey) {
     this.currentCategory = categoryKey;
     this.selectedObject = null;
-    this.expandedDrawers.add(categoryKey);
-    if (this.categoryDropdown && this.categoryDropdown.value !== categoryKey) {
-      this.categoryDropdown.value = categoryKey;
-    }
     this.renderCategoryPills();
-    if (this.navMode === 'drawers') {
-      this.renderAccordionDrawers();
-    } else {
-      this.renderObjectList();
-    }
+    this.renderObjectList();
 
     // Contextual tab switching
     if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
       this.switchDetailTab('source');
-    } else {
+    } else if (this.currentDetailTab === 'source') {
       this.switchDetailTab('columns');
-    }
-
-    // Default to the Master Overview ("antes de selecionar uma, mostra como estão todas")
-    if (['tablespaces', 'users', 'tables'].includes(categoryKey)) {
-      this.selectedObject = null;
-      this.renderDetailContent();
-      return;
-    }
-
-    // Auto-select first item of newly selected category immediately (0ms)
-    const catItems = (this.getSchemaData()[this.currentCategory] || []).filter(obj => 
-      obj.name.toLowerCase().includes(this.searchQuery)
-    );
-    if (catItems.length > 0) {
-      this.selectObject(catItems[0].name);
-    } else {
-      this.renderDetailContent();
     }
   }
 
   renderObjectList() {
+    if (!window.TracesApp || !window.TracesApp.isConnected()) {
+      if (this.objectList) {
+        this.objectList.innerHTML = `
+          <div style="padding: 40px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
+            <div style="font-size: 24px; margin-bottom: 8px;">🔌</div>
+            <strong style="font-size: 12px; color: #1e293b;">Schema Browser - Desconectado</strong><br><br>
+            Conecte-se a uma instância Oracle para carregar schemas, tabelas, views e procedures.<br>
+            <button class="btn btn-primary" style="margin-top: 12px; padding: 4px 14px; font-weight: 600;" onclick="window.TracesApp.connectionManager.openModal();">
+              ⚡ Conectar ao Banco de Dados...
+            </button>
+          </div>
+        `;
+      }
+      if (this.detailTitle) this.detailTitle.textContent = 'Nenhum Objeto Selecionado';
+      const detailContainer = document.getElementById('browser-detail-content');
+      if (detailContainer) detailContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: #888; font-size: 11px;">Desconectado do banco de dados.</div>';
+      return;
+    }
+
     const data = this.getSchemaData();
     const items = data[this.currentCategory] || [];
 
@@ -409,29 +228,8 @@ class SchemaBrowser {
       obj.name.toLowerCase().includes(this.searchQuery)
     );
 
-    // Master Overview top row for categories
-    const isMaster = this.selectedObject === null;
-    const catLabels = {
-      tablespaces: 'Todas as Tablespaces',
-      users: 'Todos os Usuários',
-      tables: 'Todas as Tabelas',
-      views: 'Todas as Views'
-    };
-    const masterLabel = catLabels[this.currentCategory] || `Todos os ${this.currentCategory}`;
-    const masterRow = `
-      <div class="object-item ${isMaster ? 'active' : ''}"
-           style="background: ${isMaster ? '#e0f2fe' : '#f8fafc'}; font-weight: 700; border-bottom: 2px solid #cbd5e1;"
-           onclick="window.TracesApp.schemaBrowser.showMasterOverview()">
-        <div class="object-item-left">
-          <span style="font-size: 13px;">🌐</span>
-          <span style="color: #0284c7;">[ ${masterLabel} ]</span>
-        </div>
-        <span class="category-count" style="background: #0284c7; color: #fff;">${items.length}</span>
-      </div>
-    `;
-
     if (filtered.length === 0) {
-      this.objectList.innerHTML = masterRow + `
+      this.objectList.innerHTML = `
         <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
           Nenhum objeto "${this.currentCategory}" encontrado com "${this.searchQuery}"
         </div>
@@ -439,8 +237,8 @@ class SchemaBrowser {
       return;
     }
 
-    const itemRows = filtered.map(obj => `
-      <div class="object-item ${(!isMaster && this.selectedObject?.name === obj.name) ? 'active' : ''}"
+    this.objectList.innerHTML = filtered.map(obj => `
+      <div class="object-item ${this.selectedObject?.name === obj.name ? 'active' : ''}"
            onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}')">
         <div class="object-item-left">
           <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -454,17 +252,10 @@ class SchemaBrowser {
       </div>
     `).join('');
 
-    this.objectList.innerHTML = masterRow + itemRows;
-  }
-
-  showMasterOverview() {
-    this.selectedObject = null;
-    if (this.navMode === 'drawers') {
-      this.renderAccordionDrawers();
-    } else {
-      this.renderObjectList();
+    // Auto-select first item if none selected
+    if (!this.selectedObject && filtered.length > 0) {
+      this.selectObject(filtered[0].name);
     }
-    this.renderDetailContent();
   }
 
   getCategoryIcon(cat) {
@@ -488,10 +279,6 @@ class SchemaBrowser {
         return '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>';
       case 'indexes':
         return '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>';
-      case 'tablespaces':
-        return '<path d="M4 6h16M4 12h16M4 18h16"/><rect x="2" y="3" width="20" height="18" rx="2"/>';
-      case 'users':
-        return '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>';
       default:
         return '<circle cx="12" cy="12" r="10"/>';
     }
@@ -502,40 +289,18 @@ class SchemaBrowser {
     const items = data[this.currentCategory] || [];
     this.selectedObject = items.find(o => o.name === objectName) || { name: objectName };
 
-    // Update active highlight in list immediately
-    if (this.objectList) {
-      const allItems = this.objectList.querySelectorAll('.object-item');
-      allItems.forEach(el => el.classList.remove('active'));
-      const matched = Array.from(allItems).find(el => el.textContent.includes(objectName));
-      if (matched) matched.classList.add('active');
-    }
+    // Update active highlight in list
+    const allItems = this.objectList.querySelectorAll('.object-item');
+    allItems.forEach(el => el.classList.remove('active'));
+    const matched = Array.from(allItems).find(el => el.textContent.includes(objectName));
+    if (matched) matched.classList.add('active');
 
-    if (this.accordionContainer) {
-      const allSubitems = this.accordionContainer.querySelectorAll('.accordion-subitem');
-      allSubitems.forEach(el => el.classList.remove('active'));
-      const matchedSub = Array.from(allSubitems).find(el => el.textContent.trim().startsWith(objectName));
-      if (matchedSub) matchedSub.classList.add('active');
-    }
-
-    // Update detail pane header with breadcrumb button
-    this.detailTitle.innerHTML = `
-      <button class="btn btn-secondary" style="height: 20px; font-size: 10px; padding: 0 6px; margin-right: 6px;" onclick="window.TracesApp.schemaBrowser.showMasterOverview()">
-        🌐 Ver Todos
-      </button>
-      <span>${this.currentSchema}.${this.selectedObject.name}</span>
-    `;
+    // Update detail pane header
+    this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
     this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
 
-    // Check in-memory details cache (0ms instant response!)
-    const cacheKey = `${this.currentSchema}.${this.currentCategory}.${objectName}`;
-    if (this.objectDetailsCache && this.objectDetailsCache.has(cacheKey)) {
-      this.selectedObject = Object.assign(this.selectedObject, this.objectDetailsCache.get(cacheKey));
-      this.renderDetailContent();
-      return;
-    }
-
-    // If connected to real Oracle DB and not mock category, fetch live details
-    if (window.TracesApp && window.TracesApp.isRealDatabase && !['tablespaces', 'users'].includes(this.currentCategory)) {
+    // If connected to real Oracle DB, fetch complete live object details
+    if (window.TracesApp && window.TracesApp.isRealDatabase) {
       await this.fetchRealObjectDetails(this.currentSchema, objectName, this.currentCategory);
     } else {
       this.renderDetailContent();
@@ -579,12 +344,6 @@ class SchemaBrowser {
         return;
       }
 
-      // Cache details in memory
-      const cacheKey = `${schema}.${category}.${name}`;
-      if (this.objectDetailsCache) {
-        this.objectDetailsCache.set(cacheKey, details);
-      }
-
       // Merge into selectedObject
       this.selectedObject = Object.assign(this.selectedObject, details);
       this.isLoadingDetails = false;
@@ -611,10 +370,7 @@ class SchemaBrowser {
   }
 
   renderDetailContent() {
-    if (!this.selectedObject) {
-      this.renderMasterCategoryOverview(this.currentCategory);
-      return;
-    }
+    if (!this.selectedObject) return;
     const obj = this.selectedObject;
 
     // 1. Columns Pane
@@ -937,298 +693,6 @@ class SchemaBrowser {
         depPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma dependência encontrada para ${obj.name}.</div>`;
       }
     }
-  }
-
-  renderMasterCategoryOverview(category) {
-    if (this.detailTitle) {
-      const catTitles = {
-        tablespaces: '💾 Visão Geral de Todas as Tablespaces do Banco',
-        users: '👥 Visão Geral de Todos os Usuários do Banco',
-        tables: `📋 Visão Geral de Todas as Tabelas de "${this.currentSchema}"`
-      };
-      this.detailTitle.innerHTML = `<span style="color: #0284c7; font-weight: 700;">${catTitles[category] || `🌐 Visão Geral de Todos (${category.toUpperCase()})`}</span>`;
-    }
-    if (this.detailTypePill) {
-      this.detailTypePill.textContent = 'OVERVIEW';
-    }
-
-    const panes = document.querySelectorAll('.detail-tab-pane');
-    panes.forEach(p => p.classList.remove('active'));
-    let activePane = document.getElementById('tab-pane-columns');
-    if (!activePane && panes.length > 0) activePane = panes[0];
-    if (activePane) activePane.classList.add('active');
-
-    // Activate the first tab header (Columns / Overview)
-    this.detailTabs.forEach((t, idx) => {
-      t.classList.toggle('active', idx === 0);
-    });
-
-    if (category === 'tablespaces') {
-      const tsList = (window.TRACES_DB && window.TRACES_DB.tablespaces) ? window.TRACES_DB.tablespaces : [
-        { name: 'SYSTEM', status: 'ONLINE', totalMb: 2048, usedMb: 1740, autoextend: 'YES', datafiles: 1, pct: 85 },
-        { name: 'SYSAUX', status: 'ONLINE', totalMb: 4096, usedMb: 2867, autoextend: 'YES', datafiles: 2, pct: 70 },
-        { name: 'USERS', status: 'ONLINE', totalMb: 8192, usedMb: 3440, autoextend: 'YES', datafiles: 2, pct: 42 },
-        { name: 'SALES_2026', status: 'ONLINE', totalMb: 32768, usedMb: 28835, autoextend: 'YES', datafiles: 4, pct: 88 },
-        { name: 'UNDOTBS1', status: 'ONLINE', totalMb: 4096, usedMb: 940, autoextend: 'YES', datafiles: 1, pct: 23 },
-        { name: 'TEMP', status: 'ONLINE', totalMb: 8192, usedMb: 1230, autoextend: 'YES', datafiles: 1, pct: 15 }
-      ];
-
-      const totalMb = tsList.reduce((acc, t) => acc + (t.totalMb || 0), 0);
-      const usedMb = tsList.reduce((acc, t) => acc + (t.usedMb || 0), 0);
-      const freeMb = totalMb - usedMb;
-      const globalPct = totalMb > 0 ? Math.round((usedMb / totalMb) * 100) : 0;
-
-      activePane.innerHTML = `
-        <div class="master-overview-container">
-          <div class="master-overview-banner-sb">
-            <div>
-              <div class="master-overview-title-sb">💾 Visão Geral de Todas as Tablespaces do Banco de Dados (DBA_TABLESPACES)</div>
-              <div class="master-overview-desc-sb">Capacidade total de disco, espaço consumido por segmentos e disponibilidade de arquivos de dados.</div>
-            </div>
-            <button class="btn btn-primary" style="height: 24px; font-size: 11px;" onclick="window.TracesApp.openObjectInWorksheet('DBA_TABLESPACES')">
-              Consultar no Editor (F9)
-            </button>
-          </div>
-
-          <div class="master-category-kpi-row">
-            <div class="ts-summary-card">
-              <span class="ts-card-label">Armazenamento Total</span>
-              <span class="ts-card-value">${(totalMb / 1024).toFixed(1)} GB (${totalMb.toLocaleString()} MB)</span>
-            </div>
-            <div class="ts-summary-card">
-              <span class="ts-card-label">Espaço Ocupado</span>
-              <span class="ts-card-value" style="color: #0284c7;">${(usedMb / 1024).toFixed(1)} GB (${usedMb.toLocaleString()} MB)</span>
-            </div>
-            <div class="ts-summary-card">
-              <span class="ts-card-label">Espaço Livre</span>
-              <span class="ts-card-value" style="color: #059669;">${(freeMb / 1024).toFixed(1)} GB (${freeMb.toLocaleString()} MB)</span>
-            </div>
-            <div class="ts-summary-card">
-              <span class="ts-card-label">Ocupação Global</span>
-              <span class="ts-card-value" style="color: ${globalPct >= 85 ? '#dc2626' : (globalPct >= 70 ? '#d97706' : '#059669')};">${globalPct}%</span>
-            </div>
-          </div>
-
-          <div class="ts-section-title" style="margin-bottom: 8px;">
-            <span>Status e Capacidade de Todas as Tablespaces (Clique em uma linha para ver detalhes)</span>
-            <span style="font-size: 10px; font-weight: normal; color: #64748b;">${tsList.length} Tablespaces Online</span>
-          </div>
-
-          <table class="master-grid-interactive">
-            <thead>
-              <tr>
-                <th>Tablespace</th>
-                <th>Status</th>
-                <th>Tipo</th>
-                <th style="text-align: right;">Total (MB)</th>
-                <th style="text-align: right;">Used (MB)</th>
-                <th style="text-align: right;">Free (MB)</th>
-                <th style="width: 140px;">% Used</th>
-                <th style="text-align: center;">Datafiles</th>
-                <th style="text-align: center;">Autoextend</th>
-                <th style="text-align: center;">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tsList.map(ts => {
-                const pct = ts.pct || Math.round(((ts.usedMb || 0) / (ts.totalMb || 1)) * 100);
-                let barClass = 'green';
-                if (pct >= 85) barClass = 'red';
-                else if (pct >= 70) barClass = 'amber';
-
-                return `
-                  <tr onclick="window.TracesApp.schemaBrowser.selectObject('${ts.name}')">
-                    <td style="font-weight: 700; color: #0284c7;">${ts.name}</td>
-                    <td><span class="session-status-badge active">${ts.status || 'ONLINE'}</span></td>
-                    <td style="color: #64748b;">${ts.name === 'TEMP' ? 'TEMPORARY' : (ts.name === 'UNDOTBS1' ? 'UNDO' : 'PERMANENT')}</td>
-                    <td style="text-align: right;">${(ts.totalMb || 0).toLocaleString()} MB</td>
-                    <td style="text-align: right; font-weight: 600;">${(ts.usedMb || 0).toLocaleString()} MB</td>
-                    <td style="text-align: right; color: #059669;">${(ts.freeMb || (ts.totalMb - ts.usedMb) || 0).toLocaleString()} MB</td>
-                    <td>
-                      <div style="display: flex; align-items: center; gap: 8px;">
-                        <div class="ts-progress-track">
-                          <div class="ts-progress-fill ${barClass}" style="width: ${pct}%;"></div>
-                        </div>
-                        <span style="font-size: 10px; font-weight: 700; width: 34px; text-align: right;">${pct}%</span>
-                      </div>
-                    </td>
-                    <td style="text-align: center; font-weight: 600;">${ts.datafiles || 1}</td>
-                    <td style="text-align: center;"><span class="session-status-badge active">${ts.autoextend || 'YES'}</span></td>
-                    <td style="text-align: center;">
-                      <button class="drilldown-btn" onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.selectObject('${ts.name}')">
-                        🔍 Inspecionar
-                      </button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
-      return;
-    }
-
-    if (category === 'users') {
-      const uList = [
-        { name: 'SYS', status: 'OPEN', defaultTs: 'SYSTEM', tempTs: 'TEMP', profile: 'DEFAULT' },
-        { name: 'SYSTEM', status: 'OPEN', defaultTs: 'SYSTEM', tempTs: 'TEMP', profile: 'DEFAULT' },
-        { name: 'HR', status: 'OPEN', defaultTs: 'USERS', tempTs: 'TEMP', profile: 'DEFAULT' },
-        { name: 'SALES_ADMIN', status: 'OPEN', defaultTs: 'SALES_2026', tempTs: 'TEMP', profile: 'DEFAULT' },
-        { name: 'SCOTT', status: 'OPEN', defaultTs: 'USERS', tempTs: 'TEMP', profile: 'DEFAULT' },
-        { name: 'APEX_PUBLIC_USER', status: 'LOCKED', defaultTs: 'SYSAUX', tempTs: 'TEMP', profile: 'DEFAULT' }
-      ];
-
-      activePane.innerHTML = `
-        <div class="master-overview-container">
-          <div class="master-overview-banner-sb">
-            <div>
-              <div class="master-overview-title-sb">👥 Visão Geral de Todos os Usuários do Banco (DBA_USERS)</div>
-              <div class="master-overview-desc-sb">Catálogo de contas de schemas, privilégios de conexão e tablespaces atribuídas.</div>
-            </div>
-            <button class="btn btn-primary" style="height: 24px; font-size: 11px;" onclick="window.TracesApp.openObjectInWorksheet('DBA_USERS')">
-              Consultar no Editor (F9)
-            </button>
-          </div>
-
-          <div class="master-category-kpi-row">
-            <div class="ts-summary-card"><span class="ts-card-label">Total de Usuários</span><span class="ts-card-value">${uList.length}</span></div>
-            <div class="ts-summary-card"><span class="ts-card-label">Contas Abertas</span><span class="ts-card-value" style="color: #059669;">${uList.filter(u => u.status === 'OPEN').length}</span></div>
-            <div class="ts-summary-card"><span class="ts-card-label">Contas Bloqueadas</span><span class="ts-card-value" style="color: #dc2626;">${uList.filter(u => u.status === 'LOCKED').length}</span></div>
-            <div class="ts-summary-card"><span class="ts-card-label">Schema Ativo</span><span class="ts-card-value" style="color: #0284c7;">${this.currentSchema}</span></div>
-          </div>
-
-          <div class="ts-section-title" style="margin-bottom: 8px;">
-            <span>Usuários Registrados na Instância (Clique em uma linha para ver privilégios e cotas)</span>
-          </div>
-
-          <table class="master-grid-interactive">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th>Status da Conta</th>
-                <th>Default Tablespace</th>
-                <th>Temporary Tablespace</th>
-                <th>Profile</th>
-                <th style="text-align: center;">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${uList.map(u => `
-                <tr onclick="window.TracesApp.schemaBrowser.selectObject('${u.name}')">
-                  <td style="font-weight: 700; color: #0284c7;">${u.name}</td>
-                  <td><span class="session-status-badge ${u.status.toLowerCase()}">${u.status}</span></td>
-                  <td style="font-weight: 600;">${u.defaultTs}</td>
-                  <td style="color: #64748b;">${u.tempTs}</td>
-                  <td>${u.profile}</td>
-                  <td style="text-align: center;">
-                    <button class="drilldown-btn" onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.selectObject('${u.name}')">
-                      🔍 Inspecionar
-                    </button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
-      return;
-    }
-
-    if (category === 'tables') {
-      const tablesList = (this.getSchemaData().tables || []);
-      const totalRows = tablesList.reduce((acc, t) => acc + (t.numRows || 0), 0);
-
-      activePane.innerHTML = `
-        <div class="master-overview-container">
-          <div class="master-overview-banner-sb">
-            <div>
-              <div class="master-overview-title-sb">📋 Visão Geral de Todas as Tabelas de "${this.currentSchema}" (ALL_TABLES)</div>
-              <div class="master-overview-desc-sb">Estatísticas do otimizador, número de linhas estimadas e alocação de tablespaces.</div>
-            </div>
-            <button class="btn btn-primary" style="height: 24px; font-size: 11px;" onclick="window.TracesApp.openObjectInWorksheet('ALL_TABLES')">
-              Consultar no Editor (F9)
-            </button>
-          </div>
-
-          <div class="master-category-kpi-row">
-            <div class="ts-summary-card"><span class="ts-card-label">Total de Tabelas</span><span class="ts-card-value">${tablesList.length}</span></div>
-            <div class="ts-summary-card"><span class="ts-card-label">Total de Linhas</span><span class="ts-card-value" style="color: #0284c7;">${totalRows.toLocaleString()}</span></div>
-            <div class="ts-summary-card"><span class="ts-card-label">Schema Selecionado</span><span class="ts-card-value" style="color: #059669;">${this.currentSchema}</span></div>
-          </div>
-
-          <table class="master-grid-interactive">
-            <thead>
-              <tr>
-                <th>Nome da Tabela</th>
-                <th>Tablespace</th>
-                <th style="text-align: right;">Linhas Estimadas</th>
-                <th style="text-align: right;">Blocos</th>
-                <th style="text-align: right;">Avg Row Len</th>
-                <th>Última Análise</th>
-                <th style="text-align: center;">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tablesList.map(t => `
-                <tr onclick="window.TracesApp.schemaBrowser.selectObject('${t.name}')">
-                  <td style="font-weight: 700; color: #0284c7;">${t.name}</td>
-                  <td>${t.tablespace || 'USERS'}</td>
-                  <td style="text-align: right; font-weight: 600;">${(t.numRows || 0).toLocaleString()}</td>
-                  <td style="text-align: right;">${t.blocks || '-'}</td>
-                  <td style="text-align: right;">${t.avgRowLen ? t.avgRowLen + ' B' : '-'}</td>
-                  <td style="font-size: 10px; color: #64748b;">${t.lastAnalyzed || 'Recente'}</td>
-                  <td style="text-align: center;">
-                    <button class="drilldown-btn" onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.selectObject('${t.name}')">
-                      🔍 Estrutura &amp; Dados
-                    </button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
-      return;
-    }
-
-    // Default for other categories (views, packages, procedures, etc.)
-    const catItems = (this.getSchemaData()[category] || []);
-    activePane.innerHTML = `
-      <div class="master-overview-container">
-        <div class="master-overview-banner-sb">
-          <div>
-            <div class="master-overview-title-sb">🌐 Visão Geral de Todos os Objetos: ${category.toUpperCase()} (${this.currentSchema})</div>
-            <div class="master-overview-desc-sb">Catálogo de objetos registrados e status de compilação.</div>
-          </div>
-        </div>
-
-        <table class="master-grid-interactive">
-          <thead>
-            <tr>
-              <th>Nome do Objeto</th>
-              <th>Status</th>
-              <th>Schema Owner</th>
-              <th style="text-align: center;">Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${catItems.map(o => `
-              <tr onclick="window.TracesApp.schemaBrowser.selectObject('${o.name}')">
-                <td style="font-weight: 700; color: #0284c7;">${o.name}</td>
-                <td><span class="session-status-badge ${o.status ? o.status.toLowerCase() : 'valid'}">${o.status || 'VALID'}</span></td>
-                <td>${this.currentSchema}</td>
-                <td style="text-align: center;">
-                  <button class="drilldown-btn" onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.selectObject('${o.name}')">
-                    🔍 Abrir Objeto
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
   }
 
   async recompileCurrentObject() {

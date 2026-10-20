@@ -1,29 +1,32 @@
 /* ==========================================================================
-   TOAD FOR ORACLE CLASSIC DROPDOWN MENU ENGINE
+   TOAD FOR ORACLE CLASSIC DROPDOWN MENU ENGINE & TOOLBAR DROPDOWNS
    Implements authentic Windows desktop drop-down menus, flyout submenus,
-   keyboard shortcuts, and direct module dispatching.
+   toolbar expandable menus, keyboard shortcuts, and MDI module dispatching.
    ========================================================================== */
 
 class ToadMenus {
   constructor() {
     this.activeMenu = null;
+    this.activeToolbarDropdown = null;
     this.menuDefs = this.getMenuDefinitions();
     this.init();
   }
 
   init() {
     this.renderMenubar();
+    this.renderToolbarDropdowns();
     this.bindEvents();
   }
 
   getMenuDefinitions() {
     return {
       'File': [
-        { label: 'New Connection...', icon: '⚡', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
+        { label: 'New Connection (Login)...', icon: '⚡', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
         { label: 'End Connection (Disconnect)', icon: '🔌', shortcut: '', action: () => window.TracesApp.connectionManager.disconnect() },
-        { label: 'Reconnect', icon: '🔄', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
+        { label: 'Reconnect Active Session', icon: '🔄', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
         { separator: true },
-        { label: 'Open File...', icon: '📂', shortcut: 'Ctrl+O', action: () => window.TracesApp.sqlEditor.addNewTab() },
+        { label: 'New Worksheet', icon: '📝', shortcut: 'Ctrl+N', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.addNewTab(); } },
+        { label: 'Open SQL File...', icon: '📂', shortcut: 'Ctrl+O', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.addNewTab(); } },
         { label: 'Save Worksheet', icon: '💾', shortcut: 'Ctrl+S', action: () => {
           const sql = window.TracesApp.sqlEditor?.getActiveQuery() || '';
           const blob = new Blob([sql], { type: 'text/sql' });
@@ -47,7 +50,7 @@ class ToadMenus {
         } },
         { separator: true },
         { label: 'Print...', icon: '🖨', shortcut: 'Ctrl+P', action: () => window.print() },
-        { label: 'Exit', icon: '✕', shortcut: 'Alt+F4', action: () => window.TracesApp.notify('Toad session active.', 'info') }
+        { label: 'Exit Toad for Oracle', icon: '✕', shortcut: 'Alt+F4', action: () => window.TracesApp.closeApplication() }
       ],
 
       'Edit': [
@@ -83,6 +86,7 @@ class ToadMenus {
       ],
 
       'View': [
+        { label: 'Toad Start Page (Início)', icon: '🏠', shortcut: '', action: () => window.TracesApp.showStartPage() },
         { label: 'Project Manager', icon: '🗂', shortcut: '', action: () => window.TracesApp.toadModals.openProjectManager() },
         { label: 'Workspaces & Desktops...', icon: '🖥', shortcut: '', action: () => window.TracesApp.notify('Saved active workspace layout to Workspaces.xml', 'success') },
         { separator: true },
@@ -98,48 +102,48 @@ class ToadMenus {
           label: 'Administration',
           icon: '🏛',
           submenu: [
-            { label: 'Database Browser & SPFILE Editor', action: () => window.TracesApp.switchDockView('dba', 'browser') },
-            { label: 'Session Browser & Kill Session', action: () => window.TracesApp.switchDockView('sessions') },
-            { label: 'Database Monitor', action: () => window.TracesApp.switchDockView('dba', 'dbmonitor') },
-            { label: 'Unix / Linux Server Monitor (sar/vmstat)', action: () => window.TracesApp.switchDockView('dba', 'unixmonitor') },
-            { label: 'Health Check (120+ Diagnostic Rules)', action: () => window.TracesApp.switchDockView('probe') }
+            { label: 'Database Browser & SPFILE Editor', action: () => window.TracesApp.openWindow('dba', 'browser') },
+            { label: 'Session Browser & Kill Session', action: () => window.TracesApp.openWindow('sessions') },
+            { label: 'Database Monitor (Live Waits)', action: () => window.TracesApp.openWindow('dba', 'dbmonitor') },
+            { label: 'Unix / Linux Server Monitor (sar/vmstat)', action: () => window.TracesApp.openWindow('dba', 'unixmonitor') },
+            { label: 'Health Check (70 Automated Rules)', action: () => window.TracesApp.openWindow('probe') }
           ]
         },
         {
           label: 'Storage & Space Management',
           icon: '💾',
           submenu: [
-            { label: 'Tablespace Map & High Water Mark (HWM)', action: () => window.TracesApp.switchDockView('dba', 'tablespacemap') },
-            { label: 'Space Manager & Capacity Growth Forecast', action: () => window.TracesApp.switchDockView('dba', 'spacemanager') },
-            { label: 'Segment Advisor & Rebuild Multiple Objects', action: () => window.TracesApp.switchDockView('dba', 'segmentadvisor') },
-            { label: 'Undo Advisor (V$UNDOSTAT / ORA-01555)', action: () => window.TracesApp.switchDockView('dba', 'undoadvisor') }
+            { label: 'Tablespace Map & High Water Mark (HWM)', action: () => window.TracesApp.openWindow('dba', 'tablespacemap') },
+            { label: 'Space Manager & Capacity Growth Forecast', action: () => window.TracesApp.openWindow('dba', 'spacemanager') },
+            { label: 'Segment Advisor & Rebuild Multiple Objects', action: () => window.TracesApp.openWindow('dba', 'segmentadvisor') },
+            { label: 'Undo Advisor (V$UNDOSTAT / ORA-01555)', action: () => window.TracesApp.openWindow('dba', 'undoadvisor') }
           ]
         },
         {
-          label: 'Flashback & Undo',
+          label: 'Flashback & Recovery',
           icon: '⏪',
           submenu: [
-            { label: 'Flashback Browser (DBA_RECYCLEBIN & Purge)', action: () => window.TracesApp.switchDockView('dba', 'flashback') },
-            { label: 'LogMiner Interface (DBMS_LOGMNR Redo/Undo)', action: () => window.TracesApp.switchDockView('dba', 'logminer') }
+            { label: 'Flashback Browser (DBA_RECYCLEBIN & Purge)', action: () => window.TracesApp.openWindow('dba', 'flashback') },
+            { label: 'LogMiner Interface (DBMS_LOGMNR Redo/Undo)', action: () => window.TracesApp.openWindow('dba', 'logminer') }
           ]
         },
         {
           label: 'High Availability & RAC',
           icon: '🌐',
           submenu: [
-            { label: 'Data Guard Manager (Primary/Standby Sync)', action: () => window.TracesApp.switchDockView('dba', 'dataguard') },
-            { label: 'ASM Manager (Diskgroups & Rebalance)', action: () => window.TracesApp.switchDockView('dba', 'asm') },
-            { label: 'RAC Cluster Interconnect Diagnostics', action: () => window.TracesApp.switchDockView('dba', 'rac') },
-            { label: 'Exadata Smart Scan & Storage Index Info', action: () => window.TracesApp.switchDockView('dba', 'exadata') }
+            { label: 'Data Guard Manager (Primary/Standby Sync)', action: () => window.TracesApp.openWindow('dba', 'dataguard') },
+            { label: 'ASM Storage Manager (Diskgroups & Rebalance)', action: () => window.TracesApp.openWindow('dba', 'asm') },
+            { label: 'RAC Cluster Interconnect Diagnostics', action: () => window.TracesApp.openWindow('dba', 'rac') },
+            { label: 'Exadata Smart Scan & Storage Index Info', action: () => window.TracesApp.openWindow('dba', 'exadata') }
           ]
         },
         {
           label: 'Security & Compliance',
           icon: '🔒',
           submenu: [
-            { label: 'Audit Manager & Fine-Grained Auditing (FGA)', action: () => window.TracesApp.switchDockView('dba', 'audit') },
+            { label: 'Audit Manager & Fine-Grained Auditing (FGA)', action: () => window.TracesApp.openWindow('dba', 'audit') },
             { label: 'Data Redaction Manager (DBMS_REDACT)', action: () => window.TracesApp.toadModals.openSensitiveSearch() },
-            { label: 'Oracle Keystore & TDE Encryption Status', action: () => window.TracesApp.switchDockView('dba', 'wallet') },
+            { label: 'Oracle Keystore & TDE Encryption Status', action: () => window.TracesApp.openWindow('dba', 'wallet') },
             { label: 'Clone User / Role (Create Like Wizard)', action: () => window.TracesApp.toadModals.openCloneUser() }
           ]
         },
@@ -147,9 +151,9 @@ class ToadMenus {
           label: 'Compare Tools',
           icon: '⚖',
           submenu: [
-            { label: 'Schema Compare (Live / .sdx Snapshot)...', action: () => window.TracesApp.switchDockView('dba', 'schemacompare') },
-            { label: 'Data Compare (Row-by-Row Diff)...', action: () => window.TracesApp.switchDockView('dba', 'datacompare') },
-            { label: 'Database Compare (init.ora & Roles)...', action: () => window.TracesApp.switchDockView('dba', 'dbcompare') }
+            { label: 'Schema Compare (Live / .sdx Snapshot)...', action: () => window.TracesApp.openWindow('dba', 'schemacompare') },
+            { label: 'Data Compare (Row-by-Row Diff)...', action: () => window.TracesApp.openWindow('dba', 'datacompare') },
+            { label: 'Database Compare (init.ora & Roles)...', action: () => window.TracesApp.openWindow('dba', 'dbcompare') }
           ]
         },
         {
@@ -165,15 +169,15 @@ class ToadMenus {
           ]
         },
         { separator: true },
-        { label: 'AWR / ADDM / ASH Performance Browser', icon: '📈', shortcut: '', action: () => window.TracesApp.switchDockView('dba', 'awr') }
+        { label: 'AWR / ADDM / ASH Performance Browser', icon: '📈', shortcut: '', action: () => window.TracesApp.openWindow('dba', 'awr') }
       ],
 
       'Schema': [
-        { label: 'Schema Browser', icon: '🗄', shortcut: 'Ctrl+B', action: () => window.TracesApp.switchDockView('browser') },
+        { label: 'Schema Browser', icon: '🗄', shortcut: 'Ctrl+B', action: () => window.TracesApp.openWindow('browser') },
         { label: 'Toad Describe (F4 Popup)', icon: '🔎', shortcut: 'F4', action: () => window.TracesApp.toadModals.openDescribe() },
         { separator: true },
-        { label: 'Query Builder (Visual Joins Canvas)', icon: '🔀', shortcut: '', action: () => window.TracesApp.switchDockView('modeler', 'querybuilder') },
-        { label: 'ER Diagrammer (Toad Data Modeler)', icon: '📐', shortcut: '', action: () => window.TracesApp.switchDockView('modeler', 'erd') },
+        { label: 'Query Builder (Visual Joins Canvas)', icon: '🔀', shortcut: '', action: () => window.TracesApp.openWindow('modeler', 'querybuilder') },
+        { label: 'ER Diagrammer (Toad Data Modeler)', icon: '📐', shortcut: '', action: () => window.TracesApp.openWindow('modeler', 'erd') },
         { label: 'Master-Detail Browser', icon: '🔗', shortcut: '', action: () => window.TracesApp.toadModals.openMasterDetail() },
         { separator: true },
         { label: 'Copy Data to Another Schema / Table...', icon: '📦', shortcut: '', action: () => window.TracesApp.toadModals.openCopyData() },
@@ -186,7 +190,7 @@ class ToadMenus {
         { label: 'Execute at Cursor', icon: '▶|', shortcut: 'Ctrl+Enter', action: () => window.TracesApp.sqlEditor.executeStatement() },
         { separator: true },
         { label: 'Explain Plan', icon: '🌳', shortcut: 'Ctrl+E', action: () => window.TracesApp.sqlEditor.explainPlan() },
-        { label: 'AutoTrace Statistics', icon: '📊', shortcut: '', action: () => { window.TracesApp.switchDockView('editor'); window.TracesApp.sqlEditor.switchOutputTab('autotrace'); } },
+        { label: 'AutoTrace Statistics', icon: '📊', shortcut: '', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.switchOutputTab('autotrace'); } },
         { separator: true },
         { label: 'SQL Recall (SavedSQL.dat)', icon: '📜', shortcut: 'F8', action: () => window.TracesApp.toadModals.openSqlRecall() },
         { label: 'Prompt for Bind Variables...', icon: ':var', shortcut: '', action: () => window.TracesApp.toadModals.openBindVariables() },
@@ -197,18 +201,19 @@ class ToadMenus {
       ],
 
       'Debug': [
-        { label: 'Start PL/SQL Debugger', icon: '🐞', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'debug') },
+        { label: 'Start PL/SQL Debugger', icon: '🐞', shortcut: '', action: () => window.TracesApp.openWindow('profiler', 'debug') },
         { label: 'Toggle Breakpoint', icon: '🔴', shortcut: 'F9', action: () => window.TracesApp.toggleBreakpoint() },
-        { label: 'Watches & Call Stack', icon: '👁', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'debug') },
+        { label: 'Watches & Call Stack', icon: '👁', shortcut: '', action: () => window.TracesApp.openWindow('profiler', 'debug') },
         { label: 'Compile with Debug Information', icon: '🔨', shortcut: '', action: () => window.TracesApp.compileWithDebugInfo() },
         { separator: true },
-        { label: 'PL/SQL Profiler (DBMS_PROFILER Line-by-Line)', icon: '⏱', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'profiler') },
-        { label: 'Code Analysis (CodeXpert AST Metrics)', icon: '📊', shortcut: '', action: () => window.TracesApp.switchDockView('rules') },
-        { label: 'Team Coding (TCX_OBJECTS Locks & VCS)', icon: '👥', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'teamcoding') },
-        { label: 'Code Tester for Oracle (Automated Unit Tests)', icon: '🧪', shortcut: '', action: () => window.TracesApp.switchDockView('profiler', 'tester') }
+        { label: 'PL/SQL Profiler (DBMS_PROFILER Line-by-Line)', icon: '⏱', shortcut: '', action: () => window.TracesApp.openWindow('profiler', 'profiler') },
+        { label: 'Code Analysis (CodeXpert AST Metrics)', icon: '📊', shortcut: '', action: () => window.TracesApp.openWindow('rules') },
+        { label: 'Team Coding (TCX_OBJECTS Locks & VCS)', icon: '👥', shortcut: '', action: () => window.TracesApp.openWindow('profiler', 'teamcoding') },
+        { label: 'Code Tester for Oracle (Automated Unit Tests)', icon: '🧪', shortcut: '', action: () => window.TracesApp.openWindow('profiler', 'tester') }
       ],
 
       'Session': [
+        { label: 'Session Browser (V$SESSION)', icon: '👥', shortcut: '', action: () => window.TracesApp.openWindow('sessions') },
         { label: 'Kill Session (IMMEDIATE)', icon: '☠', shortcut: '', action: () => window.TracesApp.sessionMonitor.killCurrentSession('IMMEDIATE') },
         { label: 'Disconnect Session (POST_TRANSACTION)', icon: '⏹', shortcut: '', action: () => window.TracesApp.sessionMonitor.killCurrentSession('POST_TRANSACTION') },
         { separator: true },
@@ -242,15 +247,15 @@ class ToadMenus {
             } }
           ]
         },
-        { label: 'View Session Lock Tree', icon: '🔒', shortcut: '', action: () => window.TracesApp.switchDockView('sessions') }
+        { label: 'View Session Lock Tree', icon: '🔒', shortcut: '', action: () => window.TracesApp.openWindow('sessions') }
       ],
 
       'Tools': [
-        { label: 'Spotlight on Oracle (NOC Architecture Topology)', icon: '💡', shortcut: '', action: () => window.TracesApp.switchDockView('spotlight') },
-        { label: 'Quest SQL Optimizer (SQL Rewrite & Baselines)', icon: '⚡', shortcut: '', action: () => window.TracesApp.switchDockView('optimizer') },
+        { label: 'Spotlight on Oracle (NOC Architecture Topology)', icon: '💡', shortcut: '', action: () => window.TracesApp.openWindow('spotlight') },
+        { label: 'Quest SQL Optimizer (SQL Rewrite & Baselines)', icon: '⚡', shortcut: '', action: () => window.TracesApp.openWindow('optimizer') },
         { label: 'Benchmark Factory (Load & Stress Testing)', icon: '🏎', shortcut: '', action: () => window.TracesApp.toadModals.openBenchmarkFactory() },
         { separator: true },
-        { label: 'Automation Designer (Workflow App Designer)', icon: '⚙', shortcut: '', action: () => window.TracesApp.switchDockView('automation') },
+        { label: 'Automation Designer (Workflow App Designer)', icon: '⚙', shortcut: '', action: () => window.TracesApp.openWindow('automation') },
         { label: 'DBMS_SCHEDULER & DBMS_JOB Manager', icon: '⏰', shortcut: '', action: () => window.TracesApp.toadModals.openSchedulerManager() },
         { label: 'Unix / Linux Crontab Manager', icon: '🐧', shortcut: '', action: () => window.TracesApp.toadModals.openCrontabManager() },
         { separator: true },
@@ -260,6 +265,10 @@ class ToadMenus {
       ],
 
       'Window': [
+        { label: 'Toad Start Page (Início)', icon: '🏠', shortcut: '', action: () => window.TracesApp.showStartPage() },
+        { label: 'Close Active Window', icon: '✕', shortcut: 'Ctrl+F4', action: () => window.TracesApp.closeActiveWindow() },
+        { label: 'Close All Windows', icon: '🗙', shortcut: '', action: () => window.TracesApp.closeAllWindows() },
+        { separator: true },
         { label: 'Cascade Windows', icon: '🪟', shortcut: '', action: () => window.TracesApp.tileWindows('cascade') },
         { label: 'Tile Horizontally', icon: '═', shortcut: '', action: () => window.TracesApp.tileWindows('horizontal') },
         { label: 'Tile Vertically', icon: '║', shortcut: '', action: () => window.TracesApp.tileWindows('vertical') },
@@ -272,11 +281,11 @@ class ToadMenus {
         { label: 'Toad for Oracle Help Topics', icon: '❓', shortcut: 'F1', action: () => window.TracesApp.toadModals.openHelpTopics() },
         { label: 'Keyboard Shortcuts Cheatsheet', icon: '⌨', shortcut: '', action: () => window.TracesApp.toadModals.openShortcutsCheatsheet() },
         { separator: true },
-        { label: 'Check for Updates from GitHub...', icon: '🔄', shortcut: '', action: () => window.TracesApp.toadModals.openUpdateDialog() },
+        { label: 'Verificar Atualizações do App (GitHub)...', icon: '🔄', shortcut: '', action: () => window.TracesApp.toadModals.openUpdateDialog() },
         { label: 'Baixar Instalador & Atualizador Windows (.exe)', icon: '💾', shortcut: '', action: () => { window.location.href = 'TracesToad-Setup.exe'; } },
         { label: 'Baixar Executável Portátil (TracesToad.exe)', icon: '⚡', shortcut: '', action: () => { window.location.href = 'TracesToad.exe'; } },
         { separator: true },
-        { label: 'About Toad for Oracle', icon: 'ℹ', shortcut: '', action: () => window.TracesApp.toadModals.openAboutDialog() }
+        { label: 'Sobre o Toad for Oracle', icon: 'ℹ', shortcut: '', action: () => window.TracesApp.toadModals.openAboutDialog() }
       ]
     };
   }
@@ -285,17 +294,68 @@ class ToadMenus {
     const menubar = document.querySelector('.toad-menubar');
     if (!menubar) return;
 
-    menubar.innerHTML = Object.keys(this.menuDefs).map(title => `
+    const brandHtml = `
+      <div class="toad-menubar-brand" title="TRACES Toad for Oracle">
+        <img src="assets/traces-logo.png" alt="TRACES">
+      </div>
+    `;
+
+    const menuItemsHtml = Object.keys(this.menuDefs).map(title => `
       <div class="toad-menu-item" data-menu="${title}">
         <span>${title}</span>
         <div class="toad-dropdown-menu" id="menu-dropdown-${title}">
-          ${this.renderMenuItems(this.menuDefs[title])}
+          ${this.renderMenuItems(this.menuDefs[title], title)}
         </div>
       </div>
     `).join('');
+
+    const rightHtml = `
+      <div class="toad-menubar-right">
+        <div class="toad-conn-pill" id="header-connection-pill" onclick="window.TracesApp.connectionManager.openModal()" title="Gerenciar Conexão Oracle">
+          <span class="toad-conn-indicator" style="background: #9ca3af;"></span>
+          <span style="font-weight: 700; color: #555;">Desconectado</span>
+          <span style="color: #888; font-size: 10px;">(Clique para Conectar)</span>
+        </div>
+        <button class="toad-menubar-action-btn" onclick="window.TracesApp.toadModals.openUpdateDialog()" title="Verificar Atualizações do App">
+          <span>🔄</span>
+          <span>Atualizações</span>
+        </button>
+      </div>
+    `;
+
+    menubar.innerHTML = brandHtml + menuItemsHtml + rightHtml;
   }
 
-  renderMenuItems(items) {
+  renderToolbarDropdowns() {
+    // Populate Toolbar Dropdown for Database
+    const dbMenuEl = document.getElementById('tb-menu-Database');
+    if (dbMenuEl && this.menuDefs['Database']) {
+      dbMenuEl.innerHTML = this.renderMenuItems(this.menuDefs['Database'], 'Database');
+    }
+
+    // Populate Toolbar Dropdown for Tools
+    const toolsMenuEl = document.getElementById('tb-menu-Tools');
+    if (toolsMenuEl && this.menuDefs['Tools']) {
+      toolsMenuEl.innerHTML = this.renderMenuItems(this.menuDefs['Tools'], 'Tools');
+    }
+  }
+
+  toggleToolbarMenu(menuKey, event) {
+    if (event) event.stopPropagation();
+
+    const targetDropdown = document.getElementById(`tb-menu-${menuKey}`);
+    if (!targetDropdown) return;
+
+    const isVisible = targetDropdown.classList.contains('visible');
+    this.closeAll();
+
+    if (!isVisible) {
+      targetDropdown.classList.add('visible');
+      this.activeToolbarDropdown = targetDropdown;
+    }
+  }
+
+  renderMenuItems(items, parentMenuKey) {
     return items.map((item, idx) => {
       if (item.separator) {
         return '<div class="toad-menu-separator"></div>';
@@ -303,7 +363,7 @@ class ToadMenus {
 
       const hasSub = item.submenu && item.submenu.length > 0;
       return `
-        <div class="toad-menu-entry ${hasSub ? 'has-submenu' : ''}" data-idx="${idx}">
+        <div class="toad-menu-entry ${hasSub ? 'has-submenu' : ''}" data-idx="${idx}" data-parent-menu="${parentMenuKey}">
           <span class="menu-icon">${item.icon || ''}</span>
           <span class="menu-label">${item.label}</span>
           ${item.shortcut ? `<span class="menu-shortcut">${item.shortcut}</span>` : ''}
@@ -311,7 +371,7 @@ class ToadMenus {
           ${hasSub ? `
             <div class="toad-submenu">
               ${item.submenu.map((sub, sidx) => `
-                <div class="toad-menu-entry" data-subidx="${sidx}">
+                <div class="toad-menu-entry" data-subidx="${sidx}" data-idx="${idx}" data-parent-menu="${parentMenuKey}">
                   <span class="menu-icon"></span>
                   <span class="menu-label">${sub.label}</span>
                 </div>
@@ -353,57 +413,54 @@ class ToadMenus {
       this.closeAll();
     });
 
-    // Handle clicks inside dropdown entries
-    document.querySelectorAll('.toad-dropdown-menu').forEach(menu => {
-      menu.addEventListener('click', (e) => {
-        const entry = e.target.closest('.toad-menu-entry');
-        if (!entry) return;
-        e.stopPropagation();
+    // Handle clicks inside dropdown entries (both menubar and toolbar)
+    document.addEventListener('click', (e) => {
+      const entry = e.target.closest('.toad-menu-entry');
+      if (!entry) return;
+      e.stopPropagation();
 
-        const parentItem = entry.closest('.toad-menu-item');
-        const menuKey = parentItem ? parentItem.getAttribute('data-menu') : null;
-        if (!menuKey) return;
+      const menuKey = entry.getAttribute('data-parent-menu');
+      if (!menuKey) return;
 
-        const subidx = entry.getAttribute('data-subidx');
-        if (subidx !== null) {
-          const parentEntry = entry.closest('.has-submenu');
-          const parentIdx = parentEntry ? parentEntry.getAttribute('data-idx') : null;
-          if (parentIdx !== null && this.menuDefs[menuKey]?.[parentIdx]?.submenu?.[subidx]) {
-            const subItem = this.menuDefs[menuKey][parentIdx].submenu[subidx];
-            try {
-              if (subItem && subItem.action) subItem.action();
-            } catch (err) {
-              console.error('Menu subitem action error:', err);
-            }
-          }
-        } else {
-          // If this entry has a submenu flyout, don't close, keep open
-          if (entry.classList.contains('has-submenu')) {
-            entry.classList.toggle('has-open-submenu');
-            return;
-          }
-          const idx = entry.getAttribute('data-idx');
-          const item = this.menuDefs[menuKey]?.[idx];
+      const subidx = entry.getAttribute('data-subidx');
+      const idx = entry.getAttribute('data-idx');
+
+      if (subidx !== null) {
+        if (this.menuDefs[menuKey]?.[idx]?.submenu?.[subidx]) {
+          const subItem = this.menuDefs[menuKey][idx].submenu[subidx];
           try {
-            if (item && item.action) item.action();
+            if (subItem && subItem.action) subItem.action();
           } catch (err) {
-            console.error('Menu item action error:', err);
+            console.error('Menu subitem action error:', err);
           }
         }
+      } else {
+        // If this entry has a submenu flyout, don't execute, keep flyout open
+        if (entry.classList.contains('has-submenu')) {
+          entry.classList.toggle('has-open-submenu');
+          return;
+        }
+        const item = this.menuDefs[menuKey]?.[idx];
+        try {
+          if (item && item.action) item.action();
+        } catch (err) {
+          console.error('Menu item action error:', err);
+        }
+      }
 
-        this.closeAll();
-      });
+      this.closeAll();
     });
   }
 
   openMenu(itemEl, dropdownEl, menuKey) {
     this.activeMenu = menuKey;
-    itemEl.classList.add('active');
-    dropdownEl.classList.add('visible');
+    if (itemEl) itemEl.classList.add('active');
+    if (dropdownEl) dropdownEl.classList.add('visible');
   }
 
   closeAll() {
     this.activeMenu = null;
+    this.activeToolbarDropdown = null;
     document.querySelectorAll('.toad-menu-item').forEach(i => i.classList.remove('active'));
     document.querySelectorAll('.toad-dropdown-menu').forEach(d => d.classList.remove('visible'));
   }

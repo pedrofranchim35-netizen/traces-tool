@@ -290,8 +290,39 @@ END;`
     return fullText.trim();
   }
 
+  getQuery() {
+    return this.textarea ? this.textarea.value : '';
+  }
+
+  setQuery(sql) {
+    if (this.textarea) {
+      this.textarea.value = sql;
+      this.saveActiveTabContent();
+      this.updateHighlighting();
+      this.updateGutter();
+    }
+  }
+
+  insertTextAtCursor(text) {
+    if (!this.textarea) return;
+    const start = this.textarea.selectionStart || 0;
+    const end = this.textarea.selectionEnd || 0;
+    const val = this.textarea.value;
+    this.textarea.value = val.substring(0, start) + text + val.substring(end);
+    this.textarea.selectionStart = this.textarea.selectionEnd = start + text.length;
+    this.saveActiveTabContent();
+    this.updateHighlighting();
+    this.updateGutter();
+  }
+
   // Execution Handlers
   executeStatement() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Não há conexão ativa com o banco. Conecte-se para executar comandos SQL.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     let text = this.getStatementAtCursor();
     if (!text || !text.trim()) {
       text = this.textarea ? this.textarea.value.trim() : '';
@@ -439,6 +470,12 @@ END;`
   }
 
   async executeScript() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Não há conexão ativa com o banco. Conecte-se para executar scripts SQL.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     const text = this.textarea ? this.textarea.value : '';
     if (!text || !text.trim()) {
       window.TracesApp.notify('Nenhum script na worksheet para executar.', 'warning');
@@ -505,6 +542,12 @@ END;`
   }
 
   async explainPlan() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Não há conexão ativa com o banco. Conecte-se para gerar Explain Plan.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
     window.TracesApp.switchDockView('explain');
     const sql = this.textarea.value;
 
@@ -588,6 +631,11 @@ END;`
   }
 
   async commitTransaction() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Não há conexão ativa com o banco para efetuar COMMIT.', 'warning');
+      return;
+    }
+
     if (window.TracesApp && window.TracesApp.dataGrid) {
       await window.TracesApp.dataGrid.commitPendingChanges();
     } else if (window.TracesApp && window.TracesApp.isRealDatabase) {
@@ -608,6 +656,11 @@ END;`
   }
 
   async rollbackTransaction() {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Não há conexão ativa com o banco para efetuar ROLLBACK.', 'warning');
+      return;
+    }
+
     if (window.TracesApp && window.TracesApp.dataGrid) {
       window.TracesApp.dataGrid.rollbackPendingChanges();
     } else if (window.TracesApp && window.TracesApp.isRealDatabase) {

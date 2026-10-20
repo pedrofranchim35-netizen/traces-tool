@@ -1,13 +1,9 @@
 {
   "name": "traces-toad-oracle",
   "productName": "TRACES Toad for Oracle",
-  "version": "2026.3.1",
+  "version": "2026.2.0",
   "description": "TRACES Toad for Oracle - Native Database Development & Administration Suite",
   "main": "main.js",
   "author": "TRACES Group",
-  "license": "MIT",
-  "scripts": {
-    "start": "electron .",
-    "package-win": "npx --yes @electron/packager . TracesToad --platform=win32 --arch=x64 --electron-version=30.0.0 --icon=assets/traces.ico --overwrite --no-asar --out=dist-win --ignore=\"(\\.git|TracesToad-Setup\\.exe|Setup-TracesToad\\.exe|traces-oracle\\.zip|dist-win|src-native|/Toad\\.exe$|/TracesToad\\.exe$)\""
-  }
+  "license": "MIT"
 }
