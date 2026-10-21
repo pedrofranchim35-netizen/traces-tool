@@ -245,33 +245,35 @@ END;`
           }
         }
 
+        // Teclas tratadas aqui NÃO podem subir para o handler global da janela (app.js),
+        // senão o mesmo statement é executado duas vezes (DML duplicado).
         if (e.key === 'F9') {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           this.executeStatement();
         } else if (e.key === 'F5') {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           this.executeScript();
         } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           this.executeStatement();
         } else if (e.key === 'F4') {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           const pos = this.textarea.selectionStart;
           const text = this.textarea.value;
           const match = text.slice(Math.max(0, pos - 20), pos + 20).match(/[a-zA-Z0-9_.]+/);
           const objName = match ? match[0] : 'HR.EMPLOYEES';
           window.TracesApp.toadModals.openDescribe(objName);
         } else if (e.key === 'F7') {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           window.TracesApp.dataGrid.openRecordViewer();
         } else if (e.key === 'F8') {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           window.TracesApp.toadModals.openSqlRecall();
-        } else if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-          e.preventDefault();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+          e.preventDefault(); e.stopPropagation();
           this.explainPlan();
-        } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-          e.preventDefault();
+        } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+          e.preventDefault(); e.stopPropagation();
           this.formatSql();
         }
       });
