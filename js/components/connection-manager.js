@@ -730,7 +730,11 @@ class ConnectionManager {
 
   async connectCurrentProfile() {
     const c = this.readFormData();
+    const statusEl = document.getElementById('real-test-status');
     const viaText = c.useBridge && c.bridgeHost ? ` via Ponte ${c.bridgeHost}` : '';
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color: #0284c7; font-weight: 600;">⏳ Conectando em ${c.host}:${c.port}/${c.serviceName}${viaText}...</span>`;
+    }
     window.TracesApp.notify(`Conectando ao banco ${c.name} (${c.host}:${c.port}${viaText})...`, 'info');
 
     try {
@@ -834,10 +838,16 @@ class ConnectionManager {
           }, 150);
         }
       } else {
+        if (statusEl) {
+          statusEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">✕ Falha: ${data.error}</span>`;
+        }
         window.TracesApp.notify(`Falha na conexão: ${data.error}`, 'error');
       }
     } catch (err) {
       const msg = err.message || '';
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: #dc2626; font-weight: 600;">✕ Erro: ${msg}</span>`;
+      }
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
         window.TracesApp.notify(`Erro de comunicação com o Bridge local (porta 3033). O servidor pode estar inicializando. Aguarde 2 segundos e tente novamente.`, 'error');
       } else {

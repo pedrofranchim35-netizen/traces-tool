@@ -308,6 +308,14 @@ function startOracleBridgeProcess() {
         console.log(`[TRACES] Falha ao iniciar bridge com ${py}:`, err.message);
         pythonProcess = null;
       });
+      // Watchdog: se o servidor Bridge cair, reinicia automaticamente
+      const thisProc = pythonProcess;
+      thisProc.on('exit', () => {
+        if (pythonProcess !== thisProc || global.__tracesQuitting) return;
+        pythonProcess = null;
+        console.log('[TRACES] Bridge encerrou inesperadamente. Reiniciando em 1.5s...');
+        setTimeout(() => { if (!global.__tracesQuitting && !pythonProcess) startOracleBridgeProcess(); }, 1500);
+      });
       if (pythonProcess) {
         console.log(`[TRACES] Servidor Oracle Bridge iniciado via: ${py}`);
         return true;
@@ -461,6 +469,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  global.__tracesQuitting = true;
   killPortOccupant(PORT);
   if (pythonProcess) {
     try {

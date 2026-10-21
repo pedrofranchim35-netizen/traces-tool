@@ -13,13 +13,124 @@
 /* Left Objects Navigation Pane */
 .browser-nav-pane {
   width: 280px;
-  min-width: 220px;
-  max-width: 450px;
+  min-width: 150px;
+  max-width: 780px;
   background: #f0f0f0;
-  border-right: 1px solid #bfbfbf;
+  border-right: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
+}
+
+.browser-nav-pane.collapsed-pane,
+.optimizer-advisor-pane.collapsed-pane,
+.rules-sidebar.collapsed-pane,
+.collapsed-pane {
+  display: none !important;
+}
+
+/* Universal Toad Vertical Splitter (Left/Right Resizing + Collapse Button) */
+.toad-v-splitter {
+  width: 7px;
+  background: #e2e8f0;
+  border-left: 1px solid #cbd5e1;
+  border-right: 1px solid #cbd5e1;
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background 120ms ease;
+}
+
+.toad-v-splitter:hover,
+.toad-v-splitter.dragging {
+  background: #bae6fd;
+  border-color: #0284c7;
+}
+
+.v-splitter-toggle-btn {
+  width: 14px;
+  height: 44px;
+  background: #f8fafc;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  color: #334155;
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+  z-index: 12;
+}
+
+.v-splitter-toggle-btn:hover {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0369a1;
+}
+
+/* Interactive Horizontal Splitter Pills */
+.toad-interactive-splitter {
+  height: 10px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2e8f0;
+  border-top: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+  cursor: row-resize;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.toad-interactive-splitter::after {
+  display: none;
+}
+
+.toad-interactive-splitter:hover,
+.toad-interactive-splitter.dragging {
+  background: #bae6fd;
+  border-color: #0284c7;
+}
+
+.splitter-Action-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f8fafc;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  padding: 0 4px;
+  height: 15px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  z-index: 12;
+}
+
+.splitter-pill-btn {
+  background: transparent;
+  border: none;
+  font-size: 9px;
+  font-weight: 700;
+  color: #334155;
+  padding: 0 5px;
+  height: 13px;
+  line-height: 13px;
+  cursor: pointer;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.splitter-pill-btn:hover {
+  background: #0284c7;
+  color: #ffffff;
 }
 
 .browser-schema-selector-bar {

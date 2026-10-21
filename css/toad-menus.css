@@ -155,7 +155,8 @@
   color: #ffffff !important;
 }
 
-.toad-menu-entry:hover > .toad-submenu {
+.toad-menu-entry:hover > .toad-submenu,
+.toad-menu-entry.has-open-submenu > .toad-submenu {
   display: block;
 }
 

@@ -185,19 +185,32 @@ if (-not $HasRealPython) {
     Write-Host "      ✔ Python instalado com sucesso: $PyExe" -ForegroundColor Green
 }
 
-# 6. Instalar drivers python-oracledb, sshtunnel e paramiko (Ponte SSH)
-Write-Host "      Verificando drivers (oracledb, sshtunnel, paramiko)..." -ForegroundColor Gray
-$VendorDir = Join-Path $AppDir "bridge\vendor"
-& $PyExe -c "import sys; sys.path.insert(0, r'$VendorDir'); import oracledb, sshtunnel, paramiko" 2>$null
+# 6. Instalar drivers python-oracledb, sshtunnel, paramiko, bcrypt e cryptography (Ponte SSH)
+Write-Host "      Verificando drivers (oracledb, sshtunnel, paramiko, bcrypt, cryptography)..." -ForegroundColor Gray
+$PyDir = Split-Path -Parent $PyExe
+Get-ChildItem -Path $PyDir -Filter "*._pth" -ErrorAction SilentlyContinue | ForEach-Object {
+    (Get-Content $_.FullName) -replace '#import site','import site' | Set-Content $_.FullName
+}
+
+# Garantir que o pip está disponível
+& $PyExe -m pip --version 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "      Instalando dependencias (oracledb, sshtunnel, paramiko)..." -ForegroundColor Yellow
-    & $PyExe -m pip install oracledb sshtunnel paramiko --quiet 2>$null
+    Write-Host "      Configurando pip no Python..." -ForegroundColor Yellow
+    & $PyExe -m ensurepip --default-pip 2>$null
     if ($LASTEXITCODE -ne 0) {
-        & $PyExe -m ensurepip --default-pip 2>$null
-        & $PyExe -m pip install oracledb sshtunnel paramiko
+        $TempGetPip = Join-Path $env:TEMP "get-pip.py"
+        Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $TempGetPip -UseBasicParsing
+        & $PyExe $TempGetPip --no-warn-script-location
+        Remove-Item $TempGetPip -Force -ErrorAction SilentlyContinue
     }
 }
-Write-Host "      ✔ Drivers Oracle e Ponte SSH prontos!" -ForegroundColor Green
+
+& $PyExe -c "import oracledb, sshtunnel, paramiko, bcrypt, cryptography" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "      Instalando dependencias obrigatorias (oracledb, sshtunnel, paramiko, bcrypt, cryptography)..." -ForegroundColor Yellow
+    & $PyExe -m pip install oracledb sshtunnel paramiko bcrypt cryptography --quiet --no-warn-script-location
+}
+Write-Host "      ✔ Drivers Oracle e Ponte SSH prontos e validados!" -ForegroundColor Green
 
 # 7. Iniciar Servidor do Toad
 Write-Host "[3/3] Iniciando Traces Toad for Oracle na porta $Port..." -ForegroundColor Green

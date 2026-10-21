@@ -23,18 +23,24 @@ if not exist ".git" (
 REM 3. Encerrar processo antigo rodando na porta 3033
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3033 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
 
-REM 4. Verificar e carregar dependencias no Python Embutido e no Sistema
+REM 4. Verificar e instalar dependencias no Python Embutido e no Sistema
 if exist "python\python.exe" (
-    python\python.exe -c "import sys; sys.path.insert(0, 'bridge/vendor'); import oracledb, sshtunnel, paramiko" 2>nul
+    powershell -NoProfile -Command "Get-ChildItem -Path 'python' -Filter '*._pth' | ForEach-Object { (Get-Content $_.FullName) -replace '#import site','import site' | Set-Content $_.FullName }" 2>nul
+    python\python.exe -m pip --version >nul 2>&1
     if %errorlevel% neq 0 (
-        echo [INFO] Instalando dependencias no Python embutido (oracledb, sshtunnel, paramiko, bcrypt)...
-        python\python.exe -m pip install oracledb sshtunnel paramiko bcrypt --quiet 2>nul
+        echo [INFO] Inicializando gerenciador pip no Python embutido...
+        powershell -NoProfile -Command "curl.exe -s -L -o \"$env:TEMP\get-pip.py\" 'https://bootstrap.pypa.io/get-pip.py'; & 'python\python.exe' \"$env:TEMP\get-pip.py\" --no-warn-script-location" 2>nul
+    )
+    python\python.exe -c "import oracledb, sshtunnel, paramiko, bcrypt, cryptography" 2>nul
+    if %errorlevel% neq 0 (
+        echo [INFO] Instalando dependencias essenciais no Python embutido (oracledb, sshtunnel, paramiko, bcrypt, cryptography)...
+        python\python.exe -m pip install oracledb sshtunnel paramiko bcrypt cryptography --quiet --no-warn-script-location 2>nul
     )
 )
-python -c "import sys; sys.path.insert(0, 'bridge/vendor'); import oracledb, sshtunnel, paramiko" 2>nul
+python -c "import oracledb, sshtunnel, paramiko, bcrypt, cryptography" 2>nul
 if %errorlevel% neq 0 (
-    echo [INFO] Instalando dependencias no Python do sistema (oracledb, sshtunnel, paramiko)...
-    python -m pip install oracledb sshtunnel paramiko bcrypt --quiet 2>nul || pip install oracledb sshtunnel paramiko bcrypt
+    echo [INFO] Instalando dependencias essenciais no Python do sistema...
+    python -m pip install oracledb sshtunnel paramiko bcrypt cryptography --quiet --no-warn-script-location 2>nul || pip install oracledb sshtunnel paramiko bcrypt cryptography --quiet
 )
 
 REM 5. Abrir navegador sem cache

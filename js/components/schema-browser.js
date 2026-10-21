@@ -16,6 +16,9 @@ class SchemaBrowser {
     this.realObjects = null;
     this.isLoadingDetails = false;
     this.detailsCache = new Map();
+    this.categoryLimits = {};
+    this.defaultCategoryLimit = 200;
+    this.detailListLimits = {};
 
     this.initElements();
     this.bindEvents();
@@ -100,7 +103,40 @@ class SchemaBrowser {
   toggleCategory(catKey) {
     this.expandedCategories[catKey] = !this.expandedCategories[catKey];
     this.currentCategory = catKey;
-    this.renderTreeView();
+    const prevScroll = this.objectList ? this.objectList.scrollTop : 0;
+    this.renderTreeView(true);
+    if (this.objectList) this.objectList.scrollTop = prevScroll;
+  }
+
+  showMoreCategory(catKey, step = 500, ev = null) {
+    if (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
+    const current = this.categoryLimits[catKey] || this.defaultCategoryLimit || 200;
+    this.categoryLimits[catKey] = current + step;
+    const prevScroll = this.objectList ? this.objectList.scrollTop : 0;
+    if (this.viewMode === 'tree') {
+      this.renderTreeView(true);
+    } else {
+      this.renderObjectList(true);
+    }
+    if (this.objectList) this.objectList.scrollTop = prevScroll;
+  }
+
+  showAllCategory(catKey, ev = null) {
+    if (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
+    this.categoryLimits[catKey] = 999999;
+    const prevScroll = this.objectList ? this.objectList.scrollTop : 0;
+    if (this.viewMode === 'tree') {
+      this.renderTreeView(true);
+    } else {
+      this.renderObjectList(true);
+    }
+    if (this.objectList) this.objectList.scrollTop = prevScroll;
   }
 
   renderStyleBar() {
@@ -178,6 +214,7 @@ class SchemaBrowser {
       const resp = await fetch(`/api/objects?schema=${encodeURIComponent(schema)}`);
       const data = await resp.json();
       if (data.objects) {
+        this.categoryLimits = {};
         this.realObjects = {
           tables: data.objects.filter(o => o.type === 'TABLE'),
           views: data.objects.filter(o => o.type === 'VIEW'),
@@ -283,7 +320,7 @@ class SchemaBrowser {
         <select class="browser-dropdown-select" id="browser-category-dropdown">
           ${categories.map(c => `
             <option value="${c.key}" ${this.currentCategory === c.key ? 'selected' : ''}>
-              ${c.label} (${c.count})
+              ${c.label} (${c.count.toLocaleString()})
             </option>
           `).join('')}
         </select>
@@ -297,7 +334,7 @@ class SchemaBrowser {
     }
   }
 
-  renderTreeView() {
+  renderTreeView(skipAutoSelect = false) {
     if (!window.TracesApp || !window.TracesApp.isConnected()) {
       if (this.objectList) {
         this.objectList.innerHTML = `
@@ -333,13 +370,19 @@ class SchemaBrowser {
 
       const isSearching = !!this.searchQuery || (this.statusFilter && this.statusFilter !== 'ALL');
       const isExpanded = isSearching ? (filtered.length > 0) : !!this.expandedCategories[cat.key];
+      const limit = this.categoryLimits[cat.key] || this.defaultCategoryLimit || 200;
+      const visibleItems = isExpanded ? filtered.slice(0, limit) : [];
+      const remaining = filtered.length - visibleItems.length;
+      const countBadge = (isSearching && filtered.length !== items.length)
+        ? `${filtered.length.toLocaleString()} / ${items.length.toLocaleString()}`
+        : items.length.toLocaleString();
 
       html += `
         <div class="toad-tree-category ${isExpanded ? 'expanded' : ''}" data-category="${cat.key}">
           <div class="toad-tree-category-header" onclick="window.TracesApp.schemaBrowser.toggleCategory('${cat.key}')">
             <span class="toad-tree-arrow ${isExpanded ? 'expanded' : ''}">▶</span>
             <span class="toad-tree-category-title">${cat.icon} ${cat.label}</span>
-            <span class="toad-tree-category-count">${items.length}</span>
+            <span class="toad-tree-category-count" title="Total: ${items.length.toLocaleString()} objetos">${countBadge}</span>
           </div>
           ${isExpanded ? `
             <div class="toad-tree-category-items">
@@ -347,21 +390,41 @@ class SchemaBrowser {
                 <div style="padding: 6px 16px 6px 36px; font-size: 11px; color: var(--text-muted); font-style: italic;">
                   ${isSearching ? 'Nenhum resultado' : 'Nenhum objeto'}
                 </div>
-              ` : filtered.map(obj => `
-                <div class="toad-tree-item ${this.selectedObject?.name === obj.name && this.currentCategory === cat.key ? 'active' : ''}"
-                     onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}', '${cat.key}')"
-                     oncontextmenu="window.TracesApp.schemaBrowser.handleContextMenu(event, '${obj.name}', '${cat.key}'); return false;">
-                  <div class="toad-tree-item-name">
-                    <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      ${this.getCategoryIcon(cat.key)}
-                    </svg>
-                    <span>${obj.name}</span>
+              ` : `
+                ${visibleItems.map(obj => `
+                  <div class="toad-tree-item ${this.selectedObject?.name === obj.name && this.currentCategory === cat.key ? 'active' : ''}"
+                       onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}', '${cat.key}')"
+                       oncontextmenu="window.TracesApp.schemaBrowser.handleContextMenu(event, '${obj.name}', '${cat.key}'); return false;">
+                    <div class="toad-tree-item-name">
+                      <svg class="object-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        ${this.getCategoryIcon(cat.key)}
+                      </svg>
+                      <span>${obj.name}</span>
+                    </div>
+                    <span class="status-indicator ${obj.status ? obj.status.toLowerCase() : 'valid'}">
+                      ${obj.status || 'VALID'}
+                    </span>
                   </div>
-                  <span class="status-indicator ${obj.status ? obj.status.toLowerCase() : 'valid'}">
-                    ${obj.status || 'VALID'}
-                  </span>
-                </div>
-              `).join('')}
+                `).join('')}
+                ${remaining > 0 ? `
+                  <div class="toad-tree-load-more" style="padding: 6px 10px 8px 24px; background: #f8fafc; border-top: 1px dashed #cbd5e1; border-bottom: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 5px;">
+                    <div style="font-size: 10px; color: #475569; display: flex; justify-content: space-between; align-items: center;">
+                      <span>Exibindo <strong>${visibleItems.length.toLocaleString()}</strong> de <strong>${filtered.length.toLocaleString()}</strong> ${cat.label}</span>
+                      <span style="color: #64748b;">(+${remaining.toLocaleString()} ocultos)</span>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                      <button type="button" class="btn btn-primary" style="flex: 1; height: 22px; padding: 0 8px; font-size: 10px; font-weight: 600;"
+                              onclick="window.TracesApp.schemaBrowser.showMoreCategory('${cat.key}', 500, event)">
+                        ➕ Ver mais (+${Math.min(500, remaining).toLocaleString()})
+                      </button>
+                      <button type="button" class="btn btn-secondary" style="height: 22px; padding: 0 8px; font-size: 10px; font-weight: 600;"
+                              onclick="window.TracesApp.schemaBrowser.showAllCategory('${cat.key}', event)">
+                        Ver todos (${filtered.length.toLocaleString()})
+                      </button>
+                    </div>
+                  </div>
+                ` : ''}
+              `}
             </div>
           ` : ''}
         </div>
@@ -370,7 +433,7 @@ class SchemaBrowser {
 
     this.objectList.innerHTML = html;
 
-    if (!this.selectedObject) {
+    if (!skipAutoSelect && !this.selectedObject) {
       const firstCat = categories.find(c => (data[c.key] || []).length > 0);
       if (firstCat && data[firstCat.key].length > 0) {
         this.selectObject(data[firstCat.key][0].name, firstCat.key);
@@ -385,7 +448,7 @@ class SchemaBrowser {
       <div class="category-tab-pill ${this.currentCategory === cat.key ? 'active' : ''}" 
            onclick="window.TracesApp.schemaBrowser.selectCategory('${cat.key}')">
         <span>${cat.label}</span>
-        <span class="category-count">${cat.count}</span>
+        <span class="category-count">${cat.count.toLocaleString()}</span>
       </div>
     `).join('');
   }
@@ -403,7 +466,7 @@ class SchemaBrowser {
     }
   }
 
-  renderObjectList() {
+  renderObjectList(skipAutoSelect = false) {
     if (!window.TracesApp || !window.TracesApp.isConnected()) {
       if (this.objectList) {
         this.objectList.innerHTML = `
@@ -443,7 +506,11 @@ class SchemaBrowser {
       return;
     }
 
-    this.objectList.innerHTML = filtered.map(obj => `
+    const limit = this.categoryLimits[this.currentCategory] || this.defaultCategoryLimit || 200;
+    const visibleItems = filtered.slice(0, limit);
+    const remaining = filtered.length - visibleItems.length;
+
+    this.objectList.innerHTML = visibleItems.map(obj => `
       <div class="object-item ${this.selectedObject?.name === obj.name ? 'active' : ''}"
            onclick="window.TracesApp.schemaBrowser.selectObject('${obj.name}')"
            oncontextmenu="window.TracesApp.schemaBrowser.handleContextMenu(event, '${obj.name}', '${this.currentCategory}'); return false;">
@@ -457,10 +524,27 @@ class SchemaBrowser {
           ${obj.status || 'VALID'}
         </span>
       </div>
-    `).join('');
+    `).join('') + (remaining > 0 ? `
+      <div class="toad-tree-load-more" style="padding: 8px 12px; background: #f8fafc; border-top: 1px dashed #cbd5e1; display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-size: 10px; color: #475569; display: flex; justify-content: space-between; align-items: center;">
+          <span>Exibindo <strong>${visibleItems.length.toLocaleString()}</strong> de <strong>${filtered.length.toLocaleString()}</strong> objetos</span>
+          <span style="color: #64748b;">(+${remaining.toLocaleString()} restantes)</span>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button type="button" class="btn btn-primary" style="flex: 1; height: 24px; padding: 0 8px; font-size: 10px; font-weight: 600;"
+                  onclick="window.TracesApp.schemaBrowser.showMoreCategory('${this.currentCategory}', 500, event)">
+            ➕ Ver mais (+${Math.min(500, remaining).toLocaleString()})
+          </button>
+          <button type="button" class="btn btn-secondary" style="height: 24px; padding: 0 8px; font-size: 10px; font-weight: 600;"
+                  onclick="window.TracesApp.schemaBrowser.showAllCategory('${this.currentCategory}', event)">
+            Ver todos (${filtered.length.toLocaleString()})
+          </button>
+        </div>
+      </div>
+    ` : '');
 
     // Auto-select first item if none selected
-    if (!this.selectedObject && filtered.length > 0) {
+    if (!skipAutoSelect && !this.selectedObject && filtered.length > 0) {
       this.selectObject(filtered[0].name);
     }
   }
@@ -635,36 +719,13 @@ class SchemaBrowser {
       const objType = (this.selectedObject.type || this.currentCategory || '').toUpperCase();
       if ((!this.selectedObject.data || this.selectedObject.data.length === 0) &&
           (objType.includes('TABLE') || objType.includes('VIEW') || this.currentCategory === 'tables' || this.currentCategory === 'views' || this.currentCategory === 'mviews')) {
-        const dataPane = document.getElementById('tab-pane-data');
-        if (dataPane) {
-          dataPane.innerHTML = `
-            <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px;">
-              <span style="font-size: 18px; display: block; margin-bottom: 8px;">📊</span>
-              Carregando amostra de dados ao vivo de <strong>${this.currentSchema}.${this.selectedObject.name}</strong>...
-            </div>
-          `;
-        }
-        try {
-          const activeConn = window.TracesApp?.connectionManager?.getActive?.();
-          const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
-          const resp = await fetch(`/api/object-data?schema=${encodeURIComponent(this.currentSchema)}&name=${encodeURIComponent(this.selectedObject.name)}&limit=100${connParam}`);
-          const res = await resp.json();
-          if (res.rows) {
-            this.selectedObject.data = res.rows;
-            const cacheKey = `${this.currentSchema}.${this.selectedObject.type || 'TABLE'}.${this.selectedObject.name}`;
-            if (this.detailsCache && this.detailsCache.has(cacheKey)) {
-              this.detailsCache.get(cacheKey).data = res.rows;
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to load object data preview', e);
-        }
+        await this.loadMoreObjectData(200, true);
       }
     }
 
-    // On-demand fetch for Script Tab (if DDL empty)
-    if (tabKey === 'script' && this.selectedObject && !this.selectedObject.ddl && window.TracesApp?.isConnected()) {
-      const scriptPane = document.getElementById('tab-pane-script');
+    // On-demand fetch for DDL / Script Tab (if DDL empty)
+    if ((tabKey === 'ddl' || tabKey === 'script') && this.selectedObject && !this.selectedObject.ddl && window.TracesApp?.isConnected()) {
+      const scriptPane = document.getElementById('tab-pane-ddl') || document.getElementById('tab-pane-script');
       if (scriptPane) {
         scriptPane.innerHTML = `
           <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px;">
@@ -694,6 +755,48 @@ class SchemaBrowser {
       }
     }
 
+    this.renderDetailContent();
+  }
+
+  async loadMoreObjectData(targetLimit = 500, isInitial = false) {
+    if (!this.selectedObject || !window.TracesApp?.isConnected()) return;
+    const dataPane = document.getElementById('tab-pane-data');
+    if (isInitial && dataPane) {
+      dataPane.innerHTML = `
+        <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px;">
+          <span style="font-size: 18px; display: block; margin-bottom: 8px;">📊</span>
+          Carregando registros ao vivo de <strong>${this.currentSchema}.${this.selectedObject.name}</strong>...
+        </div>
+      `;
+    }
+    try {
+      const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+      const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
+      const resp = await fetch(`/api/object-data?schema=${encodeURIComponent(this.currentSchema)}&name=${encodeURIComponent(this.selectedObject.name)}&limit=${targetLimit}${connParam}`);
+      const res = await resp.json();
+      const rowsData = res.rows || res.data;
+      if (rowsData) {
+        this.selectedObject.data = rowsData;
+        this.selectedObject.dataHasMore = !!res.hasMore;
+        this.selectedObject.dataLimit = targetLimit;
+        const cacheKey = `${this.currentSchema}.${this.selectedObject.type || 'TABLE'}.${this.selectedObject.name}`;
+        if (this.detailsCache && this.detailsCache.has(cacheKey)) {
+          const cached = this.detailsCache.get(cacheKey);
+          cached.data = rowsData;
+          cached.dataHasMore = !!res.hasMore;
+          cached.dataLimit = targetLimit;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load object data preview', e);
+    }
+    this.renderDetailContent();
+  }
+
+  showMoreDetailList(sectionKey, step = 500) {
+    const key = `${this.currentSchema}.${this.selectedObject?.name}.${sectionKey}`;
+    const current = this.detailListLimits[key] || 200;
+    this.detailListLimits[key] = current + step;
     this.renderDetailContent();
   }
 
@@ -1057,6 +1160,9 @@ class SchemaBrowser {
     if (dataPane) {
       if (obj.data && obj.data.length > 0) {
         const cols = Object.keys(obj.data[0]);
+        const curLimit = obj.dataLimit || obj.data.length;
+        const nextLimit = Math.min(5000, curLimit + 500);
+        const estTotal = obj.stats?.numRows ? ` (Total estimado: ${obj.stats.numRows.toLocaleString()} linhas)` : '';
         dataPane.innerHTML = `
           <div style="flex: 1; overflow: auto;">
             <table class="oracle-data-table">
@@ -1079,8 +1185,14 @@ class SchemaBrowser {
             </table>
           </div>
           <div style="padding: 6px 12px; background: var(--bg-surface); border-top: 1px solid var(--border-default); font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
-            <span>Exibindo ${obj.data.length} registros (amostra ao vivo de ${this.currentSchema}.${obj.name})</span>
-            <div style="display: flex; gap: 8px;">
+            <span>Exibindo <strong>${obj.data.length.toLocaleString()}</strong> registros ao vivo de ${this.currentSchema}.${obj.name}${estTotal}</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              ${(obj.dataHasMore && curLimit < 5000) ? `
+                <button class="btn btn-primary" style="height: 22px; padding: 0 10px; font-size: 10px; font-weight: 600;"
+                        onclick="window.TracesApp.schemaBrowser.loadMoreObjectData(${nextLimit}, false)">
+                  ➕ Ver mais linhas (+500)
+                </button>
+              ` : ''}
               <button class="btn btn-secondary" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.openObjectInWorksheet('${obj.name}')">
                 Abrir na Worksheet (F9)
               </button>
@@ -1209,17 +1321,21 @@ class SchemaBrowser {
     const grantsPane = document.getElementById('tab-pane-grants');
     if (grantsPane) {
       if (obj.grants && obj.grants.length > 0) {
+        const gKey = `${this.currentSchema}.${obj.name}.grants`;
+        const gLimit = this.detailListLimits[gKey] || 200;
+        const visibleGrants = obj.grants.slice(0, gLimit);
+        const remGrants = obj.grants.length - visibleGrants.length;
         grantsPane.innerHTML = `
           <table class="meta-table">
             <thead>
               <tr>
-                <th>Grantee</th>
+                <th>Grantee (${obj.grants.length.toLocaleString()} total)</th>
                 <th>Privilege</th>
                 <th>Grantable</th>
               </tr>
             </thead>
             <tbody>
-              ${obj.grants.map(g => `
+              ${visibleGrants.map(g => `
                 <tr>
                   <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${g.grantee}</td>
                   <td style="font-weight: 700;">${g.privilege}</td>
@@ -1228,6 +1344,19 @@ class SchemaBrowser {
               `).join('')}
             </tbody>
           </table>
+          ${remGrants > 0 ? `
+            <div style="padding: 8px 12px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+              <span>Exibindo <strong>${visibleGrants.length.toLocaleString()}</strong> de <strong>${obj.grants.length.toLocaleString()}</strong> grants</span>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-primary" style="height: 22px; padding: 0 10px; font-size: 10px;" onclick="window.TracesApp.schemaBrowser.showMoreDetailList('grants', 500)">
+                  ➕ Ver mais (+${Math.min(500, remGrants)})
+                </button>
+                <button class="btn btn-secondary" style="height: 22px; padding: 0 10px; font-size: 10px;" onclick="window.TracesApp.schemaBrowser.showMoreDetailList('grants', 999999)">
+                  Ver todos (${obj.grants.length.toLocaleString()})
+                </button>
+              </div>
+            </div>
+          ` : ''}
         `;
       } else {
         grantsPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum privilégio específico concedido em ${obj.name}.</div>`;
@@ -1305,27 +1434,44 @@ class SchemaBrowser {
     const depPane = document.getElementById('tab-pane-dependencies');
     if (depPane) {
       if (obj.dependencies && obj.dependencies.length > 0) {
+        const dKey = `${this.currentSchema}.${obj.name}.dependencies`;
+        const dLimit = this.detailListLimits[dKey] || 200;
+        const visibleDeps = obj.dependencies.slice(0, dLimit);
+        const remDeps = obj.dependencies.length - visibleDeps.length;
         depPane.innerHTML = `
           <table class="meta-table">
             <thead>
               <tr>
                 <th>Referenced Owner</th>
-                <th>Referenced Object</th>
+                <th>Referenced Object (${obj.dependencies.length.toLocaleString()} total)</th>
                 <th>Object Type</th>
-                <th>DB Link</th>
+                <th>Direction / Link</th>
               </tr>
             </thead>
             <tbody>
-              ${obj.dependencies.map(d => `
+              ${visibleDeps.map(d => `
                 <tr>
                   <td style="font-weight: 600; color: #0078d7;">${d.referencedOwner}</td>
                   <td style="font-weight: 600; font-family: var(--font-code);">${d.referencedName}</td>
                   <td style="color: var(--syntax-keyword);">${d.referencedType}</td>
-                  <td style="color: var(--text-muted);">${d.link || '-'}</td>
+                  <td style="color: var(--text-muted);">${d.dependencyType || d.link || '-'}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
+          ${remDeps > 0 ? `
+            <div style="padding: 8px 12px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+              <span>Exibindo <strong>${visibleDeps.length.toLocaleString()}</strong> de <strong>${obj.dependencies.length.toLocaleString()}</strong> dependências</span>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-primary" style="height: 22px; padding: 0 10px; font-size: 10px;" onclick="window.TracesApp.schemaBrowser.showMoreDetailList('dependencies', 500)">
+                  ➕ Ver mais (+${Math.min(500, remDeps)})
+                </button>
+                <button class="btn btn-secondary" style="height: 22px; padding: 0 10px; font-size: 10px;" onclick="window.TracesApp.schemaBrowser.showMoreDetailList('dependencies', 999999)">
+                  Ver todos (${obj.dependencies.length.toLocaleString()})
+                </button>
+              </div>
+            </div>
+          ` : ''}
         `;
       } else {
         depPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma dependência encontrada para ${obj.name}.</div>`;

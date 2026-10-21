@@ -63,8 +63,16 @@ class TracesApp {
       this.showStartPage();
       this.updateConnectionState();
 
-      // 7. Check Real Bridge Status (background)
+      // 7. Check Real Bridge Status (background + periodic sync if disconnected)
       this.checkRealBridgeStatus();
+      setInterval(() => {
+        if (!this.isConnected()) {
+          this.checkRealBridgeStatus();
+          if (this.connectionManager && typeof this.connectionManager.syncWithServerState === 'function') {
+            this.connectionManager.syncWithServerState();
+          }
+        }
+      }, 2500);
 
       this.notify('Toad for Oracle 2026 (Traces Edition) inicializado com sucesso.', 'success');
     } catch (err) {
@@ -680,39 +688,203 @@ class TracesApp {
   }
 
   initSplitter() {
+    // 1. SQL Editor Horizontal Splitter (Upper Code / Lower Data Grid)
     const splitter = document.getElementById('editor-pane-splitter');
     const upper = document.getElementById('editor-upper-pane');
     const lower = document.getElementById('editor-lower-pane');
-    if (!splitter || !upper || !lower) return;
+    if (splitter && upper && lower) {
+      let isDragging = false;
+      let startY = 0;
+      let startLowerHeight = 0;
 
-    let isDragging = false;
-    let startY = 0;
-    let startLowerHeight = 0;
+      splitter.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        upper.classList.remove('collapsed-pane');
+        lower.classList.remove('collapsed-pane');
+        lower.style.flex = '';
+        isDragging = true;
+        startY = e.clientY;
+        startLowerHeight = lower.offsetHeight || 270;
+        splitter.classList.add('dragging');
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+      });
 
-    splitter.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      startY = e.clientY;
-      startLowerHeight = lower.offsetHeight;
-      splitter.classList.add('dragging');
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-    });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dy = startY - e.clientY;
+        const newHeight = Math.max(90, Math.min(window.innerHeight - 190, startLowerHeight + dy));
+        lower.style.height = `${newHeight}px`;
+      });
 
-    window.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const dy = startY - e.clientY;
-      const newHeight = Math.max(120, Math.min(window.innerHeight - 250, startLowerHeight + dy));
-      lower.style.height = `${newHeight}px`;
-    });
+      window.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          splitter.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
 
-    window.addEventListener('mouseup', () => {
-      if (isDragging) {
-        isDragging = false;
-        splitter.classList.remove('dragging');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+    // 2. Schema Browser Vertical Splitter (Left Object Tree / Right Object Inspector)
+    const bSplitter = document.getElementById('browser-pane-splitter');
+    const bNav = document.getElementById('browser-nav-pane');
+    if (bSplitter && bNav) {
+      let bDrag = false;
+      let startX = 0;
+      let startW = 0;
+
+      bSplitter.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        bNav.classList.remove('collapsed-pane');
+        const btn = document.getElementById('browser-splitter-btn');
+        if (btn) btn.textContent = '◀';
+        bDrag = true;
+        startX = e.clientX;
+        startW = bNav.offsetWidth || 280;
+        bSplitter.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!bDrag) return;
+        const dx = e.clientX - startX;
+        const newW = Math.max(160, Math.min(window.innerWidth - 320, startW + dx));
+        bNav.style.width = `${newW}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (bDrag) {
+          bDrag = false;
+          bSplitter.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
+
+    // 3. Explain Plan Vertical Splitter (Left Tree / Right Optimizer Advisor)
+    const exSplitter = document.getElementById('explain-pane-splitter');
+    const exAdvisor = document.getElementById('optimizer-advisor-pane');
+    if (exSplitter && exAdvisor) {
+      let exDrag = false;
+      let startX = 0;
+      let startW = 0;
+
+      exSplitter.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        exAdvisor.classList.remove('collapsed-pane');
+        const btn = document.getElementById('explain-splitter-btn');
+        if (btn) btn.textContent = '▶';
+        exDrag = true;
+        startX = e.clientX;
+        startW = exAdvisor.offsetWidth || 340;
+        exSplitter.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!exDrag) return;
+        const dx = startX - e.clientX;
+        const newW = Math.max(200, Math.min(window.innerWidth - 300, startW + dx));
+        exAdvisor.style.width = `${newW}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (exDrag) {
+          exDrag = false;
+          exSplitter.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
+
+    // 4. Code Quality / Rules Vertical Splitter
+    const rSplitter = document.getElementById('rules-pane-splitter');
+    const rSidebar = document.querySelector('#view-rules .rules-sidebar');
+    if (rSplitter && rSidebar) {
+      let rDrag = false;
+      let startX = 0;
+      let startW = 0;
+
+      rSplitter.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        rSidebar.classList.remove('collapsed-pane');
+        const btn = document.getElementById('rules-splitter-btn');
+        if (btn) btn.textContent = '◀';
+        rDrag = true;
+        startX = e.clientX;
+        startW = rSidebar.offsetWidth || 320;
+        rSplitter.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!rDrag) return;
+        const dx = e.clientX - startX;
+        const newW = Math.max(180, Math.min(window.innerWidth - 300, startW + dx));
+        rSidebar.style.width = `${newW}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (rDrag) {
+          rDrag = false;
+          rSplitter.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
+  }
+
+  toggleSplitPane(viewKey, targetPane) {
+    if (viewKey === 'editor') {
+      const upper = document.getElementById('editor-upper-pane');
+      const lower = document.getElementById('editor-lower-pane');
+      if (!upper || !lower) return;
+      if (targetPane === 'reset') {
+        upper.classList.remove('collapsed-pane');
+        lower.classList.remove('collapsed-pane');
+        lower.style.flex = '';
+        lower.style.height = '270px';
+      } else if (targetPane === 'upper') {
+        // Maximize Grid (hide upper SQL editor)
+        const willCollapse = !upper.classList.contains('collapsed-pane');
+        upper.classList.toggle('collapsed-pane', willCollapse);
+        lower.classList.remove('collapsed-pane');
+        lower.style.flex = willCollapse ? '1' : '';
+        if (!willCollapse) lower.style.height = '270px';
+      } else if (targetPane === 'lower') {
+        // Hide/Show Lower Data Grid
+        const willCollapse = !lower.classList.contains('collapsed-pane');
+        lower.classList.toggle('collapsed-pane', willCollapse);
+        upper.classList.remove('collapsed-pane');
+        lower.style.flex = '';
       }
-    });
+    } else if (viewKey === 'browser') {
+      const bNav = document.getElementById('browser-nav-pane');
+      const btn = document.getElementById('browser-splitter-btn');
+      if (!bNav) return;
+      const collapsed = bNav.classList.toggle('collapsed-pane');
+      if (btn) btn.textContent = collapsed ? '▶' : '◀';
+    } else if (viewKey === 'explain') {
+      const exAdvisor = document.getElementById('optimizer-advisor-pane');
+      const btn = document.getElementById('explain-splitter-btn');
+      if (!exAdvisor) return;
+      const collapsed = exAdvisor.classList.toggle('collapsed-pane');
+      if (btn) btn.textContent = collapsed ? '◀' : '▶';
+    } else if (viewKey === 'rules') {
+      const rSidebar = document.querySelector('#view-rules .rules-sidebar');
+      const btn = document.getElementById('rules-splitter-btn');
+      if (!rSidebar) return;
+      const collapsed = rSidebar.classList.toggle('collapsed-pane');
+      if (btn) btn.textContent = collapsed ? '▶' : '◀';
+    }
   }
 
   openObjectInWorksheet(objectName) {
@@ -776,15 +948,20 @@ class TracesApp {
   }
 
   tileWindows(mode = 'horizontal') {
-    const app = document.querySelector('.toad-workspace-area');
+    const app = document.querySelector('.toad-workspace');
     if (!app) return;
     if (mode === 'restore') {
       app.style.display = '';
       app.style.gridTemplateColumns = '';
+      app.style.gridTemplateRows = '';
+      document.querySelectorAll('.workspace-view').forEach(v => {
+        v.style.display = '';
+        v.classList.toggle('active', v.id === `view-${this.currentView}`);
+      });
       this.notify('Layout de janelas restaurado para MDI Tabbed.', 'info');
       return;
     }
-    this.notify(`Janelas MDI organizadas em mosaico (${mode === 'horizontal' ? 'Lado a lado' : 'Em cascata'}).`, 'info');
+    this.notify(`Janelas MDI organizadas em mosaico (${mode === 'horizontal' ? 'Horizontal' : mode === 'vertical' ? 'Vertical' : 'Cascata'}).`, 'info');
   }
 
   toggleBreakpoint() {

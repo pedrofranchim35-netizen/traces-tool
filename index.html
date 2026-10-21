@@ -38,15 +38,15 @@
   </script>
 
   <!-- Core Stylesheets -->
-  <link rel="stylesheet" href="css/tokens.css?v=20261020a">
-  <link rel="stylesheet" href="css/main.css?v=20261020a">
-  <link rel="stylesheet" href="css/toad-menus.css?v=20261020a">
-  <link rel="stylesheet" href="css/suite-tools.css?v=20261020a">
-  <link rel="stylesheet" href="css/editor.css?v=20261020a">
-  <link rel="stylesheet" href="css/browser.css?v=20261020a">
-  <link rel="stylesheet" href="css/grid.css?v=20261020a">
-  <link rel="stylesheet" href="css/explain.css?v=20261020a">
-  <link rel="stylesheet" href="css/toad-pro.css?v=20261021pro">
+  <link rel="stylesheet" href="css/tokens.css?v=20261021v2">
+  <link rel="stylesheet" href="css/main.css?v=20261021v2">
+  <link rel="stylesheet" href="css/toad-menus.css?v=20261021v2">
+  <link rel="stylesheet" href="css/suite-tools.css?v=20261021v2">
+  <link rel="stylesheet" href="css/editor.css?v=20261021v2">
+  <link rel="stylesheet" href="css/browser.css?v=20261021v4">
+  <link rel="stylesheet" href="css/grid.css?v=20261021v4">
+  <link rel="stylesheet" href="css/explain.css?v=20261021v4">
+  <link rel="stylesheet" href="css/toad-pro.css?v=20261021v2">
 </head>
 <body>
   <div id="app-container">
@@ -163,19 +163,19 @@
         <div class="toolbar-grip"></div>
 
         <!-- F9: Execute Statement (Disabled when disconnected) -->
-        <button class="toad-btn btn-run-sql disabled" id="btn-run-statement" disabled onclick="window.TracesApp.sqlEditor.executeStatement()" title="Execute Statement (F9) [Requer Conexão]">
+        <button class="toad-btn btn-run-sql disabled" id="btn-run-statement" disabled onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.executeStatement()" title="Execute Statement (F9) [Requer Conexão]">
           <span class="toad-btn-icon" style="color: #008000; font-size: 14px;">▶</span>
           <span>Execute (F9)</span>
         </button>
 
         <!-- F5: Execute as Script (Disabled when disconnected) -->
-        <button class="toad-btn disabled" id="btn-run-script" disabled onclick="window.TracesApp.sqlEditor.executeScript()" title="Execute as Script (F5) [Requer Conexão]">
+        <button class="toad-btn disabled" id="btn-run-script" disabled onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.executeScript()" title="Execute as Script (F5) [Requer Conexão]">
           <span class="toad-btn-icon">📄▶</span>
           <span>Script (F5)</span>
         </button>
 
         <!-- Execute current statement at cursor (Disabled when disconnected) -->
-        <button class="toad-btn disabled" id="btn-run-cursor" disabled onclick="window.TracesApp.sqlEditor.executeStatement()" title="Execute statement at cursor (Ctrl+Enter)">
+        <button class="toad-btn disabled" id="btn-run-cursor" disabled onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.executeStatement()" title="Execute statement at cursor (Ctrl+Enter)">
           <span class="toad-btn-icon">▶|</span>
         </button>
 
@@ -187,31 +187,31 @@
         <div class="toad-separator"></div>
 
         <!-- Ctrl+E: Explain Plan (Disabled when disconnected) -->
-        <button class="toad-btn disabled" id="btn-explain-plan" disabled onclick="window.TracesApp.sqlEditor.explainPlan()" title="Explain Plan (Ctrl+E) [Requer Conexão]">
+        <button class="toad-btn disabled" id="btn-explain-plan" disabled onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.explainPlan()" title="Explain Plan (Ctrl+E) [Requer Conexão]">
           <span class="toad-btn-icon" style="color: #008000;">🌳</span>
           <span>Explain Plan (Ctrl+E)</span>
         </button>
 
         <!-- Ctrl+Shift+F: Beautifier / Formatter -->
-        <button class="toad-btn" id="btn-format-sql" onclick="window.TracesApp.sqlEditor.formatSql()" title="Format Code / Beautifier (Ctrl+Shift+F)">
+        <button class="toad-btn" id="btn-format-sql" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.formatSql()" title="Format Code / Beautifier (Ctrl+Shift+F)">
           <span class="toad-btn-icon">🧹</span>
           <span>Format</span>
         </button>
 
         <!-- Ctrl+Z: Undo -->
-        <button class="toad-btn" id="btn-editor-undo" onclick="window.TracesApp.sqlEditor.undo()" title="Desfazer / Undo (Ctrl+Z)">
+        <button class="toad-btn" id="btn-editor-undo" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.undo()" title="Desfazer / Undo (Ctrl+Z)">
           <span class="toad-btn-icon" style="color: #2563eb;">↶</span>
           <span>Undo</span>
         </button>
 
         <!-- Ctrl+Y: Redo -->
-        <button class="toad-btn" id="btn-editor-redo" onclick="window.TracesApp.sqlEditor.redo()" title="Refazer / Redo (Ctrl+Y)">
+        <button class="toad-btn" id="btn-editor-redo" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.redo()" title="Refazer / Redo (Ctrl+Y)">
           <span class="toad-btn-icon" style="color: #2563eb;">↷</span>
           <span>Redo</span>
         </button>
 
         <!-- Clear -->
-        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.pushHistorySnapshot(); window.TracesApp.sqlEditor.textarea.value=''; window.TracesApp.sqlEditor.saveActiveTabContent(); window.TracesApp.sqlEditor.updateHighlighting(); window.TracesApp.sqlEditor.updateGutter(); window.TracesApp.sqlEditor.pushHistorySnapshot();" title="Clear Editor">
+        <button class="toad-btn" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.pushHistorySnapshot(); window.TracesApp.sqlEditor.textarea.value=''; window.TracesApp.sqlEditor.saveActiveTabContent(); window.TracesApp.sqlEditor.updateHighlighting(); window.TracesApp.sqlEditor.updateGutter(); window.TracesApp.sqlEditor.pushHistorySnapshot();" title="Clear Editor">
           <span class="toad-btn-icon">🗑</span>
         </button>
 
@@ -230,7 +230,7 @@
         </button>
 
         <!-- Toad Code Snippets Library -->
-        <button class="toad-btn" onclick="window.TracesApp.sqlEditor.openCodeSnippetsModal()" title="Toad Code Snippets Library">
+        <button class="toad-btn" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.openCodeSnippetsModal()" title="Toad Code Snippets Library">
           <span class="toad-btn-icon" style="color: #0284c7;">💡</span>
           <span>Snippets</span>
         </button>
@@ -409,8 +409,14 @@
               </div>
             </div>
 
-            <!-- Classic Toad Splitter -->
-            <div class="pane-splitter" id="editor-pane-splitter" title="Drag to resize results panel"></div>
+            <!-- Classic Toad Splitter with Collapse / Maximize Controls -->
+            <div class="pane-splitter toad-interactive-splitter" id="editor-pane-splitter" title="Arraste para redimensionar ou use os botões para ocultar/maximizar">
+              <div class="splitter-Action-pills" onmousedown="event.stopPropagation()">
+                <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.toggleSplitPane('editor', 'upper')" title="Maximizar Grade de Resultados (Ocultar Editor SQL)">▲ Max Grid</button>
+                <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.toggleSplitPane('editor', 'reset')" title="Restaurar divisão padrão">⚊ Restaurar</button>
+                <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.toggleSplitPane('editor', 'lower')" title="Ocultar / Mostrar Painel de Resultados (Maximizar Editor SQL)">▼ Ocultar Grid</button>
+              </div>
+            </div>
 
             <!-- Lower Tabbed Notebook -->
             <div class="editor-lower-pane" id="editor-lower-pane">
@@ -548,7 +554,7 @@
       <section class="workspace-view" id="view-browser">
         <div class="browser-view-container">
           <!-- Left Object Hierarchy -->
-          <div class="browser-nav-pane">
+          <div class="browser-nav-pane" id="browser-nav-pane">
             <div class="browser-schema-selector-bar">
               <div class="schema-select-row">
                 <span class="schema-badge">Schema:</span>
@@ -596,8 +602,13 @@
             <div class="object-list-view" id="browser-object-list"></div>
           </div>
 
+          <!-- Vertical Toad Splitter for Schema Browser -->
+          <div class="toad-v-splitter" id="browser-pane-splitter" title="Arraste para ajustar a largura da árvore de objetos ou clique para ocultar/mostrar">
+            <button type="button" class="v-splitter-toggle-btn" id="browser-splitter-btn" onmousedown="event.stopPropagation()" onclick="window.TracesApp.toggleSplitPane('browser', 'left')" title="Ocultar / Mostrar Árvore de Objetos">◀</button>
+          </div>
+
           <!-- Right Multitab Inspector -->
-          <div class="browser-detail-pane">
+          <div class="browser-detail-pane" id="browser-detail-pane">
             <div class="detail-header-bar">
               <div class="detail-object-meta">
                 <span class="detail-object-title" id="browser-detail-title">HR.EMPLOYEES</span>
@@ -695,17 +706,20 @@
 
           <div class="plan-body-split">
             <div class="plan-tree-canvas" id="plan-tree-canvas"></div>
+            <div class="toad-v-splitter" id="explain-pane-splitter" title="Arraste para redimensionar ou clique para ocultar/mostrar o painel Optimizer Advisor">
+              <button type="button" class="v-splitter-toggle-btn" id="explain-splitter-btn" onmousedown="event.stopPropagation()" onclick="window.TracesApp.toggleSplitPane('explain', 'right')" title="Ocultar / Mostrar Optimizer Advisor">▶</button>
+            </div>
             <div class="optimizer-advisor-pane" id="optimizer-advisor-pane"></div>
           </div>
         </div>
       </section>
 
       <!-- ==================================================================
-           VIEW 4: SESSION BROWSER
+           VIEW 4: SESSION BROWSER (TOAD FOR ORACLE FULL DOCKING & RESIZABLE)
            ================================================================== -->
       <section class="workspace-view" id="view-sessions">
         <div class="session-view-container">
-          <div class="instance-gauges-strip">
+          <div class="instance-gauges-strip" id="session-gauges-strip">
             <div class="gauge-group">
               <div class="gauge-card">
                 <svg class="gauge-ring-svg" viewBox="0 0 36 36">
@@ -731,32 +745,33 @@
 
               <div class="gauge-card">
                 <div class="gauge-info">
-                  <span class="gauge-label">Active Sessions</span>
-                  <span class="gauge-value" id="gauge-act-val">5 / 48</span>
+                  <span class="gauge-label">Active / Total Sessions</span>
+                  <span class="gauge-value" id="gauge-act-val">0 / 0</span>
                 </div>
               </div>
 
               <div class="gauge-card">
                 <div class="gauge-info">
-                  <span class="gauge-label">Redo Log Switches</span>
-                  <span class="gauge-value" id="gauge-redo-val">3.2 / hr</span>
+                  <span class="gauge-label">Blocking / Wait Locks</span>
+                  <span class="gauge-value" id="gauge-redo-val" style="color: #16a34a;">0 Locks</span>
                 </div>
               </div>
             </div>
 
-            <div>
-              <button class="btn btn-primary" onclick="window.TracesApp.sessionMonitor.refresh()">
-                Refresh Sessions
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span id="session-count-summary" style="font-size: 11px; color: #475569; font-weight: 600;"></span>
+              <button class="btn" style="height: 22px; padding: 0 7px; font-size: 10px;" onclick="window.TracesApp.sessionMonitor.togglePanel('gauges')" title="Ocultar barra de indicadores (Gauges)">
+                ▲ Ocultar Indicadores
               </button>
             </div>
           </div>
 
-          <div class="session-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: #f0f0f0; border-bottom: 1px solid #bfbfbf; gap: 12px; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 700; font-size: 11px;">Filter:</span>
-              <select class="toad-conn-combobox" id="session-native-filter-select" style="height: 24px; min-width: 180px;" onchange="window.TracesApp.sessionMonitor.onFilterChanged(this.value)">
-                <option value="all">ALL SESSIONS</option>
-                <option value="filter9" selected>STATUS - ACTIVE</option>
+          <div class="session-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; background: #f0f0f0; border-bottom: 1px solid #bfbfbf; gap: 8px; flex-wrap: wrap; height: auto; min-height: 34px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span style="font-weight: 700; font-size: 11px;">Filtro:</span>
+              <select class="toad-conn-combobox" id="session-native-filter-select" style="height: 24px; min-width: 155px;" onchange="window.TracesApp.sessionMonitor.onFilterChanged(this.value)">
+                <option value="all" selected>ALL SESSIONS (TODAS)</option>
+                <option value="filter9">STATUS - ACTIVE</option>
                 <option value="filter10">STATUS - INACTIVE</option>
                 <option value="filter3">WAIT FOR LOCK</option>
                 <option value="filter4">LAST CALL > 10 MIN</option>
@@ -769,61 +784,114 @@
                 <option value="filter12">SERVER - SHARED</option>
               </select>
 
-              <span style="font-weight: 700; font-size: 11px; margin-left: 8px;">Auto-Refresh:</span>
-              <select class="toad-conn-combobox" id="session-autorefresh-select" style="height: 24px; width: 95px;" onchange="window.TracesApp.sessionMonitor.setAutoRefresh(this.value)">
+              <!-- Search Input -->
+              <div style="position: relative; display: flex; align-items: center;">
+                <input type="text" id="session-search-input" class="object-search-input" placeholder="🔍 Filtrar SID, User, Machine, SQL_ID..."
+                       style="width: 200px; height: 24px; padding: 0 22px 0 8px; font-size: 11px;"
+                       oninput="window.TracesApp.sessionMonitor.setSearchQuery(this.value)">
+                <button type="button" id="session-search-clear" style="display:none; position:absolute; right:4px; background:none; border:none; cursor:pointer; color:#64748b; font-size:11px;"
+                        onclick="document.getElementById('session-search-input').value=''; window.TracesApp.sessionMonitor.setSearchQuery('');">✕</button>
+              </div>
+
+              <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #334155; cursor: pointer; user-select: none; background: #fff; border: 1px solid #cbd5e1; padding: 2px 7px; border-radius: 3px; height: 24px;" title="Ocultar processos de background do Oracle (PMON, SMON, DBW0, etc.)">
+                <input type="checkbox" id="session-hide-bg-chk" onchange="window.TracesApp.sessionMonitor.toggleHideBackground(this.checked)">
+                <span>Ocultar Background</span>
+              </label>
+
+              <span style="font-weight: 700; font-size: 11px; margin-left: 2px;">Auto:</span>
+              <select class="toad-conn-combobox" id="session-autorefresh-select" style="height: 24px; width: 72px;" onchange="window.TracesApp.sessionMonitor.setAutoRefresh(this.value)">
                 <option value="0">Off</option>
-                <option value="3">3 sec</option>
-                <option value="5" selected>5 sec</option>
-                <option value="10">10 sec</option>
-                <option value="30">30 sec</option>
+                <option value="3">3s</option>
+                <option value="5" selected>5s</option>
+                <option value="10">10s</option>
+                <option value="30">30s</option>
               </select>
 
-              <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.sessionMonitor.refresh()" title="Refresh Sessions Now">
-                🔄 Refresh
+              <button class="btn" style="height: 24px; padding: 0 8px; font-weight: 600;" onclick="window.TracesApp.sessionMonitor.refresh()" title="Atualizar sessões agora">
+                🔄 Atualizar
               </button>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button class="btn btn-danger" style="height: 24px; padding: 0 10px; font-weight: 700;" onclick="window.TracesApp.sessionMonitor.killCurrentSession('IMMEDIATE')">
-                ⚡ Kill Session (IMMEDIATE)
+            <!-- Toad Panel Visibility, Orientation & Column Controls -->
+            <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+              <div class="session-layout-pills" style="display: inline-flex; align-items: center; gap: 3px; background: #e2e8f0; padding: 2px 4px; border-radius: 4px; border: 1px solid #cbd5e1;">
+                <span style="font-size: 10px; font-weight: 700; color: #475569; padding: 0 4px;">Painéis:</span>
+                <button type="button" class="session-toggle-pill active" id="btn-toggle-sess-gauges" onclick="window.TracesApp.sessionMonitor.togglePanel('gauges')" title="Mostrar / Ocultar Indicadores Superiores (Gauges)">
+                  📊 Indicadores
+                </button>
+                <button type="button" class="session-toggle-pill active" id="btn-toggle-sess-locks" onclick="window.TracesApp.sessionMonitor.togglePanel('locks')" title="Mostrar / Ocultar Painel de Hierarquia de Locks">
+                  🔒 Lock Tree
+                </button>
+                <button type="button" class="session-toggle-pill active" id="btn-toggle-sess-detail" onclick="window.TracesApp.sessionMonitor.togglePanel('detail')" title="Mostrar / Ocultar Inspector de Detalhes da Sessão (SQL, Waits, Cursors)">
+                  🔍 Detalhes
+                </button>
+                <button type="button" class="session-toggle-pill active" id="btn-toggle-sess-oscmd" onclick="window.TracesApp.sessionMonitor.togglePanel('oscmd')" title="Mostrar / Ocultar Banner de Comando de Kill no Sistema Operacional">
+                  💻 Cmd SO
+                </button>
+                <button type="button" class="session-toggle-pill" id="btn-toggle-sess-orient" onclick="window.TracesApp.sessionMonitor.toggleOrientation()" title="Alternar Disposição: Empilhado (Superior/Inferior) ou Lado a Lado (Esquerda/Direita) igual ao Toad">
+                  ⬌ Lado a Lado
+                </button>
+                <div style="position: relative;">
+                  <button type="button" class="session-toggle-pill" id="btn-sess-col-chooser" onclick="window.TracesApp.sessionMonitor.toggleColumnMenu(event)" title="Escolher quais colunas mostrar/ocultar e restaurar larguras">
+                    ⚙ Colunas ▾
+                  </button>
+                  <div id="session-column-chooser-menu" class="session-col-dropdown" style="display: none;" onclick="event.stopPropagation()"></div>
+                </div>
+              </div>
+
+              <button class="btn btn-danger" style="height: 24px; padding: 0 9px; font-weight: 700;" onclick="window.TracesApp.sessionMonitor.killCurrentSession('IMMEDIATE')" title="ALTER SYSTEM KILL SESSION IMMEDIATE">
+                ⚡ Kill Session
               </button>
-              <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.sessionMonitor.killCurrentSession('POST_TRANSACTION')">
-                Disconnect (Post-Tx)
+              <button class="btn" style="height: 24px; padding: 0 7px;" onclick="window.TracesApp.sessionMonitor.killCurrentSession('POST_TRANSACTION')" title="ALTER SYSTEM DISCONNECT SESSION POST_TRANSACTION">
+                Disconnect
               </button>
             </div>
           </div>
 
-          <div class="session-body-split">
-            <div class="session-table-wrapper">
-              <table class="session-data-table">
-                <thead>
-                  <tr>
-                    <th>SID</th>
-                    <th>Serial#</th>
-                    <th>Status</th>
-                    <th>Username</th>
-                    <th>OS User</th>
-                    <th>Machine</th>
-                    <th>Program</th>
-                    <th>Wait Event</th>
-                    <th>Logon Time</th>
-                    <th style="text-align: right;">PGA Memory</th>
-                    <th>Locks / Contention</th>
-                  </tr>
-                </thead>
-                <tbody id="session-table-body"></tbody>
-              </table>
-            </div>
-
-            <div class="lock-tree-panel">
-              <div class="lock-tree-header">
-                <span>Instance Lock Tree Hierarchy (V$LOCK & V$SESSION)</span>
-                <span style="font-size: 10px; color: #666;">Root blockers highlighted in red</span>
+          <div class="session-body-split" id="session-body-split">
+            <!-- Upper / Left Workspace (Sessions Table + Lock Tree) -->
+            <div class="session-main-stack" id="session-main-stack">
+              <div class="session-table-wrapper" id="session-table-pane">
+                <table class="session-data-table" id="session-data-table">
+                  <thead id="session-table-head"></thead>
+                  <tbody id="session-table-body"></tbody>
+                </table>
               </div>
-              <div class="lock-tree-content" id="lock-tree-content"></div>
+
+              <!-- Resizable Splitter between Sessions Grid and Lock Tree -->
+              <div class="pane-splitter toad-interactive-splitter" id="splitter-session-locks" title="Arraste para redimensionar o painel de Locks ou use os botões">
+                <div class="splitter-Action-pills" onmousedown="event.stopPropagation()">
+                  <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.sessionMonitor.togglePanel('locks')" title="Ocultar / Mostrar Hierarquia de Locks">▼ Ocultar Lock Tree</button>
+                  <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.sessionMonitor.setLocksHeight(240)" title="Expandir Lock Tree">▲ Expandir Locks</button>
+                </div>
+              </div>
+
+              <div class="lock-tree-panel" id="session-locks-pane">
+                <div class="lock-tree-header">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span>🔒 Instance Lock Tree Hierarchy (V$LOCK &amp; V$SESSION)</span>
+                    <span id="lock-tree-badge" style="font-size: 10px; background: #dcfce7; color: #166534; padding: 1px 6px; border-radius: 8px; font-weight: 700;">0 Bloqueios</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 10px; color: #666;">Sessões bloqueadoras destacadas em vermelho</span>
+                    <button type="button" class="btn" style="height: 18px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.sessionMonitor.togglePanel('locks')" title="Ocultar painel de Locks">✕ Ocultar</button>
+                  </div>
+                </div>
+                <div class="lock-tree-content" id="lock-tree-content"></div>
+              </div>
             </div>
 
-            <div id="session-detail-inspector"></div>
+            <!-- Main Resizable Splitter between Sessions Grid and Detail Inspector -->
+            <div class="pane-splitter toad-interactive-splitter" id="splitter-session-detail" title="Arraste para ajustar o tamanho do Session Inspector ou clique nos botões">
+              <div class="splitter-Action-pills" onmousedown="event.stopPropagation()">
+                <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.sessionMonitor.maximizeDetailPane()" title="Maximizar Inspector de Detalhes da Sessão">▲ Max Detalhes</button>
+                <button type="button" class="splitter-pill-btn" onclick="window.TracesApp.sessionMonitor.resetSplitSizes()" title="Restaurar tamanho padrão (50/50)">⚊ Restaurar</button>
+                <button type="button" class="splitter-pill-btn" id="btn-splitter-hide-detail" onclick="window.TracesApp.sessionMonitor.togglePanel('detail')" title="Ocultar / Mostrar Inspector de Detalhes da Sessão">▼ Ocultar Detalhes</button>
+              </div>
+            </div>
+
+            <!-- Lower / Right Session Detail Inspector -->
+            <div class="session-detail-inspector-pane" id="session-detail-inspector"></div>
           </div>
         </div>
       </section>
@@ -921,6 +989,10 @@
             </div>
 
             <div class="violations-list" id="rules-violations-list"></div>
+          </div>
+
+          <div class="toad-v-splitter" id="rules-pane-splitter" title="Arraste para redimensionar ou clique para ocultar/mostrar a lista de regras">
+            <button type="button" class="v-splitter-toggle-btn" id="rules-splitter-btn" onmousedown="event.stopPropagation()" onclick="window.TracesApp.toggleSplitPane('rules', 'left')" title="Ocultar / Mostrar Lista de Regras">◀</button>
           </div>
 
           <div class="rules-preview-pane">
@@ -1073,26 +1145,26 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="js/data/mock-db.js?v=20261018toad_parity"></script>
-  <script src="js/data/rule-universe-data.js?v=20261018toad_parity"></script>
-  <script src="js/components/connection-manager.js?v=20261018toad_parity"></script>
-  <script src="js/components/toad-modals.js?v=20261018toad_parity"></script>
-  <script src="js/components/toad-menus.js?v=20261018toad_parity"></script>
-  <script src="js/components/schema-browser.js?v=20261018toad_parity"></script>
-  <script src="js/components/data-grid.js?v=20261018toad_parity"></script>
-  <script src="js/components/sql-editor.js?v=20261018toad_parity"></script>
-  <script src="js/components/explain-plan.js?v=20261018toad_parity"></script>
-  <script src="js/components/session-monitor.js?v=20261018toad_parity"></script>
-  <script src="js/components/rule-auditor.js?v=20261018toad_parity"></script>
-  <script src="js/components/database-probe.js?v=20261018toad_parity"></script>
-  <script src="js/components/traces-copilot.js?v=20261018toad_parity"></script>
-  <script src="js/components/spotlight-oracle.js?v=20261018toad_parity"></script>
-  <script src="js/components/data-modeler.js?v=20261018toad_parity"></script>
-  <script src="js/components/dba-tools.js?v=20261018toad_parity"></script>
-  <script src="js/components/code-quality.js?v=20261018toad_parity"></script>
-  <script src="js/components/automation-designer.js?v=20261018toad_parity"></script>
-  <script src="js/components/sql-optimizer.js?v=20261018toad_parity"></script>
-  <script src="js/components/toad-pro-suite.js?v=20261021pro"></script>
-  <script src="js/app.js?v=20261018toad_parity"></script>
+  <script src="js/data/mock-db.js?v=20261021v2"></script>
+  <script src="js/data/rule-universe-data.js?v=20261021v2"></script>
+  <script src="js/components/connection-manager.js?v=20261021v2"></script>
+  <script src="js/components/toad-modals.js?v=20261021v2"></script>
+  <script src="js/components/toad-menus.js?v=20261021v2"></script>
+  <script src="js/components/schema-browser.js?v=20261021v3"></script>
+  <script src="js/components/data-grid.js?v=20261021v2"></script>
+  <script src="js/components/sql-editor.js?v=20261021v2"></script>
+  <script src="js/components/explain-plan.js?v=20261021v2"></script>
+  <script src="js/components/session-monitor.js?v=20261021v4"></script>
+  <script src="js/components/rule-auditor.js?v=20261021v2"></script>
+  <script src="js/components/database-probe.js?v=20261021v2"></script>
+  <script src="js/components/traces-copilot.js?v=20261021v2"></script>
+  <script src="js/components/spotlight-oracle.js?v=20261021v2"></script>
+  <script src="js/components/data-modeler.js?v=20261021v2"></script>
+  <script src="js/components/dba-tools.js?v=20261021v2"></script>
+  <script src="js/components/code-quality.js?v=20261021v2"></script>
+  <script src="js/components/automation-designer.js?v=20261021v2"></script>
+  <script src="js/components/sql-optimizer.js?v=20261021v2"></script>
+  <script src="js/components/toad-pro-suite.js?v=20261021v2"></script>
+  <script src="js/app.js?v=20261021v4"></script>
 </body>
 </html>

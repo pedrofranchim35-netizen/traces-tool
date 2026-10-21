@@ -228,30 +228,55 @@ class DbaTools {
                 ${this.renderDisconnectedWatermark(this.getSubtabTitle(this.currentSubtab))}
               </div>
             ` : `
-              <div class="dba-content-pane active" id="dba-pane-browser">${this.renderDatabaseBrowser()}</div>
-              <div class="dba-content-pane" id="dba-pane-dbmonitor">${this.renderDbMonitor()}</div>
-              <div class="dba-content-pane" id="dba-pane-unixmonitor">${this.renderUnixMonitor()}</div>
-              <div class="dba-content-pane" id="dba-pane-tablespacemap">${this.renderTablespaceMap()}</div>
-              <div class="dba-content-pane" id="dba-pane-spacemanager">${this.renderSpaceManager()}</div>
-              <div class="dba-content-pane" id="dba-pane-segmentadvisor">${this.renderSegmentAdvisor()}</div>
-              <div class="dba-content-pane" id="dba-pane-undoadvisor">${this.renderUndoAdvisor()}</div>
-              <div class="dba-content-pane" id="dba-pane-flashback">${this.renderFlashback()}</div>
-              <div class="dba-content-pane" id="dba-pane-logminer">${this.renderLogMiner()}</div>
-              <div class="dba-content-pane" id="dba-pane-dataguard">${this.renderDataGuard()}</div>
-              <div class="dba-content-pane" id="dba-pane-asm">${this.renderAsm()}</div>
-              <div class="dba-content-pane" id="dba-pane-rac">${this.renderRac()}</div>
-              <div class="dba-content-pane" id="dba-pane-exadata">${this.renderExadata()}</div>
-              <div class="dba-content-pane" id="dba-pane-audit">${this.renderAudit()}</div>
-              <div class="dba-content-pane" id="dba-pane-wallet">${this.renderWallet()}</div>
-              <div class="dba-content-pane" id="dba-pane-schemacompare">${this.renderSchemaCompare()}</div>
-              <div class="dba-content-pane" id="dba-pane-datacompare">${this.renderDataCompare()}</div>
-              <div class="dba-content-pane" id="dba-pane-dbcompare">${this.renderDbCompare()}</div>
-              <div class="dba-content-pane" id="dba-pane-awr">${this.renderAwr()}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'browser' ? 'active' : ''}" id="dba-pane-browser">${this.currentSubtab === 'browser' ? this.renderDatabaseBrowser() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'dbmonitor' ? 'active' : ''}" id="dba-pane-dbmonitor">${this.currentSubtab === 'dbmonitor' ? this.renderDbMonitor() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'unixmonitor' ? 'active' : ''}" id="dba-pane-unixmonitor">${this.currentSubtab === 'unixmonitor' ? this.renderUnixMonitor() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'tablespacemap' ? 'active' : ''}" id="dba-pane-tablespacemap">${this.currentSubtab === 'tablespacemap' ? this.renderTablespaceMap() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'spacemanager' ? 'active' : ''}" id="dba-pane-spacemanager">${this.currentSubtab === 'spacemanager' ? this.renderSpaceManager() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'segmentadvisor' ? 'active' : ''}" id="dba-pane-segmentadvisor">${this.currentSubtab === 'segmentadvisor' ? this.renderSegmentAdvisor() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'undoadvisor' ? 'active' : ''}" id="dba-pane-undoadvisor">${this.currentSubtab === 'undoadvisor' ? this.renderUndoAdvisor() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'flashback' ? 'active' : ''}" id="dba-pane-flashback">${this.currentSubtab === 'flashback' ? this.renderFlashback() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'logminer' ? 'active' : ''}" id="dba-pane-logminer">${this.currentSubtab === 'logminer' ? this.renderLogMiner() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'dataguard' ? 'active' : ''}" id="dba-pane-dataguard">${this.currentSubtab === 'dataguard' ? this.renderDataGuard() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'asm' ? 'active' : ''}" id="dba-pane-asm">${this.currentSubtab === 'asm' ? this.renderAsm() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'rac' ? 'active' : ''}" id="dba-pane-rac">${this.currentSubtab === 'rac' ? this.renderRac() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'exadata' ? 'active' : ''}" id="dba-pane-exadata">${this.currentSubtab === 'exadata' ? this.renderExadata() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'audit' ? 'active' : ''}" id="dba-pane-audit">${this.currentSubtab === 'audit' ? this.renderAudit() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'wallet' ? 'active' : ''}" id="dba-pane-wallet">${this.currentSubtab === 'wallet' ? this.renderWallet() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'schemacompare' ? 'active' : ''}" id="dba-pane-schemacompare">${this.currentSubtab === 'schemacompare' ? this.renderSchemaCompare() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'datacompare' ? 'active' : ''}" id="dba-pane-datacompare">${this.currentSubtab === 'datacompare' ? this.renderDataCompare() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'dbcompare' ? 'active' : ''}" id="dba-pane-dbcompare">${this.currentSubtab === 'dbcompare' ? this.renderDbCompare() : ''}</div>
+              <div class="dba-content-pane ${this.currentSubtab === 'awr' ? 'active' : ''}" id="dba-pane-awr">${this.currentSubtab === 'awr' ? this.renderAwr() : ''}</div>
             `}
           </div>
         </div>
       </div>
     `;
+  }
+
+  renderSubtabByKey(subKey) {
+    const map = {
+      browser: () => this.renderDatabaseBrowser(),
+      dbmonitor: () => this.renderDbMonitor(),
+      unixmonitor: () => this.renderUnixMonitor(),
+      tablespacemap: () => this.renderTablespaceMap(),
+      spacemanager: () => this.renderSpaceManager(),
+      segmentadvisor: () => this.renderSegmentAdvisor(),
+      undoadvisor: () => this.renderUndoAdvisor(),
+      flashback: () => this.renderFlashback(),
+      logminer: () => this.renderLogMiner(),
+      dataguard: () => this.renderDataGuard(),
+      asm: () => this.renderAsm(),
+      rac: () => this.renderRac(),
+      exadata: () => this.renderExadata(),
+      audit: () => this.renderAudit(),
+      wallet: () => this.renderWallet(),
+      schemacompare: () => this.renderSchemaCompare(),
+      datacompare: () => this.renderDataCompare(),
+      dbcompare: () => this.renderDbCompare(),
+      awr: () => this.renderAwr()
+    };
+    return map[subKey] ? map[subKey]() : '';
   }
 
   async switchSubtab(subKey) {
@@ -285,6 +310,12 @@ class DbaTools {
         `;
       }
       return;
+    }
+
+    // Lazily populate target pane if empty
+    const targetPane = document.getElementById(`dba-pane-${subKey}`);
+    if (targetPane && !targetPane.innerHTML.trim()) {
+      targetPane.innerHTML = this.renderSubtabByKey(subKey);
     }
 
     // Switch pane

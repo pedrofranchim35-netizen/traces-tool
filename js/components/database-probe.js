@@ -22,9 +22,12 @@ class DatabaseProbe {
         if (resp.ok) {
           const rules = await resp.json();
           this.alerts = rules.map(r => ({
+            id: r.id,
+            name: r.name,
+            desc: r.desc || '',
             category: r.name.includes('IO') ? 'Storage / IO' : (r.name.includes('Session') ? 'Sessions' : 'Configuration'),
             check: r.name,
-            value: r.op === '=' ? r.right : 'Optimal',
+            value: r.op === '=' && r.right ? `${(r.left || '').toUpperCase()} = ${r.right}` : 'Configured Optimal',
             status: (r.id === '1' || r.id === '22') ? 'WARN' : 'PASS',
             advice: r.desc
           }));
@@ -60,16 +63,17 @@ class DatabaseProbe {
 
   async loadRealProbe() {
     try {
-      // 1. Fetch live probe checks
-      const probeResp = await fetch('/api/probe');
-      const probeData = await probeResp.json();
+      const [probeResp, tsResp] = await Promise.all([
+        fetch('/api/probe'),
+        fetch('/api/tablespaces-details')
+      ]);
+      const [probeData, tsData] = await Promise.all([
+        probeResp.json(),
+        tsResp.json()
+      ]);
       if (probeData.alerts && probeData.alerts.length > 0) {
         this.alerts = probeData.alerts;
       }
-
-      // 2. Fetch live tablespaces storage
-      const tsResp = await fetch('/api/tablespaces-details');
-      const tsData = await tsResp.json();
       if (tsData.tablespaces && tsData.tablespaces.length > 0) {
         this.tablespaces = tsData.tablespaces;
       }

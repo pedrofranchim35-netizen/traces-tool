@@ -26,7 +26,23 @@ class ToadMenus {
         { label: 'Reconnect Active Session', icon: '🔄', shortcut: '', action: () => window.TracesApp.connectionManager.openModal() },
         { separator: true },
         { label: 'New Worksheet', icon: '📝', shortcut: 'Ctrl+N', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.addNewTab(); } },
-        { label: 'Open SQL File...', icon: '📂', shortcut: 'Ctrl+O', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.addNewTab(); } },
+        { label: 'Open SQL File...', icon: '📂', shortcut: 'Ctrl+O', action: () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.sql,.pls,.pks,.pkb,.prc,.fnc,.trg,.txt';
+          input.onchange = (ev) => {
+            const file = ev.target.files && ev.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              window.TracesApp.openWindow('editor');
+              window.TracesApp.sqlEditor.addNewTab(file.name, String(reader.result || ''));
+              window.TracesApp.notify(`Arquivo ${file.name} carregado na Worksheet.`, 'success');
+            };
+            reader.readAsText(file);
+          };
+          input.click();
+        } },
         { label: 'Save Worksheet', icon: '💾', shortcut: 'Ctrl+S', action: () => {
           const sql = window.TracesApp.sqlEditor?.getActiveQuery() || '';
           const blob = new Blob([sql], { type: 'text/sql' });
@@ -54,19 +70,19 @@ class ToadMenus {
       ],
 
       'Edit': [
-        { label: 'Undo', icon: '↶', shortcut: 'Ctrl+Z', action: () => window.TracesApp.sqlEditor.undo() },
-        { label: 'Redo', icon: '↷', shortcut: 'Ctrl+Y', action: () => window.TracesApp.sqlEditor.redo() },
+        { label: 'Undo', icon: '↶', shortcut: 'Ctrl+Z', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.undo(); } },
+        { label: 'Redo', icon: '↷', shortcut: 'Ctrl+Y', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.redo(); } },
         { separator: true },
-        { label: 'Cut', icon: '✂', shortcut: 'Ctrl+X', action: () => window.TracesApp.sqlEditor.cut() },
-        { label: 'Copy', icon: '📋', shortcut: 'Ctrl+C', action: () => window.TracesApp.sqlEditor.copy() },
-        { label: 'Paste', icon: '📄', shortcut: 'Ctrl+V', action: () => window.TracesApp.sqlEditor.paste() },
-        { label: 'Select All', icon: '🔲', shortcut: 'Ctrl+A', action: () => window.TracesApp.sqlEditor.selectAll() },
+        { label: 'Cut', icon: '✂', shortcut: 'Ctrl+X', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.cut(); } },
+        { label: 'Copy', icon: '📋', shortcut: 'Ctrl+C', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.copy(); } },
+        { label: 'Paste', icon: '📄', shortcut: 'Ctrl+V', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.paste(); } },
+        { label: 'Select All', icon: '🔲', shortcut: 'Ctrl+A', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.selectAll(); } },
         { separator: true },
-        { label: 'Toggle Line Comment', icon: '💬', shortcut: 'Ctrl+/', action: () => window.TracesApp.sqlEditor.toggleComment() },
-        { label: 'Duplicate Line / Selection', icon: '📑', shortcut: 'Ctrl+D', action: () => window.TracesApp.sqlEditor.duplicateLine() },
-        { label: 'Delete Line', icon: '🗑', shortcut: 'Ctrl+Shift+K', action: () => window.TracesApp.sqlEditor.deleteLine() },
+        { label: 'Toggle Line Comment', icon: '💬', shortcut: 'Ctrl+/', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.toggleComment(); } },
+        { label: 'Duplicate Line / Selection', icon: '📑', shortcut: 'Ctrl+D', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.duplicateLine(); } },
+        { label: 'Delete Line', icon: '🗑', shortcut: 'Ctrl+Shift+K', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.deleteLine(); } },
         { separator: true },
-        { label: 'Format Code (FmtPlus.opt)', icon: '🧹', shortcut: 'Ctrl+Shift+F', action: () => window.TracesApp.sqlEditor.formatSql() },
+        { label: 'Format Code (FmtPlus.opt)', icon: '🧹', shortcut: 'Ctrl+Shift+F', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.formatSql(); } },
         { label: 'Code Templates & Snippets...', icon: '📑', shortcut: '', action: () => window.TracesApp.toadModals.openCodeTemplates() },
         { label: 'Auto-Replace Definitions...', icon: '🔤', shortcut: '', action: () => window.TracesApp.toadModals.openAutoReplace() },
         { separator: true },
@@ -85,7 +101,7 @@ class ToadMenus {
       'Search': [
         { label: 'Find...', icon: '🔍', shortcut: 'Ctrl+F', action: () => window.TracesApp.toadModals.openFindDialog(false) },
         { label: 'Replace...', icon: '🔄', shortcut: 'Ctrl+H', action: () => window.TracesApp.toadModals.openFindDialog(true) },
-        { label: 'Go to Line...', icon: '🔢', shortcut: 'Ctrl+G', action: () => window.TracesApp.sqlEditor.gotoLine() },
+        { label: 'Go to Line...', icon: '🔢', shortcut: 'Ctrl+G', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.gotoLine(); } },
         { label: 'Find in Files...', icon: '📁', shortcut: '', action: () => window.TracesApp.notify('Searching across project .sql files...', 'info') },
         { separator: true },
         { label: 'Sensitive Column Search (LGPD/GDPR)', icon: '🛡', shortcut: '', action: () => window.TracesApp.toadModals.openSensitiveSearch() }
@@ -99,8 +115,20 @@ class ToadMenus {
         { label: 'Toad Options...', icon: '⚙', shortcut: '', action: () => window.TracesApp.toadModals.openOptions() },
         { label: 'Spool SQL to Screen / File', icon: '📜', shortcut: '', action: () => window.TracesApp.toadModals.openSpoolSql() },
         { separator: true },
-        { label: 'Status Bar', icon: '✓', shortcut: '', action: () => {} },
-        { label: 'MDI Tabs Bar', icon: '✓', shortcut: '', action: () => {} }
+        { label: 'Status Bar', icon: '✓', shortcut: '', action: () => {
+          const sb = document.querySelector('.toad-statusbar');
+          if (sb) {
+            sb.style.display = sb.style.display === 'none' ? '' : 'none';
+            window.TracesApp.notify(`Status Bar ${sb.style.display === 'none' ? 'ocultada' : 'exibida'}.`, 'info');
+          }
+        } },
+        { label: 'MDI Tabs Bar', icon: '✓', shortcut: '', action: () => {
+          const tb = document.getElementById('toad-mdi-tabs');
+          if (tb) {
+            tb.style.display = tb.style.display === 'none' ? '' : 'none';
+            window.TracesApp.notify(`MDI Tabs Bar ${tb.style.display === 'none' ? 'ocultada' : 'exibida'}.`, 'info');
+          }
+        } }
       ],
 
       'Database': [
@@ -191,11 +219,11 @@ class ToadMenus {
       ],
 
       'Editor': [
-        { label: 'Execute Statement', icon: '▶', shortcut: 'F9', action: () => window.TracesApp.sqlEditor.executeStatement() },
-        { label: 'Execute as Script', icon: '📄▶', shortcut: 'F5', action: () => window.TracesApp.sqlEditor.executeScript() },
-        { label: 'Execute at Cursor', icon: '▶|', shortcut: 'Ctrl+Enter', action: () => window.TracesApp.sqlEditor.executeStatement() },
+        { label: 'Execute Statement', icon: '▶', shortcut: 'F9', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.executeStatement(); } },
+        { label: 'Execute as Script', icon: '📄▶', shortcut: 'F5', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.executeScript(); } },
+        { label: 'Execute at Cursor', icon: '▶|', shortcut: 'Ctrl+Enter', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.executeStatement(); } },
         { separator: true },
-        { label: 'Explain Plan', icon: '🌳', shortcut: 'Ctrl+E', action: () => window.TracesApp.sqlEditor.explainPlan() },
+        { label: 'Explain Plan', icon: '🌳', shortcut: 'Ctrl+E', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.explainPlan(); } },
         { label: 'AutoTrace Statistics', icon: '📊', shortcut: '', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.switchOutputTab('autotrace'); } },
         { separator: true },
         { label: 'SQL Recall (SavedSQL.dat)', icon: '📜', shortcut: 'F8', action: () => window.TracesApp.toadModals.openSqlRecall() },
@@ -220,8 +248,8 @@ class ToadMenus {
 
       'Session': [
         { label: 'Session Browser (V$SESSION)', icon: '👥', shortcut: '', action: () => window.TracesApp.openWindow('sessions') },
-        { label: 'Kill Session (IMMEDIATE)', icon: '☠', shortcut: '', action: () => window.TracesApp.sessionMonitor.killCurrentSession('IMMEDIATE') },
-        { label: 'Disconnect Session (POST_TRANSACTION)', icon: '⏹', shortcut: '', action: () => window.TracesApp.sessionMonitor.killCurrentSession('POST_TRANSACTION') },
+        { label: 'Kill Session (IMMEDIATE)', icon: '☠', shortcut: '', action: () => { window.TracesApp.openWindow('sessions'); window.TracesApp.sessionMonitor.killCurrentSession('IMMEDIATE'); } },
+        { label: 'Disconnect Session (POST_TRANSACTION)', icon: '⏹', shortcut: '', action: () => { window.TracesApp.openWindow('sessions'); window.TracesApp.sessionMonitor.killCurrentSession('POST_TRANSACTION'); } },
         { separator: true },
         {
           label: 'SQL Trace (Event 10046)',
@@ -399,6 +427,44 @@ class ToadMenus {
     }).join('');
   }
 
+  handleEntryClick(entry, e) {
+    if (!entry) return false;
+    if (e) e.stopPropagation();
+
+    const menuKey = entry.getAttribute('data-parent-menu');
+    if (!menuKey) return false;
+
+    const subidx = entry.getAttribute('data-subidx');
+    const idx = entry.getAttribute('data-idx');
+
+    if (subidx !== null) {
+      this.closeAll();
+      if (this.menuDefs[menuKey]?.[idx]?.submenu?.[subidx]) {
+        const subItem = this.menuDefs[menuKey][idx].submenu[subidx];
+        try {
+          if (subItem && subItem.action) subItem.action();
+        } catch (err) {
+          console.error('Menu subitem action error:', err);
+        }
+      }
+      return true;
+    } else {
+      // If this entry has a submenu flyout, toggle flyout open instead of closing
+      if (entry.classList.contains('has-submenu')) {
+        entry.classList.toggle('has-open-submenu');
+        return true;
+      }
+      this.closeAll();
+      const item = this.menuDefs[menuKey]?.[idx];
+      try {
+        if (item && item.action) item.action();
+      } catch (err) {
+        console.error('Menu item action error:', err);
+      }
+      return true;
+    }
+  }
+
   bindEvents() {
     const menuItems = document.querySelectorAll('.toad-menu-item');
 
@@ -408,6 +474,16 @@ class ToadMenus {
 
       item.addEventListener('click', (e) => {
         e.stopPropagation();
+        // Se o clique ocorreu dentro de uma opção do dropdown/submenu, executa a ação imediatamente!
+        const clickedEntry = e.target.closest('.toad-menu-entry');
+        if (clickedEntry) {
+          this.handleEntryClick(clickedEntry, e);
+          return;
+        }
+        if (e.target.closest('.toad-dropdown-menu')) {
+          return;
+        }
+
         if (this.activeMenu === menuKey) {
           this.closeAll();
         } else {
@@ -424,46 +500,13 @@ class ToadMenus {
       });
     });
 
-    // Close when clicking outside
-    document.addEventListener('click', () => {
-      this.closeAll();
-    });
-
-    // Handle clicks inside dropdown entries (both menubar and toolbar)
+    // Handle clicks inside dropdown entries (toolbar dropdowns or any menu entry) and close when clicking outside
     document.addEventListener('click', (e) => {
       const entry = e.target.closest('.toad-menu-entry');
-      if (!entry) return;
-      e.stopPropagation();
-
-      const menuKey = entry.getAttribute('data-parent-menu');
-      if (!menuKey) return;
-
-      const subidx = entry.getAttribute('data-subidx');
-      const idx = entry.getAttribute('data-idx');
-
-      if (subidx !== null) {
-        if (this.menuDefs[menuKey]?.[idx]?.submenu?.[subidx]) {
-          const subItem = this.menuDefs[menuKey][idx].submenu[subidx];
-          try {
-            if (subItem && subItem.action) subItem.action();
-          } catch (err) {
-            console.error('Menu subitem action error:', err);
-          }
-        }
-      } else {
-        // If this entry has a submenu flyout, don't execute, keep flyout open
-        if (entry.classList.contains('has-submenu')) {
-          entry.classList.toggle('has-open-submenu');
-          return;
-        }
-        const item = this.menuDefs[menuKey]?.[idx];
-        try {
-          if (item && item.action) item.action();
-        } catch (err) {
-          console.error('Menu item action error:', err);
-        }
+      if (entry) {
+        this.handleEntryClick(entry, e);
+        return;
       }
-
       this.closeAll();
     });
   }
@@ -479,6 +522,7 @@ class ToadMenus {
     this.activeToolbarDropdown = null;
     document.querySelectorAll('.toad-menu-item').forEach(i => i.classList.remove('active'));
     document.querySelectorAll('.toad-dropdown-menu').forEach(d => d.classList.remove('visible'));
+    document.querySelectorAll('.toad-menu-entry.has-open-submenu').forEach(el => el.classList.remove('has-open-submenu'));
   }
 }
 
