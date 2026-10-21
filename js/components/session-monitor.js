@@ -371,6 +371,9 @@ class SessionMonitor {
             <span style="font-size: 11px; color: var(--text-muted);">SPID / Thread: <strong style="color: #4338ca; font-family: var(--font-code);">${s.spid || '-'}</strong> | OS: ${s.osuser} @ ${s.machine} | Program: ${s.program}</span>
           </div>
           <div style="display: flex; gap: 6px;">
+            <button class="btn" style="font-weight: 600;" onclick="window.TracesPro.openAwrWizardModal()">
+              📑 Relatório AWR / ADDM
+            </button>
             <button class="btn btn-danger" style="font-weight: 700;" onclick="window.TracesApp.sessionMonitor.killSession(${s.sid}, ${s.serial})">
               ⚡ Kill Session IMMEDIATE
             </button>
@@ -410,6 +413,8 @@ class SessionMonitor {
           <button class="detail-tab ${this.currentDetailTab === 'waits' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('waits')">Session Waits (V$SESSION_WAIT)</button>
           <button class="detail-tab ${this.currentDetailTab === 'locks' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('locks')">Locks (V$LOCKED_OBJECT)</button>
           <button class="detail-tab ${this.currentDetailTab === 'io' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('io')">I/O &amp; Memory (V$SESS_IO)</button>
+          <button class="detail-tab ${this.currentDetailTab === 'ash' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('ash')">📈 ASH Timeline (Wait Events)</button>
+          <button class="detail-tab ${this.currentDetailTab === 'temp_pga' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('temp_pga')">💾 Consumo TEMP &amp; PGA</button>
           <button class="detail-tab ${this.currentDetailTab === 'info' ? 'active' : ''}" onclick="window.TracesApp.sessionMonitor.switchSubtab('info')">Session Info</button>
         </div>
 
@@ -506,6 +511,16 @@ class SessionMonitor {
           <div><strong>Wait Status:</strong> ${s.event || 'None'}</div>
         </div>
 
+        <!-- Subtab 6: ASH Timeline -->
+        <div style="display: ${this.currentDetailTab === 'ash' ? 'block' : 'none'};">
+          <div id="session-ash-timeline-container" style="min-height: 220px;"></div>
+        </div>
+
+        <!-- Subtab 7: TEMP & PGA Inspector -->
+        <div style="display: ${this.currentDetailTab === 'temp_pga' ? 'block' : 'none'};">
+          <div id="session-temp-pga-container" style="min-height: 220px;"></div>
+        </div>
+
       </div>
     `;
   }
@@ -513,6 +528,11 @@ class SessionMonitor {
   switchSubtab(tabKey) {
     this.currentDetailTab = tabKey;
     this.renderDetail();
+    if (tabKey === 'ash' && window.TracesPro) {
+      window.TracesPro.renderAshTimeline('session-ash-timeline-container');
+    } else if (tabKey === 'temp_pga' && window.TracesPro) {
+      window.TracesPro.renderTempPgaInspector('session-temp-pga-container');
+    }
   }
 
   async killSession(sid, serial, mode = 'IMMEDIATE') {

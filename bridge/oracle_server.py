@@ -124,6 +124,17 @@ if SSHTUNNEL_AVAILABLE:
 if ORACLEDB_AVAILABLE:
     print("[TRACES] Driver Oracle Nativo (Thin/Thick) carregado com sucesso!")
 
+# Import do módulo Toad Pro Suite (12 Pontos Mestres)
+bridge_dir = os.path.dirname(os.path.abspath(__file__))
+if bridge_dir not in sys.path:
+    sys.path.insert(0, bridge_dir)
+try:
+    import toad_pro
+    print("[TRACES] Módulo Toad Pro Suite (12 Pontos Mestres) carregado com sucesso!")
+except Exception as _pro_err:
+    toad_pro = None
+    print(f"[TRACES] Aviso: Não foi possível importar toad_pro: {_pro_err}")
+
 # ------------------------------------------------------------------------------
 # 2. ORACLE INSTANT CLIENT (MODO THICK - MÁXIMA COMPATIBILIDADE 10g-23ai / 0x939)
 # ------------------------------------------------------------------------------
@@ -415,6 +426,17 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Expires", "0")
         super().end_headers()
 
+    def get_pro_context(self):
+        """Retorna contexto ProContext encapsulando as conexões e túneis para o toad_pro"""
+        if not toad_pro:
+            return None
+        return toad_pro.ProContext(
+            connections=ACTIVE_CONNECTIONS,
+            active_conn_id=ACTIVE_CONN_ID,
+            tunnels=SSH_TUNNELS,
+            reconnect_fn=None
+        )
+
     def get_connection_entry(self, payload=None, query=None):
         """
         Localiza a conexão correta no registro ACTIVE_CONNECTIONS:
@@ -687,6 +709,14 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_dbcompare()
         elif parsed.path == "/api/update/check":
             self.handle_update_check()
+        elif parsed.path.startswith("/api/pro/"):
+            if toad_pro:
+                query_params = urllib.parse.parse_qs(parsed.query)
+                flat_p = {k: v[0] if len(v) == 1 else v for k, v in query_params.items()}
+                res, status = toad_pro.dispatch(self.get_pro_context(), parsed.path, flat_p)
+                self.send_api_response(res, status=status)
+            else:
+                self.send_api_response({"success": False, "error": "Módulo toad_pro não disponível."}, status=500)
         else:
             # Serve static files (HTML, CSS, JS, Assets)
             super().do_GET()
@@ -738,6 +768,12 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_post_datapump(payload)
         elif parsed.path == "/api/update/apply":
             self.handle_update_apply(payload)
+        elif parsed.path.startswith("/api/pro/"):
+            if toad_pro:
+                res, status = toad_pro.dispatch(self.get_pro_context(), parsed.path, payload)
+                self.send_api_response(res, status=status)
+            else:
+                self.send_api_response({"success": False, "error": "Módulo toad_pro não disponível."}, status=500)
         else:
             self.send_api_response({"error": f"Endpoint not found: {parsed.path}"}, status=404)
 
@@ -857,7 +893,16 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             if bridge_password:
                 tunnel_kwargs["ssh_password"] = bridge_password
             if bridge_key_path and os.path.exists(bridge_key_path):
-                tunnel_kwargs["ssh_pkey"] = bridge_key_path
+                bridge_passphrase = payload.get("bridge_key_passphrase") or payload.get("key_passphrase")
+                if toad_pro:
+                    try:
+                        pkey = toad_pro.load_private_key(bridge_key_path, bridge_passphrase)
+                        tunnel_kwargs["ssh_pkey"] = pkey
+                    except Exception as _k_err:
+                        print(f"[Bridge-Test] Aviso ao carregar chave via toad_pro ({_k_err}), usando caminho bruto.")
+                        tunnel_kwargs["ssh_pkey"] = bridge_key_path
+                else:
+                    tunnel_kwargs["ssh_pkey"] = bridge_key_path
 
             test_tunnel = SSHTunnelForwarder(**tunnel_kwargs)
             test_tunnel.start()
@@ -973,7 +1018,16 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         if bridge_password:
                             tunnel_kwargs["ssh_password"] = bridge_password
                         if bridge_key_path and os.path.exists(bridge_key_path):
-                            tunnel_kwargs["ssh_pkey"] = bridge_key_path
+                            bridge_passphrase = payload.get("bridge_key_passphrase") or payload.get("key_passphrase")
+                            if toad_pro:
+                                try:
+                                    pkey = toad_pro.load_private_key(bridge_key_path, bridge_passphrase)
+                                    tunnel_kwargs["ssh_pkey"] = pkey
+                                except Exception as _k_err:
+                                    print(f"[Bridge] Aviso ao carregar chave via toad_pro ({_k_err}), usando caminho bruto.")
+                                    tunnel_kwargs["ssh_pkey"] = bridge_key_path
+                            else:
+                                tunnel_kwargs["ssh_pkey"] = bridge_key_path
 
                         tunnel_instance = SSHTunnelForwarder(**tunnel_kwargs)
                         tunnel_instance.start()
@@ -4123,6 +4177,15 @@ TRAILING NULLCOLS
 
 def run_server():
     socketserver.TCPServer.allow_reuse_address = True
+    if toad_pro:
+        try:
+            pro_ctx = toad_pro.ProContext(ACTIVE_CONNECTIONS, ACTIVE_CONN_ID, SSH_TUNNELS)
+            toad_pro.start_keepalive_thread(pro_ctx)
+            toad_pro.start_task_scheduler_thread(pro_ctx)
+            print("  Traces Toad Pro Suite: Watchdog Keep-Alive & Task Scheduler Ativos!")
+        except Exception as _pro_bg_err:
+            print(f"  Aviso: Falha ao iniciar threads background do Toad Pro: {_pro_bg_err}")
+
     with socketserver.TCPServer(("", PORT), ToadBridgeHandler) as httpd:
         print(f"==================================================================")
         print(f"  TOAD FOR ORACLE (TRACES EDITION) - DATABASE & GATEWAY BRIDGE")

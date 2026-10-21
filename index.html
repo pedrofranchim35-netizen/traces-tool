@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="css/browser.css?v=20261020a">
   <link rel="stylesheet" href="css/grid.css?v=20261020a">
   <link rel="stylesheet" href="css/explain.css?v=20261020a">
+  <link rel="stylesheet" href="css/toad-pro.css?v=20261021pro">
 </head>
 <body>
   <div id="app-container">
@@ -112,6 +113,26 @@
         <button class="toad-btn" onclick="window.TracesApp.openWindow('optimizer')" title="Quest SQL Optimizer">
           <span class="toad-btn-icon" style="color: #16a34a;">⚡</span>
           <span>Optimizer</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- Toad Pro Suite Extensions (12 Pontos) -->
+        <button class="toad-btn" onclick="window.TracesPro.runHealthCheck360()" title="Database Health Check 360° (50+ Regras Oracle)">
+          <span class="toad-btn-icon" style="color: #dc2626;">🏥</span>
+          <span>Health 360°</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesPro.openSqlPlusTerminal()" title="Terminal Interativo SQL*Plus / SQLcl">
+          <span class="toad-btn-icon" style="color: #0284c7;">💻</span>
+          <span>SQL*Plus</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesPro.openVaultDialog()" title="Cofre Criptografado Local (AES-256)">
+          <span class="toad-btn-icon" style="color: #d97706;">🔐</span>
+          <span>Cofre</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesPro.openTaskSchedulerDialog()" title="Agendador de Tarefas em Background (Task Scheduler)">
+          <span class="toad-btn-icon" style="color: #2563eb;">⏰</span>
+          <span>Scheduler</span>
         </button>
 
         <div class="toad-separator"></div>
@@ -439,10 +460,16 @@
 
                     <!-- Right actions -->
                     <div class="grid-actions-right">
+                      <button class="btn" id="grid-btn-bulk-edit" title="Edição em Massa com Script DML de Revisão (WHERE/ROWID)" onclick="window.TracesPro.openBulkEditDialog(window.TracesApp.dataGrid);">
+                        ✏ Edição em Massa
+                      </button>
+                      <button class="btn" id="grid-btn-quick-chart" title="Quick Chart Instantâneo (Barras, Linhas, Pizza)" onclick="window.TracesPro.openQuickChart(window.TracesApp.dataGrid);">
+                        📊 Quick Chart
+                      </button>
                       <button class="btn" id="grid-btn-copy-menu" title="Opções de Cópia (Célula, Linha, TSV, SQL)" onclick="window.TracesApp.dataGrid.showCopyMenu(event);">
                         📋 Copiar ▾
                       </button>
-                      <button class="btn btn-primary" id="grid-btn-export" title="Exportar conjunto de dados (Excel, CSV, SQL, JSON)">
+                      <button class="btn btn-primary" id="grid-btn-export" title="Exportar conjunto de dados (Excel Nativo .xlsx, CSV, SQL, JSON)">
                         📤 Exportar
                       </button>
                     </div>
@@ -587,6 +614,7 @@
               <button class="detail-tab" data-tab="partitions">Partitions</button>
               <button class="detail-tab" data-tab="dependencies">Dependencies</button>
               <button class="detail-tab" data-tab="stats">Stats</button>
+              <button class="detail-tab" data-tab="erd">Diagrama ER (Mini-ERD)</button>
             </div>
 
             <!-- Tab Panes -->
@@ -601,6 +629,7 @@
               <div class="detail-tab-pane" id="tab-pane-partitions"></div>
               <div class="detail-tab-pane" id="tab-pane-dependencies"></div>
               <div class="detail-tab-pane" id="tab-pane-stats"></div>
+              <div class="detail-tab-pane" id="tab-pane-erd"></div>
             </div>
           </div>
         </div>
@@ -1049,6 +1078,7 @@
   <script src="js/components/code-quality.js?v=20261018toad_parity"></script>
   <script src="js/components/automation-designer.js?v=20261018toad_parity"></script>
   <script src="js/components/sql-optimizer.js?v=20261018toad_parity"></script>
+  <script src="js/components/toad-pro-suite.js?v=20261021pro"></script>
   <script src="js/app.js?v=20261018toad_parity"></script>
 </body>
 </html>

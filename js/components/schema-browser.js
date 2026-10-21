@@ -686,6 +686,14 @@ class SchemaBrowser {
       }
     }
 
+    // On-demand fetch for Mini-ERD Tab
+    if (tabKey === 'erd' && this.selectedObject) {
+      const erdPane = document.getElementById('tab-pane-erd');
+      if (erdPane && window.TracesPro) {
+        window.TracesPro.renderTableFkGraph(this.currentSchema, this.selectedObject.name, erdPane);
+      }
+    }
+
     this.renderDetailContent();
   }
 
@@ -1411,7 +1419,8 @@ class SchemaBrowser {
           window.TracesApp.sqlEditor.executeStatement();
         }},
         { label: 'Count Rows...', icon: '📊', shortcut: '', action: () => this.countRows(schema, objName) },
-        { label: 'Describe (F4)', icon: '🔎', shortcut: 'F4', action: () => window.TracesApp.toadModals.openDescribe(`${schema}.${objName}`) },
+        { label: 'Compare with Another Table (Diff Side-by-Side)...', icon: '⚖️', shortcut: '', action: () => window.TracesPro.openObjectDiffDialog(schema, objName, schema, '') },
+        { label: 'View Foreign Key Graph (Mini-ERD)', icon: '🔗', shortcut: '', action: () => this.switchDetailTab('erd') },
         { separator: true },
         { label: 'Generate DDL Script', icon: '📜', shortcut: '', action: () => this.switchDetailTab('ddl') },
         { label: 'Gather Table Statistics', icon: '⚡', shortcut: '', action: () => this.gatherStatistics(schema, objName) },
@@ -1522,6 +1531,14 @@ class SchemaBrowser {
             window.TracesApp.sqlEditor.executeStatement();
           }
         }}
+      );
+    } else if (cat === 'indexes') {
+      items.push(
+        { label: 'Rebuild Index (Online)', icon: '🔄', shortcut: '', action: () => window.TracesPro.executeQuickDdl('rebuild_index', schema, objName) },
+        { label: 'Gather Index Statistics', icon: '⚡', shortcut: '', action: () => window.TracesPro.executeQuickDdl('gather_stats', schema, objName) },
+        { label: 'Show DDL', icon: '📜', shortcut: '', action: () => this.switchDetailTab('ddl') },
+        { separator: true },
+        { label: 'Drop Index...', icon: '🗑️', shortcut: '', action: () => this.dropObject(schema, objName, 'INDEX') }
       );
     } else {
       items.push(

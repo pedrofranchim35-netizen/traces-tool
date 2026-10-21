@@ -88,6 +88,9 @@ END;`
         this.updateCursorPosition();
         this.scheduleCodeInsight(e);
         this.scheduleHistorySnapshot();
+        if (window.TracesPro) {
+          window.TracesPro.debounceSyntaxCheck(this.textarea.value, (errors) => this.updateSyntaxErrors(errors));
+        }
       });
 
       this.textarea.addEventListener('keyup', () => this.updateCursorPosition());
@@ -268,7 +271,11 @@ END;`
           window.TracesApp.dataGrid.openRecordViewer();
         } else if (e.key === 'F8') {
           e.preventDefault(); e.stopPropagation();
-          window.TracesApp.toadModals.openSqlRecall();
+          if (window.TracesPro) {
+            window.TracesPro.openSqlRecallDialog();
+          } else {
+            window.TracesApp.toadModals.openSqlRecall();
+          }
         } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
           e.preventDefault(); e.stopPropagation();
           this.explainPlan();
@@ -836,14 +843,30 @@ END;`
   updateGutter() {
     if (!this.gutterEl || !this.textarea) return;
     const lineCount = this.textarea.value.split('\n').length;
-    if (this._lastLineCount === lineCount) return;
     this._lastLineCount = lineCount;
+
+    const errMap = new Map();
+    if (this.syntaxErrors && Array.isArray(this.syntaxErrors)) {
+      this.syntaxErrors.forEach(err => {
+        if (err.line) errMap.set(err.line, err.message || err.desc || 'Erro de sintaxe');
+      });
+    }
 
     let html = '';
     for (let i = 1; i <= lineCount; i++) {
-      html += `<div class="gutter-line">${i}</div>`;
+      const errMsg = errMap.get(i);
+      if (errMsg) {
+        html += `<div class="gutter-line toad-syntax-error-gutter" title="Linha ${i}: ${this.escapeHtml(errMsg)}">🔴 ${i}</div>`;
+      } else {
+        html += `<div class="gutter-line">${i}</div>`;
+      }
     }
     this.gutterEl.innerHTML = html;
+  }
+
+  updateSyntaxErrors(errors) {
+    this.syntaxErrors = errors || [];
+    this.updateGutter();
   }
 
   updateHighlighting() {
@@ -1253,13 +1276,25 @@ END;`
       this.transactionActive = true;
       this.updateTransactionBadge();
 
-      // Record in SavedSQL
+      // Record in SavedSQL & Persistent SQL Recall
       window.TRACES_DB.savedSql.unshift({
         timestamp: new Date().toLocaleTimeString(),
         schema: window.TracesApp.realDatabaseConfig?.user || 'ORACLE',
         executions: 1,
         text: sql.trim()
       });
+
+      fetch('/api/pro/sql-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          sql: sql.trim(),
+          conn_name: window.TracesApp.realDatabaseConfig?.user || 'ORACLE',
+          elapsed_ms: parseFloat(data.elapsedMs || elapsedMs) || 0,
+          rows: data.rows ? data.rows.length : (data.rowsAffected || 0)
+        })
+      }).catch(() => {});
 
       // Populate Data Grid with real rows and real columns
       if (data.rows) {
@@ -1735,6 +1770,17 @@ END;`
 
     // Toad Standard Oracle Autocomplete Dictionary
     this.insightDictionary = [
+      // Snippets & Code Templates (Ponto 1)
+      { text: 'sel*', type: 'Snippet', icon: '📑', snippet: 'SELECT * FROM ' },
+      { text: 'selcount', type: 'Snippet', icon: '📑', snippet: 'SELECT COUNT(*) FROM ' },
+      { text: 'ins', type: 'Snippet', icon: '📑', snippet: 'INSERT INTO  () VALUES ();' },
+      { text: 'upd', type: 'Snippet', icon: '📑', snippet: 'UPDATE  SET  WHERE ;' },
+      { text: 'del', type: 'Snippet', icon: '📑', snippet: 'DELETE FROM  WHERE ;' },
+      { text: 'cur', type: 'Snippet', icon: '📑', snippet: 'CURSOR c_cur IS SELECT  FROM ;' },
+      { text: 'anon', type: 'Snippet', icon: '📑', snippet: "DECLARE\n    v_db VARCHAR2(100);\nBEGIN\n    SELECT ora_database_name INTO v_db FROM dual;\n    DBMS_OUTPUT.PUT_LINE('Conectado a: ' || v_db);\nEXCEPTION\n    WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE('Erro: ' || SQLERRM);\nEND;\n/" },
+      { text: 'crproc', type: 'Snippet', icon: '📑', snippet: "CREATE OR REPLACE PROCEDURE pr_exemplo (\n    p_id IN NUMBER,\n    p_status OUT VARCHAR2\n)\nIS\nBEGIN\n    p_status := 'OK';\nEND pr_exemplo;\n/" },
+      { text: 'crfunc', type: 'Snippet', icon: '📑', snippet: "CREATE OR REPLACE FUNCTION fn_calculo (\n    p_val IN NUMBER\n)\nRETURN NUMBER\nIS\n    v_res NUMBER;\nBEGIN\n    v_res := p_val * 1.1;\n    RETURN v_res;\nEND fn_calculo;\n/" },
+
       // SQL*Plus & Toad Commands
       { text: 'SHOW PARAMETER', type: 'Command', icon: '⚡', snippet: 'SHOW PARAMETER ' },
       { text: 'SHOW PARAMETERS', type: 'Command', icon: '⚡', snippet: 'SHOW PARAMETERS ' },
@@ -1865,6 +1911,15 @@ END;`
     }, 70);
   }
 
+  resolveAliasToTable(alias, sql) {
+    if (!alias || !sql) return alias;
+    const cleanAlias = alias.replace(/[^a-zA-Z0-9_$#]/g, '');
+    const reg = new RegExp(`\\b(?:from|join|into|update)\\s+([a-zA-Z0-9_$.#]+)\\s+(?:as\\s+)?${cleanAlias}\\b`, 'i');
+    const m = sql.match(reg);
+    if (m && m[1]) return m[1].toUpperCase();
+    return alias.toUpperCase();
+  }
+
   getWordBeforeCaret() {
     if (!this.textarea) return { word: '', start: 0, end: 0, dotContext: null };
     const pos = this.textarea.selectionStart || 0;
@@ -1899,7 +1954,7 @@ END;`
 
     let candidates = [];
 
-    // Se temos contexto de ponto (ex: TABELA. ou DBMS_OUTPUT.)
+    // Se temos contexto de ponto (ex: TABELA. ou ALIAS.)
     if (dot) {
       if (dot.includes('DBMS_OUTPUT')) {
         candidates = [
@@ -1910,35 +1965,53 @@ END;`
         ];
       } else if (dot.includes('V$SESSION')) {
         candidates = [
-          { text: 'SID', type: 'Column', icon: '📄' },
-          { text: 'SERIAL#', type: 'Column', icon: '📄' },
-          { text: 'USERNAME', type: 'Column', icon: '📄' },
-          { text: 'STATUS', type: 'Column', icon: '📄' },
-          { text: 'OSUSER', type: 'Column', icon: '📄' },
-          { text: 'MACHINE', type: 'Column', icon: '📄' },
-          { text: 'PROGRAM', type: 'Column', icon: '📄' },
-          { text: 'SQL_ID', type: 'Column', icon: '📄' },
-          { text: 'EVENT', type: 'Column', icon: '📄' }
+          { text: 'SID', type: 'NUMBER [PK]', icon: '🔑' },
+          { text: 'SERIAL#', type: 'NUMBER', icon: '📄' },
+          { text: 'USERNAME', type: 'VARCHAR2(128)', icon: '📄' },
+          { text: 'STATUS', type: 'VARCHAR2(8)', icon: '📄' },
+          { text: 'OSUSER', type: 'VARCHAR2(128)', icon: '📄' },
+          { text: 'MACHINE', type: 'VARCHAR2(64)', icon: '📄' },
+          { text: 'PROGRAM', type: 'VARCHAR2(48)', icon: '📄' },
+          { text: 'SQL_ID', type: 'VARCHAR2(13)', icon: '📄' },
+          { text: 'EVENT', type: 'VARCHAR2(64)', icon: '📄' }
         ];
       } else {
-        // Tentar obter colunas do Schema Browser
-        const sb = window.TracesApp && window.TracesApp.schemaBrowser;
-        if (sb && sb.tableColumns && sb.tableColumns[dot]) {
-          candidates = sb.tableColumns[dot].map(c => ({
+        const resolvedTable = this.resolveAliasToTable(dot, this.textarea ? this.textarea.value : '');
+        const key = resolvedTable.toUpperCase();
+        if (window.TracesPro && window.TracesPro.columnCache.has(key)) {
+          const cols = window.TracesPro.columnCache.get(key);
+          candidates = cols.map(c => ({
             text: c.name || c.COLUMN_NAME,
-            type: 'Column',
-            icon: '📄'
+            type: `${c.data_type || 'VARCHAR2'}${c.is_pk ? ' [PK]' : ''}${c.nullable === 'N' ? ' [NN]' : ''}`,
+            icon: c.is_pk ? '🔑' : '📄'
           }));
-        } else {
-          // Colunas padrão genéricas para tabelas Oracle
-          candidates = [
-            { text: 'ID', type: 'Column', icon: '📄' },
-            { text: 'NAME', type: 'Column', icon: '📄' },
-            { text: 'STATUS', type: 'Column', icon: '📄' },
-            { text: 'CREATED_DATE', type: 'Column', icon: '📄' },
-            { text: 'UPDATED_DATE', type: 'Column', icon: '📄' },
-            { text: 'DESCRIPTION', type: 'Column', icon: '📄' }
-          ];
+        } else if (window.TracesPro) {
+          window.TracesPro.fetchTableColumns(resolvedTable).then(cols => {
+            if (cols && cols.length > 0 && this.isInsightVisible()) {
+              this.triggerCodeInsight(true);
+            }
+          });
+        }
+
+        if (candidates.length === 0) {
+          const sb = window.TracesApp && window.TracesApp.schemaBrowser;
+          if (sb && sb.tableColumns && sb.tableColumns[resolvedTable]) {
+            candidates = sb.tableColumns[resolvedTable].map(c => ({
+              text: c.name || c.COLUMN_NAME,
+              type: c.data_type || 'Column',
+              icon: c.is_pk ? '🔑' : '📄'
+            }));
+          } else {
+            // Colunas padrão genéricas para tabelas Oracle
+            candidates = [
+              { text: 'ID', type: 'NUMBER [PK]', icon: '🔑' },
+              { text: 'NAME', type: 'VARCHAR2(100) [NN]', icon: '📄' },
+              { text: 'STATUS', type: 'VARCHAR2(20)', icon: '📄' },
+              { text: 'CREATED_DATE', type: 'DATE', icon: '📄' },
+              { text: 'UPDATED_DATE', type: 'DATE', icon: '📄' },
+              { text: 'DESCRIPTION', type: 'VARCHAR2(255)', icon: '📄' }
+            ];
+          }
         }
       }
     } else {

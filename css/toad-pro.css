@@ -1,0 +1,416 @@
+/* ==========================================================================
+   TRACES TOAD PRO SUITE - RICH DESKTOP AESTHETICS (12 PONTOS MESTRES)
+   Paridade visual absoluta com Toad for Oracle DBA Suite & Xpert Edition
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   PONTO 1: CODE INSIGHT 2.0 & VALIDADOR SINTÁTICO
+   -------------------------------------------------------------------------- */
+.toad-syntax-error {
+  text-decoration: underline wavy #e53e3e !important;
+  text-decoration-skip-ink: none;
+  background-color: rgba(229, 62, 62, 0.08);
+}
+
+.toad-syntax-warning {
+  text-decoration: underline wavy #dd6b20 !important;
+  background-color: rgba(221, 107, 32, 0.08);
+}
+
+.code-insight-popup {
+  position: absolute;
+  z-index: 10000;
+  min-width: 340px;
+  max-width: 520px;
+  max-height: 280px;
+  background: #ffffff;
+  border: 1px solid #7f9db9;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  font-family: var(--toad-font-ui, "Segoe UI", Tahoma, sans-serif);
+  font-size: 11px;
+  display: none;
+  flex-direction: column;
+  border-radius: 2px;
+}
+
+.code-insight-popup.visible {
+  display: flex;
+}
+
+.code-insight-header {
+  background: linear-gradient(180deg, #f0f4f9 0%, #e2e8f0 100%);
+  padding: 4px 8px;
+  font-weight: 700;
+  font-size: 10.5px;
+  color: #1e3a5f;
+  border-bottom: 1px solid #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+}
+
+.code-insight-list {
+  overflow-y: auto;
+  max-height: 220px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.code-insight-item {
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.code-insight-item:hover,
+.code-insight-item.selected {
+  background: #0078d7;
+  color: #ffffff !important;
+}
+
+.code-insight-item.selected .insight-type,
+.code-insight-item.selected .insight-extra {
+  color: #e0f2fe !important;
+}
+
+.insight-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.insight-name {
+  font-family: var(--toad-font-code, "Consolas", monospace);
+  font-weight: 600;
+  flex: 1;
+}
+
+.insight-type {
+  font-size: 9.5px;
+  color: #64748b;
+  background: rgba(0,0,0,0.04);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.insight-pk-badge {
+  font-size: 10px;
+  color: #d97706;
+}
+
+/* --------------------------------------------------------------------------
+   PONTO 2: DATA GRID FILTROS ESTILO EXCEL & QUICK CHART
+   -------------------------------------------------------------------------- */
+.grid-col-filter-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 9px;
+  color: #475569;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.grid-col-filter-btn:hover,
+.grid-col-filter-btn.active {
+  opacity: 1;
+  color: #0284c7;
+}
+
+.grid-excel-filter-dropdown {
+  position: absolute;
+  z-index: 9999;
+  width: 240px;
+  background: #ffffff;
+  border: 1px solid #7f9db9;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 2px;
+}
+
+.excel-filter-search {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  font-size: 11px;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.excel-filter-values-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  background: #fafafa;
+  padding: 4px;
+  margin-bottom: 6px;
+}
+
+.excel-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.excel-filter-item:hover {
+  background: #e2e8f0;
+}
+
+/* Quick Chart Container */
+.quick-chart-container {
+  display: flex;
+  flex-direction: column;
+  height: 420px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.chart-controls-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   PONTO 3: DIFF SIDE-BY-SIDE & MINI-ERD DE TABELA
+   -------------------------------------------------------------------------- */
+.diff-container {
+  display: flex;
+  height: 480px;
+  border: 1px solid #cbd5e1;
+  font-family: var(--toad-font-code, "Consolas", monospace);
+  font-size: 11px;
+}
+
+.diff-pane {
+  flex: 1;
+  overflow: auto;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-pane:first-child {
+  border-right: 1px solid #cbd5e1;
+}
+
+.diff-pane-header {
+  padding: 6px 10px;
+  background: #e2e8f0;
+  font-weight: 700;
+  border-bottom: 1px solid #cbd5e1;
+  font-size: 11px;
+}
+
+.diff-line {
+  padding: 2px 8px;
+  white-space: pre;
+  min-height: 16px;
+}
+
+.diff-line.added {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.diff-line.removed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.diff-line.modified {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+/* Mini ERD */
+.mini-erd-canvas {
+  width: 100%;
+  height: 380px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.mini-erd-card {
+  position: absolute;
+  width: 200px;
+  background: #ffffff;
+  border: 1px solid #64748b;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.mini-erd-card-header {
+  background: #1e3a5f;
+  color: #ffffff;
+  padding: 4px 8px;
+  font-weight: 700;
+  font-size: 10.5px;
+}
+
+.mini-erd-card-body {
+  padding: 4px 6px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+/* --------------------------------------------------------------------------
+   PONTO 4: ASH TIMELINE & TEMP/PGA INSPECTOR
+   -------------------------------------------------------------------------- */
+.ash-timeline-wrapper {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ash-chart-svg {
+  width: 100%;
+  height: 220px;
+  background: #0f172a;
+  border-radius: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   PONTO 7: PROFILER HEATMAP & DEPURADOR PASSO A PASSO
+   -------------------------------------------------------------------------- */
+.profiler-table tr[data-heat="high"] {
+  background: rgba(239, 68, 68, 0.25) !important;
+}
+
+.profiler-table tr[data-heat="medium"] {
+  background: rgba(245, 158, 11, 0.2) !important;
+}
+
+.profiler-table tr[data-heat="low"] {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+.debugger-breakpoint-gutter {
+  width: 20px;
+  text-align: center;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.debugger-active-line {
+  background: #fef08a !important;
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   PONTO 8: HEALTH CHECK 360° SCORECARD & DISK HEATMAP
+   -------------------------------------------------------------------------- */
+.health-scorecard-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+  color: #ffffff;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.health-score-dial {
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 8px;
+  border: 2px solid rgba(255,255,255,0.25);
+}
+
+.disk-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
+  gap: 2px;
+  padding: 10px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 3px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.disk-block-cell {
+  width: 18px;
+  height: 18px;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+.disk-block-cell.free {
+  background: #10b981;
+}
+
+.disk-block-cell.occupied {
+  background: #3b82f6;
+}
+
+.disk-block-cell.fragmented {
+  background: #f59e0b;
+}
+
+/* --------------------------------------------------------------------------
+   PONTO 12: MÚLTIPLAS CONEXÕES POR ABA & TERMINAL SQL*PLUS
+   -------------------------------------------------------------------------- */
+.editor-tab-conn-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.tab-color-prod { background-color: #ef4444; box-shadow: 0 0 6px #ef4444; }
+.tab-color-dev  { background-color: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.tab-color-uat  { background-color: #eab308; box-shadow: 0 0 6px #eab308; }
+
+.sqlplus-terminal-window {
+  background: #0c1017;
+  color: #e6edf3;
+  font-family: var(--toad-font-code, "Consolas", monospace);
+  font-size: 11.5px;
+  line-height: 1.45;
+  padding: 10px;
+  height: 380px;
+  overflow-y: auto;
+  border: 1px solid #30363d;
+}
+
+.sqlplus-prompt {
+  color: #58a6ff;
+  font-weight: 700;
+}
+
+.sqlplus-input-cmd {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-family: var(--toad-font-code, "Consolas", monospace);
+  font-size: 11.5px;
+  width: calc(100% - 70px);
+}

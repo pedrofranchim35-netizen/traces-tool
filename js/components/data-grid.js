@@ -25,6 +25,7 @@ class DataGrid {
     this.selectedColKey = null;
     this.pendingChanges = { updates: [], inserts: [], deletes: [] };
     this.modifiedCells = new Set(); // Stores "rowIdx:colKey"
+    this.columnFilters = {}; // Stores "colKey" -> Set of allowed values (Excel-style)
 
     this.initElements();
     this.bindEvents();
@@ -344,17 +345,36 @@ class DataGrid {
     if (this.searchInput) this.searchInput.value = '';
     if (this.filterClearBtn) this.filterClearBtn.style.display = 'none';
     this.filterText = '';
+    this.columnFilters = {};
     this.page = 1;
     this.render();
   }
 
   getFilteredData() {
-    if (!this.filterText) return this.data;
-    return this.data.filter(row => {
-      return Object.values(row).some(val =>
-        val !== null && val !== undefined && String(val).toLowerCase().includes(this.filterText)
-      );
-    });
+    let result = this.data;
+    if (this.filterText) {
+      result = result.filter(row => {
+        return Object.values(row).some(val =>
+          val !== null && val !== undefined && String(val).toLowerCase().includes(this.filterText)
+        );
+      });
+    }
+
+    const filterKeys = Object.keys(this.columnFilters || {});
+    if (filterKeys.length > 0) {
+      result = result.filter(row => {
+        for (const k of filterKeys) {
+          const allowed = this.columnFilters[k];
+          if (allowed && allowed.size > 0) {
+            const val = row[k] === null || row[k] === undefined ? '(null)' : String(row[k]);
+            if (!allowed.has(val)) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    return result;
   }
 
   sortBy(colKey) {
@@ -370,6 +390,105 @@ class DataGrid {
       this.sortCol = colKey;
       this.sortAsc = true;
     }
+    this.render();
+  }
+
+  openColumnFilterDropdown(event, colKey) {
+    const old = document.getElementById('grid-column-filter-popup');
+    if (old) old.remove();
+
+    const distinct = new Map();
+    this.data.forEach(r => {
+      const v = r[colKey] === null || r[colKey] === undefined ? '(null)' : String(r[colKey]);
+      distinct.set(v, (distinct.get(v) || 0) + 1);
+    });
+
+    const entries = Array.from(distinct.entries()).slice(0, 100);
+    const activeFilter = this.columnFilters[colKey] || null;
+
+    const popup = document.createElement('div');
+    popup.id = 'grid-column-filter-popup';
+    popup.className = 'grid-column-filter-popup';
+    popup.style.position = 'fixed';
+    popup.style.zIndex = '9999';
+    popup.style.background = '#ffffff';
+    popup.style.border = '1px solid #94a3b8';
+    popup.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+    popup.style.padding = '8px';
+    popup.style.fontSize = '11px';
+    popup.style.width = '240px';
+    popup.style.borderRadius = '3px';
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    popup.style.top = `${Math.min(window.innerHeight - 300, rect.bottom + 4)}px`;
+    popup.style.left = `${Math.min(window.innerWidth - 260, Math.max(10, rect.left - 100))}px`;
+
+    const checkboxesHtml = entries.map(([val, cnt]) => {
+      const isChecked = !activeFilter || activeFilter.has(val);
+      return `
+        <label style="display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <input type="checkbox" class="col-filter-cb" value="${this.escapeHtml(val)}" ${isChecked ? 'checked' : ''}>
+          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis;">${this.escapeHtml(val)}</span>
+          <span style="color: #64748b; font-size: 10px;">(${cnt})</span>
+        </label>
+      `;
+    }).join('');
+
+    popup.innerHTML = `
+      <div style="font-weight: 700; margin-bottom: 6px; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
+        Filtro de Coluna: ${colKey}
+      </div>
+      <div style="margin-bottom: 6px;">
+        <label style="display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer;">
+          <input type="checkbox" id="col-filter-select-all" checked onchange="document.querySelectorAll('.col-filter-cb').forEach(cb => cb.checked = this.checked);">
+          (Selecionar Tudo)
+        </label>
+      </div>
+      <div style="max-height: 180px; overflow-y: auto; border: 1px solid #cbd5e1; padding: 4px 6px; margin-bottom: 8px; background: #f8fafc;">
+        ${checkboxesHtml}
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 6px;">
+        <button class="btn btn-sm" onclick="document.getElementById('grid-column-filter-popup')?.remove();">Cancelar</button>
+        <button class="btn btn-sm" onclick="window.TracesApp.dataGrid.clearColumnFilter('${colKey}')">Limpar</button>
+        <button class="btn btn-sm btn-primary" onclick="window.TracesApp.dataGrid.applyColumnFilterFromPopup('${colKey}')">OK</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    const outsideClick = (e) => {
+      if (!popup.contains(e.target) && e.target !== event.currentTarget) {
+        popup.remove();
+        document.removeEventListener('click', outsideClick);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', outsideClick), 50);
+  }
+
+  applyColumnFilterFromPopup(colKey) {
+    const popup = document.getElementById('grid-column-filter-popup');
+    if (!popup) return;
+    const cbs = popup.querySelectorAll('.col-filter-cb');
+    const allChecked = Array.from(cbs).every(cb => cb.checked);
+    if (allChecked) {
+      delete this.columnFilters[colKey];
+    } else {
+      const selected = new Set();
+      cbs.forEach(cb => {
+        if (cb.checked) selected.add(cb.value);
+      });
+      this.columnFilters[colKey] = selected;
+    }
+    popup.remove();
+    this.page = 1;
+    this.render();
+  }
+
+  clearColumnFilter(colKey) {
+    delete this.columnFilters[colKey];
+    const popup = document.getElementById('grid-column-filter-popup');
+    if (popup) popup.remove();
+    this.page = 1;
     this.render();
   }
 
@@ -426,18 +545,26 @@ class DataGrid {
     const startIdx = (this.page - 1) * this.pageSize;
     const pagedRows = filtered.slice(startIdx, startIdx + this.pageSize);
 
-    // Render Headers
+    // Render Headers with Excel filter funnel icon
     this.tableHeader.innerHTML = `
       <tr>
         <th class="row-num-cell" style="width: 48px; text-align: center;">#</th>
-        ${columns.map(col => `
-          <th onclick="window.TracesApp.dataGrid.sortBy('${col}')" title="Clique para ordenar por ${col}">
-            <div class="th-content">
-              <span>${col}</span>
-              <span class="sort-icon">${this.sortCol === col ? (this.sortAsc ? '▲' : '▼') : ''}</span>
-            </div>
-          </th>
-        `).join('')}
+        ${columns.map(col => {
+          const isFiltered = Boolean(this.columnFilters && this.columnFilters[col] && this.columnFilters[col].size > 0);
+          return `
+            <th title="Clique para ordenar ou filtrar por ${col}">
+              <div class="th-content" style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+                <span onclick="window.TracesApp.dataGrid.sortBy('${col}')" style="cursor: pointer; flex: 1;">${col}</span>
+                <span class="sort-icon" onclick="window.TracesApp.dataGrid.sortBy('${col}')">${this.sortCol === col ? (this.sortAsc ? '▲' : '▼') : ''}</span>
+                <span class="grid-col-filter-btn ${isFiltered ? 'active' : ''}" 
+                      onclick="event.stopPropagation(); window.TracesApp.dataGrid.openColumnFilterDropdown(event, '${col}')" 
+                      title="Filtrar valores da coluna ${col} (Estilo Excel)">
+                  ${isFiltered ? '🔻' : '▿'}
+                </span>
+              </div>
+            </th>
+          `;
+        }).join('')}
       </tr>
     `;
 
@@ -1100,13 +1227,19 @@ class DataGrid {
     const body = `
       <div style="font-size: 12px; margin-bottom: 12px; color: #334155;">
         Selecione o formato para exportar o conjunto <b>${this.tableName}</b> (${count.toLocaleString()} registros):
-      </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
-        <button class="btn" style="height: 42px; justify-content: flex-start; gap: 10px; padding: 6px 12px;" onclick="window.TracesApp.dataGrid.exportXlsx(); window.TracesApp.toadModals.close();">
+        <button class="btn" style="height: 42px; justify-content: flex-start; gap: 10px; padding: 6px 12px; border-color: #0284c7; background: #f0f9ff;" onclick="window.TracesApp.dataGrid.exportXlsx(); window.TracesApp.toadModals.close();">
           <span style="font-size: 20px;">📊</span>
           <div style="text-align: left;">
-            <b>Excel (.xls / SpreadsheetML)</b><br>
-            <small style="color: #64748b;">Planilha nativa com formatação</small>
+            <b style="color: #0369a1;">Excel Nativo (.xlsx)</b><br>
+            <small style="color: #64748b;">Planilha binária real OpenXML sem dependências</small>
+          </div>
+        </button>
+        <button class="btn" style="height: 42px; justify-content: flex-start; gap: 10px; padding: 6px 12px;" onclick="window.TracesApp.dataGrid.exportLegacyXls(); window.TracesApp.toadModals.close();">
+          <span style="font-size: 20px;">📈</span>
+          <div style="text-align: left;">
+            <b>Excel Legado (.xls)</b><br>
+            <small style="color: #64748b;">Planilha SpreadsheetML padrão Toad</small>
           </div>
         </button>
         <button class="btn" style="height: 42px; justify-content: flex-start; gap: 10px; padding: 6px 12px;" onclick="window.TracesApp.dataGrid.exportCsv(); window.TracesApp.toadModals.close();">
@@ -1173,6 +1306,16 @@ class DataGrid {
   }
 
   exportXlsx() {
+    if (this.data.length === 0) return;
+    const cols = Object.keys(this.data[0]);
+    if (window.TracesPro && typeof window.TracesPro.exportNativeXlsx === 'function') {
+      window.TracesPro.exportNativeXlsx(cols, this.data, this.tableName, `${this.tableName}_export.xlsx`);
+    } else {
+      this.exportLegacyXls();
+    }
+  }
+
+  exportLegacyXls() {
     if (this.data.length === 0) return;
     const cols = Object.keys(this.data[0]);
     let xml = `<?xml version="1.0"?>
