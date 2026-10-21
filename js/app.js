@@ -305,11 +305,13 @@ class TracesApp {
       }
     });
 
-    const btnDisconnect = document.getElementById('btn-disconnect');
-    if (btnDisconnect) {
-      btnDisconnect.disabled = !isConn;
-      btnDisconnect.classList.toggle('disabled', !isConn);
-    }
+    ['btn-disconnect', 'btn-toolbar-disconnect'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.disabled = !isConn;
+        btn.classList.toggle('disabled', !isConn);
+      }
+    });
 
     // 3. Update Start Page saved connections
     this.renderStartPageConnections();
