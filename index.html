@@ -12,10 +12,24 @@
       if (typeof window !== 'undefined' && window.fetch) {
         const _origFetch = window.fetch;
         window.fetch = function(input, init) {
-          if (typeof input === 'string' && input.startsWith('/api/')) {
-            if (window.location.protocol === 'file:' || !window.location.port) {
-              input = 'http://127.0.0.1:3033' + input;
+          if (typeof input === 'string') {
+            if (input.startsWith('/api/') || input.startsWith('api/')) {
+              const clean = input.startsWith('/') ? input : '/' + input;
+              if (window.location.protocol === 'file:' || !window.location.port) {
+                input = 'http://127.0.0.1:3033' + clean;
+              }
             }
+          } else if (input && typeof input === 'object' && input.url) {
+            try {
+              const u = input.url;
+              if (u.includes('/api/')) {
+                const idx = u.indexOf('/api/');
+                const clean = u.substring(idx);
+                if (window.location.protocol === 'file:' || !window.location.port) {
+                  input = new Request('http://127.0.0.1:3033' + clean, input);
+                }
+              }
+            } catch (e) {}
           }
           return _origFetch.call(this, input, init);
         };

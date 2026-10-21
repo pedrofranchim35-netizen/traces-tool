@@ -595,7 +595,18 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/api/status":
+        if parsed.path in ("/api/health", "/api/ping"):
+            self.send_api_response({
+                "success": True,
+                "status": "online",
+                "version": "2026.2.0",
+                "pro_enabled": bool(toad_pro),
+                "active_connections": len(ACTIVE_CONNECTIONS),
+                "active_id": ACTIVE_CONN_ID,
+                "timestamp": datetime.now().isoformat()
+            })
+            return
+        elif parsed.path == "/api/status":
             active_list = []
             for cid, c in ACTIVE_CONNECTIONS.items():
                 if c.get("conn"):
@@ -783,16 +794,19 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Connection-Id, X-Requested-With, Accept, Origin")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Connection-Id, X-Requested-With, Accept, Origin")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
 
     # -------------------------------------------------------------------------
@@ -1003,6 +1017,25 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     existing_tunnel["conn_ids"].add(conn_id)
                     print(f"[Bridge] Reutilizando túnel SSH existente ({tunnel_key}) na porta local {effective_port} (conexões ativas: {existing_tunnel['ref_count']})")
                 else:
+                    # Pré-validação TCP rápida na máquina de ponte (timeout 4.0s) para diagnóstico imediato
+                    try:
+                        sock_chk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock_chk.settimeout(4.0)
+                        sock_chk.connect((bridge_host, bridge_port))
+                        sock_chk.close()
+                    except (socket.timeout, TimeoutError):
+                        self.send_api_response({
+                            "success": False,
+                            "error": f"Tempo esgotado (timeout 4s) ao alcançar a Ponte SSH {bridge_host}:{bridge_port}. Verifique se a sua VPN corporativa está conectada e se o IP é acessível."
+                        }, status=400)
+                        return
+                    except Exception as _sock_chk_err:
+                        self.send_api_response({
+                            "success": False,
+                            "error": f"Não foi possível conectar no host da Ponte SSH {bridge_host}:{bridge_port}: {_sock_chk_err}. Verifique se a VPN está ativa ou se há bloqueio de firewall."
+                        }, status=400)
+                        return
+
                     print(f"[Bridge] Conectando na Ponte SSH ({bridge_host}:{bridge_port}) para alcançar ({host}:{port})...")
                     try:
                         tunnel_kwargs = {
@@ -1011,7 +1044,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                             "local_bind_address": ("127.0.0.1", 0),
                             "set_keepalive": 5.0,
                             "allow_agent": False,
-                            "host_pkey_directories": []
+                            "host_pkey_directories": [],
+                            "ssh_config_file": None
                         }
                         if bridge_user:
                             tunnel_kwargs["ssh_username"] = bridge_user
@@ -1048,10 +1082,15 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                             "conn_ids": {conn_id}
                         }
                     except Exception as tunnel_err:
-                        print(f"[Bridge] Erro ao abrir túnel SSH: {tunnel_err}")
+                        t_msg = str(tunnel_err)
+                        print(f"[Bridge] Erro ao abrir túnel SSH: {t_msg}")
+                        if "Authentication" in t_msg or "password" in t_msg.lower():
+                            err_msg = f"Falha na autenticação SSH com o host da Ponte {bridge_host}:{bridge_port} para o usuário '{bridge_user}'. Verifique a senha ou chave privada."
+                        else:
+                            err_msg = f"Erro na Ponte SSH ({bridge_host}:{bridge_port}): {t_msg}"
                         self.send_api_response({
                             "success": False,
-                            "error": f"Erro na Ponte SSH ({bridge_host}:{bridge_port}): {str(tunnel_err)}"
+                            "error": err_msg
                         }, status=400)
                         return
 
@@ -1194,9 +1233,15 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             if newly_started_tunnel and tunnel_key:
                 release_tunnel(tunnel_key, conn_id)
             print(f"[Bridge] Erro ao conectar no Oracle: {e}")
+            err_text = str(e)
+            if use_bridge and bridge_host:
+                if "10061" in err_text or "refused" in err_text.lower() or "DPY-6005" in err_text:
+                    err_text = f"Ponte SSH conectou com sucesso, mas o banco Oracle {host}:{port} recusou a conexão ou não está ativo no host de destino ({err_text})."
+                elif "timeout" in err_text.lower() or "timed out" in err_text.lower():
+                    err_text = f"Ponte SSH conectou com sucesso, mas houve timeout ao alcançar o banco Oracle {host}:{port}/{service_name or sid} através do túnel."
             self.send_api_response({
                 "success": False,
-                "error": str(e)
+                "error": err_text
             }, status=400)
 
     def handle_disconnect(self, payload=None):
@@ -4175,8 +4220,11 @@ TRAILING NULLCOLS
                 "logs": "\n".join(output_logs)
             }, status=500)
 
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 def run_server():
-    socketserver.TCPServer.allow_reuse_address = True
     if toad_pro:
         try:
             pro_ctx = toad_pro.ProContext(ACTIVE_CONNECTIONS, ACTIVE_CONN_ID, SSH_TUNNELS)
@@ -4186,19 +4234,19 @@ def run_server():
         except Exception as _pro_bg_err:
             print(f"  Aviso: Falha ao iniciar threads background do Toad Pro: {_pro_bg_err}")
 
-    with socketserver.TCPServer(("", PORT), ToadBridgeHandler) as httpd:
-        print(f"==================================================================")
-        print(f"  TOAD FOR ORACLE (TRACES EDITION) - DATABASE & GATEWAY BRIDGE")
-        print(f"==================================================================")
-        print(f"  Serving Web UI & API at: http://localhost:{PORT}/index.html")
-        print(f"  Oracle Driver: {'python-oracledb 26.0.1 (Ready)' if ORACLEDB_AVAILABLE else 'Not Installed'}")
-        print(f"  SSH Bridge / Jump Host: {'Ready' if SSHTUNNEL_AVAILABLE else 'Disabled (install sshtunnel)'}")
-        print(f"==================================================================")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nShutting down bridge server...")
-            httpd.server_close()
+    httpd = ThreadingHTTPServer(("", PORT), ToadBridgeHandler)
+    print(f"==================================================================")
+    print(f"  TOAD FOR ORACLE (TRACES EDITION) - DATABASE & GATEWAY BRIDGE")
+    print(f"==================================================================")
+    print(f"  Serving Web UI & API at: http://localhost:{PORT}/index.html")
+    print(f"  Oracle Driver: {'python-oracledb 26.0.1 (Ready)' if ORACLEDB_AVAILABLE else 'Not Installed'}")
+    print(f"  SSH Bridge / Jump Host: {'Ready' if SSHTUNNEL_AVAILABLE else 'Disabled (install sshtunnel)'}")
+    print(f"==================================================================")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down bridge server...")
+        httpd.server_close()
 
 if __name__ == "__main__":
     run_server()

@@ -7,6 +7,11 @@ const fs = require('fs');
 const os = require('os');
 const { spawn, exec } = require('child_process');
 
+// Chromium switches: garante que requisições locais (127.0.0.1) nunca sofram bloqueio de PNA ou CORS
+app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
+app.commandLine.appendSwitch('disable-web-security');
+app.commandLine.appendSwitch('allow-file-access-from-files');
+
 let mainWindow = null;
 let pythonProcess = null;
 const PORT = 3033;
@@ -245,6 +250,28 @@ async function applyGitHubUpdate(event) {
 // 2. INICIALIZAR O BRIDGE ORACLE EM SEGUNDO PLANO
 // ------------------------------------------------------------------------------
 
+function killPortOccupant(port) {
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const lines = out.split('\n');
+      for (const line of lines) {
+        if (line.includes('LISTENING') || line.includes('LIST') || line.includes(`:${port}`)) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0' && pid !== `${process.pid}`) {
+            try {
+              execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+              console.log(`[TRACES] Processo anterior liberado na porta ${port} (PID: ${pid})`);
+            } catch (e) {}
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 function startOracleBridgeProcess() {
   const appDir = getAppDirectory();
   const pyScript = path.join(appDir, 'bridge', 'oracle_server.py');
@@ -252,6 +279,9 @@ function startOracleBridgeProcess() {
     console.log('[TRACES] Script oracle_server.py não encontrado em:', pyScript);
     return false;
   }
+
+  // Libera a porta 3033 de processos zumbis anteriores
+  killPortOccupant(PORT);
 
   // 1. Python Embutido no próprio app (zero instalação necessária!)
   const embeddedPy = path.join(appDir, 'python', 'python.exe');
@@ -287,8 +317,8 @@ function startOracleBridgeProcess() {
   return false;
 }
 
-// Aguarda o servidor na porta 3033 responder
-function waitForPort(port, maxTries = 35) {
+// Aguarda o servidor na porta 3033 responder (até 15s)
+function waitForPort(port, maxTries = 150) {
   return new Promise((resolve) => {
     let tries = 0;
     const check = () => {
@@ -369,15 +399,25 @@ async function createMainWindow() {
   // Tentar iniciar o bridge Oracle
   startOracleBridgeProcess();
 
-  // Aguardar porta 3033 ficar ativa (até 3,5 segundos)
-  const isPortUp = await waitForPort(PORT, 35);
+  // Aguardar porta 3033 ficar ativa (até 15 segundos)
+  const isPortUp = await waitForPort(PORT, 150);
 
   if (isPortUp) {
     // Carregar via HTTP local (todas as rotas /api/ e banco real funcionam nativamente)
     mainWindow.loadURL(`http://127.0.0.1:${PORT}/index.html`);
   } else {
-    // Fallback: carregar arquivo local diretamente
+    // Fallback de contingência: carregar arquivo local diretamente
     mainWindow.loadFile(path.join(appDir, 'index.html'));
+
+    // Continua tentando conectar na porta em background; assim que o bridge responder, carrega a URL HTTP
+    const pollTimer = setInterval(async () => {
+      const up = await waitForPort(PORT, 2);
+      if (up && mainWindow) {
+        clearInterval(pollTimer);
+        console.log('[TRACES] Servidor Bridge pronto! Redirecionando para http://127.0.0.1:3033/index.html');
+        mainWindow.loadURL(`http://127.0.0.1:${PORT}/index.html`);
+      }
+    }, 1000);
   }
 
   mainWindow.on('closed', () => {
@@ -421,8 +461,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  killPortOccupant(PORT);
   if (pythonProcess) {
-    try { pythonProcess.kill(); } catch (e) {}
+    try {
+      if (process.platform === 'win32') {
+        const { execSync } = require('child_process');
+        execSync(`taskkill /F /T /PID ${pythonProcess.pid}`, { stdio: 'ignore' });
+      } else {
+        pythonProcess.kill('SIGKILL');
+      }
+    } catch (e) {}
+    pythonProcess = null;
   }
   if (process.platform !== 'darwin') {
     app.quit();

@@ -656,10 +656,14 @@ class ConnectionManager {
         window.TracesApp.notify(`Falha na ponte: ${data.error}`, 'error');
       }
     } catch (err) {
+      const msg = err.message || '';
+      const displayMsg = (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed'))
+        ? 'Serviço Bridge local (porta 3033) não respondeu. O servidor pode estar inicializando.'
+        : msg;
       if (statusEl) {
-        statusEl.innerHTML = `<span style="color: #ef4444;">✕ Erro de comunicação: ${err.message}</span>`;
+        statusEl.innerHTML = `<span style="color: #ef4444;">✕ Erro de comunicação: ${displayMsg}</span>`;
       }
-      window.TracesApp.notify(`Erro de comunicação com o servidor: ${err.message}`, 'error');
+      window.TracesApp.notify(`Erro de comunicação: ${displayMsg}`, 'error');
     }
   }
 
@@ -712,11 +716,15 @@ class ConnectionManager {
         window.TracesApp.notify(`Falha ao conectar no Oracle: ${data.error}`, 'error');
       }
     } catch (err) {
+      const msg = err.message || '';
+      const displayMsg = (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed'))
+        ? 'Serviço Bridge local (porta 3033) não respondeu. O servidor pode estar inicializando.'
+        : msg;
       if (statusEl) {
-        statusEl.textContent = `✕ Erro no servidor: ${err.message}`;
+        statusEl.textContent = `✕ Erro no servidor: ${displayMsg}`;
         statusEl.style.color = '#c00000';
       }
-      window.TracesApp.notify(`Erro de comunicação com o servidor: ${err.message}`, 'error');
+      window.TracesApp.notify(`Erro de comunicação com o servidor: ${displayMsg}`, 'error');
     }
   }
 
@@ -829,7 +837,12 @@ class ConnectionManager {
         window.TracesApp.notify(`Falha na conexão: ${data.error}`, 'error');
       }
     } catch (err) {
-      window.TracesApp.notify(`Erro de comunicação: ${err.message}`, 'error');
+      const msg = err.message || '';
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+        window.TracesApp.notify(`Erro de comunicação com o Bridge local (porta 3033). O servidor pode estar inicializando. Aguarde 2 segundos e tente novamente.`, 'error');
+      } else {
+        window.TracesApp.notify(`Erro de comunicação: ${msg}`, 'error');
+      }
     }
   }
 
