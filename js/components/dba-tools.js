@@ -48,6 +48,7 @@ class DbaTools {
       'spacemanager': '📊 Space Manager & Capacity Growth Forecast',
       'segmentadvisor': '🧹 Segment Advisor & Rebuild Multiple Objects',
       'undoadvisor': '⏱ Undo Advisor (V$UNDOSTAT & ORA-01555)',
+      'rman': '🛡️ RMAN Backup & Recovery (Verificações & Terminal Interativo)',
       'flashback': '⏪ Flashback Recycle Bin (DBA_RECYCLEBIN)',
       'logminer': '🔍 LogMiner Interface (DBMS_LOGMNR Redo/Undo)',
       'dataguard': '🛡 Data Guard Manager (Primary/Standby Sync)',
@@ -76,9 +77,14 @@ class DbaTools {
   render() {
     if (!this.container) return;
 
-    const isConn = window.TracesApp && window.TracesApp.isConnected();
-    const connConfig = window.TracesApp?.realDatabaseConfig;
-    const dbTarget = connConfig ? `${connConfig.user}@${connConfig.host}:${connConfig.port}/${connConfig.serviceName}` : 'Desconectado';
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    const isConn = Boolean(window.TracesApp?.isConnected?.() || activeConn);
+    this._renderedWithConn = isConn;
+    const user = activeConn?.user || 'SYS';
+    const host = activeConn?.host || 'localhost';
+    const port = activeConn?.port || 1521;
+    const sname = activeConn?.serviceName || activeConn?.service_name || 'ORCL';
+    const dbTarget = isConn ? `${user}@${host}:${port}/${sname}` : 'Desconectado';
 
     this.container.innerHTML = `
       <div class="dba-hub-container" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
@@ -102,7 +108,8 @@ class DbaTools {
                 <option value="segmentadvisor" ${this.currentSubtab === 'segmentadvisor' ? 'selected' : ''}>Segment Advisor &amp; Rebuild</option>
                 <option value="undoadvisor" ${this.currentSubtab === 'undoadvisor' ? 'selected' : ''}>Undo Advisor (ORA-01555)</option>
               </optgroup>
-              <optgroup label="Flashback &amp; LogMiner">
+              <optgroup label="Backup, Flashback &amp; Recovery">
+                <option value="rman" ${this.currentSubtab === 'rman' ? 'selected' : ''}>🛡️ RMAN Backup &amp; Recovery (Terminal)</option>
                 <option value="flashback" ${this.currentSubtab === 'flashback' ? 'selected' : ''}>Flashback Recycle Bin</option>
                 <option value="logminer" ${this.currentSubtab === 'logminer' ? 'selected' : ''}>LogMiner (Redo/Undo)</option>
               </optgroup>
@@ -169,7 +176,10 @@ class DbaTools {
             </div>
 
             <div class="dba-nav-group">
-              <div class="dba-nav-group-title">⏪ Flashback &amp; Recovery</div>
+              <div class="dba-nav-group-title">🛡️ RMAN, Flashback &amp; Recovery</div>
+              <div class="dba-nav-item ${this.currentSubtab === 'rman' ? 'active' : ''}" data-sub="rman" onclick="window.TracesApp.dbaTools.switchSubtab('rman');">
+                <span>🛡️ RMAN Backup &amp; Terminal</span>
+              </div>
               <div class="dba-nav-item ${this.currentSubtab === 'flashback' ? 'active' : ''}" data-sub="flashback" onclick="window.TracesApp.dbaTools.switchSubtab('flashback');">
                 <span>⏪ Flashback Recycle Bin</span>
               </div>
@@ -221,37 +231,69 @@ class DbaTools {
             </div>
           </div>
 
+          <!-- Draggable Vertical Splitter for DBA Sidebar -->
+          <div class="splitter-v" id="splitter-dba-sidebar" title="Arraste para redimensionar o menu lateral DBA" style="width: 5px; cursor: col-resize; background: #d0d7de; flex-shrink: 0;"></div>
+
           <!-- Right Content Pane -->
           <div class="dba-main-content">
-            ${!isConn ? `
-              <div class="dba-content-pane active" id="dba-pane-${this.currentSubtab}">
-                ${this.renderDisconnectedWatermark(this.getSubtabTitle(this.currentSubtab))}
-              </div>
-            ` : `
-              <div class="dba-content-pane ${this.currentSubtab === 'browser' ? 'active' : ''}" id="dba-pane-browser">${this.currentSubtab === 'browser' ? this.renderDatabaseBrowser() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'dbmonitor' ? 'active' : ''}" id="dba-pane-dbmonitor">${this.currentSubtab === 'dbmonitor' ? this.renderDbMonitor() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'unixmonitor' ? 'active' : ''}" id="dba-pane-unixmonitor">${this.currentSubtab === 'unixmonitor' ? this.renderUnixMonitor() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'tablespacemap' ? 'active' : ''}" id="dba-pane-tablespacemap">${this.currentSubtab === 'tablespacemap' ? this.renderTablespaceMap() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'spacemanager' ? 'active' : ''}" id="dba-pane-spacemanager">${this.currentSubtab === 'spacemanager' ? this.renderSpaceManager() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'segmentadvisor' ? 'active' : ''}" id="dba-pane-segmentadvisor">${this.currentSubtab === 'segmentadvisor' ? this.renderSegmentAdvisor() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'undoadvisor' ? 'active' : ''}" id="dba-pane-undoadvisor">${this.currentSubtab === 'undoadvisor' ? this.renderUndoAdvisor() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'flashback' ? 'active' : ''}" id="dba-pane-flashback">${this.currentSubtab === 'flashback' ? this.renderFlashback() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'logminer' ? 'active' : ''}" id="dba-pane-logminer">${this.currentSubtab === 'logminer' ? this.renderLogMiner() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'dataguard' ? 'active' : ''}" id="dba-pane-dataguard">${this.currentSubtab === 'dataguard' ? this.renderDataGuard() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'asm' ? 'active' : ''}" id="dba-pane-asm">${this.currentSubtab === 'asm' ? this.renderAsm() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'rac' ? 'active' : ''}" id="dba-pane-rac">${this.currentSubtab === 'rac' ? this.renderRac() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'exadata' ? 'active' : ''}" id="dba-pane-exadata">${this.currentSubtab === 'exadata' ? this.renderExadata() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'audit' ? 'active' : ''}" id="dba-pane-audit">${this.currentSubtab === 'audit' ? this.renderAudit() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'wallet' ? 'active' : ''}" id="dba-pane-wallet">${this.currentSubtab === 'wallet' ? this.renderWallet() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'schemacompare' ? 'active' : ''}" id="dba-pane-schemacompare">${this.currentSubtab === 'schemacompare' ? this.renderSchemaCompare() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'datacompare' ? 'active' : ''}" id="dba-pane-datacompare">${this.currentSubtab === 'datacompare' ? this.renderDataCompare() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'dbcompare' ? 'active' : ''}" id="dba-pane-dbcompare">${this.currentSubtab === 'dbcompare' ? this.renderDbCompare() : ''}</div>
-              <div class="dba-content-pane ${this.currentSubtab === 'awr' ? 'active' : ''}" id="dba-pane-awr">${this.currentSubtab === 'awr' ? this.renderAwr() : ''}</div>
-            `}
+            <div class="dba-content-pane ${this.currentSubtab === 'browser' ? 'active' : ''}" id="dba-pane-browser">${this.currentSubtab === 'browser' ? (isConn ? this.renderDatabaseBrowser() : this.renderDisconnectedWatermark(this.getSubtabTitle('browser'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'dbmonitor' ? 'active' : ''}" id="dba-pane-dbmonitor">${this.currentSubtab === 'dbmonitor' ? (isConn ? this.renderDbMonitor() : this.renderDisconnectedWatermark(this.getSubtabTitle('dbmonitor'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'unixmonitor' ? 'active' : ''}" id="dba-pane-unixmonitor">${this.currentSubtab === 'unixmonitor' ? (isConn ? this.renderUnixMonitor() : this.renderDisconnectedWatermark(this.getSubtabTitle('unixmonitor'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'tablespacemap' ? 'active' : ''}" id="dba-pane-tablespacemap">${this.currentSubtab === 'tablespacemap' ? (isConn ? this.renderTablespaceMap() : this.renderDisconnectedWatermark(this.getSubtabTitle('tablespacemap'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'spacemanager' ? 'active' : ''}" id="dba-pane-spacemanager">${this.currentSubtab === 'spacemanager' ? (isConn ? this.renderSpaceManager() : this.renderDisconnectedWatermark(this.getSubtabTitle('spacemanager'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'segmentadvisor' ? 'active' : ''}" id="dba-pane-segmentadvisor">${this.currentSubtab === 'segmentadvisor' ? (isConn ? this.renderSegmentAdvisor() : this.renderDisconnectedWatermark(this.getSubtabTitle('segmentadvisor'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'undoadvisor' ? 'active' : ''}" id="dba-pane-undoadvisor">${this.currentSubtab === 'undoadvisor' ? (isConn ? this.renderUndoAdvisor() : this.renderDisconnectedWatermark(this.getSubtabTitle('undoadvisor'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'rman' ? 'active' : ''}" id="dba-pane-rman">${this.currentSubtab === 'rman' ? (isConn ? this.renderRman() : this.renderDisconnectedWatermark(this.getSubtabTitle('rman'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'flashback' ? 'active' : ''}" id="dba-pane-flashback">${this.currentSubtab === 'flashback' ? (isConn ? this.renderFlashback() : this.renderDisconnectedWatermark(this.getSubtabTitle('flashback'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'logminer' ? 'active' : ''}" id="dba-pane-logminer">${this.currentSubtab === 'logminer' ? (isConn ? this.renderLogMiner() : this.renderDisconnectedWatermark(this.getSubtabTitle('logminer'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'dataguard' ? 'active' : ''}" id="dba-pane-dataguard">${this.currentSubtab === 'dataguard' ? (isConn ? this.renderDataGuard() : this.renderDisconnectedWatermark(this.getSubtabTitle('dataguard'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'asm' ? 'active' : ''}" id="dba-pane-asm">${this.currentSubtab === 'asm' ? (isConn ? this.renderAsm() : this.renderDisconnectedWatermark(this.getSubtabTitle('asm'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'rac' ? 'active' : ''}" id="dba-pane-rac">${this.currentSubtab === 'rac' ? (isConn ? this.renderRac() : this.renderDisconnectedWatermark(this.getSubtabTitle('rac'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'exadata' ? 'active' : ''}" id="dba-pane-exadata">${this.currentSubtab === 'exadata' ? (isConn ? this.renderExadata() : this.renderDisconnectedWatermark(this.getSubtabTitle('exadata'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'audit' ? 'active' : ''}" id="dba-pane-audit">${this.currentSubtab === 'audit' ? (isConn ? this.renderAudit() : this.renderDisconnectedWatermark(this.getSubtabTitle('audit'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'wallet' ? 'active' : ''}" id="dba-pane-wallet">${this.currentSubtab === 'wallet' ? (isConn ? this.renderWallet() : this.renderDisconnectedWatermark(this.getSubtabTitle('wallet'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'schemacompare' ? 'active' : ''}" id="dba-pane-schemacompare">${this.currentSubtab === 'schemacompare' ? (isConn ? this.renderSchemaCompare() : this.renderDisconnectedWatermark(this.getSubtabTitle('schemacompare'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'datacompare' ? 'active' : ''}" id="dba-pane-datacompare">${this.currentSubtab === 'datacompare' ? (isConn ? this.renderDataCompare() : this.renderDisconnectedWatermark(this.getSubtabTitle('datacompare'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'dbcompare' ? 'active' : ''}" id="dba-pane-dbcompare">${this.currentSubtab === 'dbcompare' ? (isConn ? this.renderDbCompare() : this.renderDisconnectedWatermark(this.getSubtabTitle('dbcompare'))) : ''}</div>
+            <div class="dba-content-pane ${this.currentSubtab === 'awr' ? 'active' : ''}" id="dba-pane-awr">${this.currentSubtab === 'awr' ? (isConn ? this.renderAwr() : this.renderDisconnectedWatermark(this.getSubtabTitle('awr'))) : ''}</div>
           </div>
         </div>
       </div>
     `;
+    this.initDbaSplitter();
+  }
+
+  initDbaSplitter() {
+    const splitter = document.getElementById('splitter-dba-sidebar');
+    const sidebar = this.container?.querySelector('.dba-sidebar-nav');
+    if (!splitter || !sidebar) return;
+    if (this._dbaSidebarWidth) {
+      sidebar.style.width = `${this._dbaSidebarWidth}px`;
+      sidebar.style.flex = `0 0 ${this._dbaSidebarWidth}px`;
+    }
+    let dragging = false;
+    splitter.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      splitter.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const rect = this.container.getBoundingClientRect();
+      const w = Math.max(150, Math.min(rect.width - 320, e.clientX - rect.left));
+      this._dbaSidebarWidth = w;
+      sidebar.style.width = `${w}px`;
+      sidebar.style.flex = `0 0 ${w}px`;
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
   }
 
   renderSubtabByKey(subKey) {
@@ -263,6 +305,7 @@ class DbaTools {
       spacemanager: () => this.renderSpaceManager(),
       segmentadvisor: () => this.renderSegmentAdvisor(),
       undoadvisor: () => this.renderUndoAdvisor(),
+      rman: () => this.renderRman(),
       flashback: () => this.renderFlashback(),
       logminer: () => this.renderLogMiner(),
       dataguard: () => this.renderDataGuard(),
@@ -279,8 +322,58 @@ class DbaTools {
     return map[subKey] ? map[subKey]() : '';
   }
 
+  updateConnectionState(isConn) {
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    const connBool = isConn !== undefined ? Boolean(isConn) : Boolean(window.TracesApp?.isConnected?.() || activeConn);
+
+    if (this._renderedWithConn !== connBool || !this.container?.querySelector('.dba-main-content')) {
+      this.render();
+      if (connBool && window.TracesApp?.currentView === 'dba') {
+        this.loadSubtabData(this.currentSubtab);
+      }
+    } else {
+      this.updateConnectionBadge();
+    }
+  }
+
+  updateConnectionBadge() {
+    if (!this.container) return;
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    const isConn = Boolean(window.TracesApp?.isConnected?.() || activeConn);
+    const badge = this.container.querySelector('.toad-conn-badge-indicator');
+    if (badge) {
+      const user = activeConn?.user || 'SYS';
+      const host = activeConn?.host || 'localhost';
+      const port = activeConn?.port || 1521;
+      const sname = activeConn?.serviceName || activeConn?.service_name || 'ORCL';
+      const dbTarget = isConn ? `${user}@${host}:${port}/${sname}` : 'Desconectado';
+      badge.style.background = isConn ? '#e0f2fe' : '#fee2e2';
+      badge.style.color = isConn ? '#0369a1' : '#b91c1c';
+      badge.textContent = isConn ? `● Conectado: ${dbTarget}` : '● Desconectado';
+    }
+  }
+
+  onViewActivated(subtabKey) {
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    const isConn = Boolean(window.TracesApp?.isConnected?.() || activeConn);
+
+    if (this._renderedWithConn !== isConn || !this.container?.querySelector('.dba-main-content')) {
+      this.render();
+    } else {
+      this.updateConnectionBadge();
+    }
+
+    const targetSub = subtabKey || this.currentSubtab || 'browser';
+    this.switchSubtab(targetSub);
+  }
+
   async switchSubtab(subKey) {
     this.currentSubtab = subKey;
+
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    const isConn = Boolean(window.TracesApp?.isConnected?.() || activeConn);
+
+    this.updateConnectionBadge();
 
     // Update left sidebar active class
     document.querySelectorAll('.dba-nav-item').forEach(b => {
@@ -300,21 +393,24 @@ class DbaTools {
       this.monitorInterval = null;
     }
 
-    if (!window.TracesApp || !window.TracesApp.isConnected()) {
-      const mainContent = this.container.querySelector('.dba-main-content');
-      if (mainContent) {
-        mainContent.innerHTML = `
-          <div class="dba-content-pane active" id="dba-pane-${subKey}">
-            ${this.renderDisconnectedWatermark(this.getSubtabTitle(subKey))}
-          </div>
-        `;
+    let targetPane = document.getElementById(`dba-pane-${subKey}`);
+    if (!targetPane) {
+      this.render();
+      targetPane = document.getElementById(`dba-pane-${subKey}`);
+    }
+
+    if (!isConn) {
+      if (targetPane) {
+        targetPane.innerHTML = this.renderDisconnectedWatermark(this.getSubtabTitle(subKey));
       }
+      document.querySelectorAll('.dba-content-pane').forEach(p => {
+        p.classList.toggle('active', p.id === `dba-pane-${subKey}`);
+      });
       return;
     }
 
-    // Lazily populate target pane if empty
-    const targetPane = document.getElementById(`dba-pane-${subKey}`);
-    if (targetPane && !targetPane.innerHTML.trim()) {
+    // Populate target pane if empty or previously showing watermark
+    if (targetPane && (!targetPane.innerHTML.trim() || targetPane.querySelector('.toad-disconnected-watermark'))) {
       targetPane.innerHTML = this.renderSubtabByKey(subKey);
     }
 
@@ -323,15 +419,14 @@ class DbaTools {
       p.classList.toggle('active', p.id === `dba-pane-${subKey}`);
     });
 
-    if (window.TracesApp && window.TracesApp.isRealDatabase) {
-      await this.loadSubtabData(subKey);
+    // Load data from live Oracle DB
+    await this.loadSubtabData(subKey);
 
-      // Start periodic poll for DB Monitor
-      if (subKey === 'dbmonitor') {
-        this.monitorInterval = setInterval(() => {
-          if (this.currentSubtab === 'dbmonitor') this.loadSubtabData('dbmonitor', true);
-        }, 3000);
-      }
+    // Start periodic poll for DB Monitor
+    if (subKey === 'dbmonitor') {
+      this.monitorInterval = setInterval(() => {
+        if (this.currentSubtab === 'dbmonitor') this.loadSubtabData('dbmonitor', true);
+      }, 3000);
     }
   }
 
@@ -345,7 +440,12 @@ class DbaTools {
         'browser': '/api/parameters',
         'flashback': '/api/dba/recyclebin'
       };
-      const apiUrl = urlMap[subKey] || `/api/dba/${subKey}`;
+      let apiUrl = urlMap[subKey] || `/api/dba/${subKey}`;
+      const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+      if (activeConn?.id) {
+        const sep = apiUrl.includes('?') ? '&' : '?';
+        apiUrl += `${sep}conn_id=${encodeURIComponent(activeConn.id)}`;
+      }
       const resp = await fetch(apiUrl);
       if (!resp.ok) return;
       const data = await resp.json();
@@ -379,6 +479,9 @@ class DbaTools {
           break;
         case 'undoadvisor':
           pane.innerHTML = this.renderUndoAdvisor(data);
+          break;
+        case 'rman':
+          pane.innerHTML = this.renderRman(data);
           break;
         case 'flashback':
           pane.innerHTML = this.renderFlashback(data);
@@ -440,22 +543,51 @@ class DbaTools {
 
   // 1. Database Browser
   renderDatabaseBrowser() {
-    if (!window.TracesApp?.isConnected()) {
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    const isConn = Boolean(window.TracesApp?.isConnected?.() || activeConn);
+    if (!isConn) {
       return this.renderDisconnectedWatermark('Database Browser & SPFILE Editor');
     }
 
-    const list = this.realParameters || (window.TRACES_DB ? window.TRACES_DB.parameters : []);
-    const paramsHtml = list.map(p => `
-      <tr data-name="${(p.name || '').toLowerCase()}" data-desc="${(p.description || '').toLowerCase()}" data-dynamic="${p.isDynamic ? 'true' : 'false'}" data-default="${p.isDefault !== false ? 'true' : 'false'}">
-        <td><b>${p.name}</b></td>
-        <td style="font-family: var(--toad-font-code); font-weight: 700; color: #0078d7;">${p.value}</td>
-        <td>${p.isDynamic ? '<span style="color:#008000; font-weight:600;">YES (In-Memory)</span>' : '<span style="color:#c00000; font-weight:600;">NO (SPFILE Restart)</span>'}</td>
-        <td style="color: #666; font-size: 11px;">${p.description || '-'}</td>
-        <td>
-          <button class="btn" style="padding: 1px 6px;" onclick="window.TracesApp.dbaTools.editParameter('${p.name}', '${p.value}');">Alter</button>
+    const list = this.realParameters || this.cachedData['browser']?.parameters || (window.TRACES_DB ? window.TRACES_DB.parameters : []);
+    const paramsHtml = list.length === 0 ? `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 30px; color: #64748b;">
+          ⏳ Carregando parâmetros de inicialização do banco Oracle (SPFILE / V$PARAMETER)...
         </td>
       </tr>
-    `).join('');
+    ` : list.map(p => {
+      const nameLower = (p.name || '').toLowerCase();
+      let sysMod = (p.sysModifiable || '').toUpperCase();
+      if (!sysMod) {
+        if (nameLower === 'session_cached_cursors' || p.isDeferred) sysMod = 'DEFERRED';
+        else if (p.isDynamic) sysMod = 'IMMEDIATE';
+        else sysMod = 'FALSE';
+      }
+      const sesMod = Boolean(p.sesModifiable || nameLower === 'session_cached_cursors');
+      let modBadge = '';
+      if (sysMod === 'IMMEDIATE') {
+        modBadge = `<span style="color:#008000; font-weight:700;" title="ISSYS_MODIFIABLE = IMMEDIATE (Altera em memória imediatamente via SCOPE=BOTH ou MEMORY)">IMMEDIATE (In-Memory)</span>`;
+      } else if (sysMod === 'DEFERRED') {
+        modBadge = `<span style="color:#d97706; font-weight:700;" title="ISSYS_MODIFIABLE = DEFERRED (Não aceita SCOPE=MEMORY direto sem DEFERRED! Use ALTER SYSTEM SET ... DEFERRED SCOPE=BOTH)">DEFERRED (Próximas Sessões)</span>`;
+      } else {
+        modBadge = `<span style="color:#c00000; font-weight:700;" title="ISSYS_MODIFIABLE = FALSE (Parâmetro estático: requer SCOPE=SPFILE e restart da instância)">STATIC (SPFILE Restart)</span>`;
+      }
+      const sesBadge = sesMod ? `<span style="background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:600;">ALTER SESSION: YES</span>` : `<span style="color:#94a3b8; font-size:10px;">NO</span>`;
+      const safeVal = String(p.value ?? '').replace(/'/g, "\\'");
+      return `
+      <tr data-name="${nameLower}" data-desc="${(p.description || '').toLowerCase()}" data-sysmod="${sysMod}" data-dynamic="${sysMod === 'IMMEDIATE' ? 'true' : 'false'}" data-deferred="${sysMod === 'DEFERRED' ? 'true' : 'false'}" data-default="${p.isDefault !== false ? 'true' : 'false'}">
+        <td><b>${p.name}</b></td>
+        <td style="font-family: var(--toad-font-code); font-weight: 700; color: #0078d7;">${p.value ?? ''}</td>
+        <td>${modBadge}</td>
+        <td>${sesBadge}</td>
+        <td style="color: #666; font-size: 11px;">${p.description || '-'}</td>
+        <td>
+          <button class="btn" style="padding: 1px 6px;" onclick="window.TracesApp.dbaTools.editParameter('${p.name}', '${safeVal}', '${sysMod}', ${sesMod});">Alter...</button>
+        </td>
+      </tr>
+    `;
+    }).join('');
 
     const alertList = window.TRACES_DB ? window.TRACES_DB.alertLog : [];
     const alertHtml = alertList.map(a => `
@@ -466,8 +598,11 @@ class DbaTools {
       </div>
     `).join('');
 
-    const connConfig = window.TracesApp?.realDatabaseConfig;
-    const dbTarget = connConfig ? `${connConfig.user}@${connConfig.host}:${connConfig.port}/${connConfig.serviceName}` : 'Desconectado';
+    const user = activeConn?.user || 'SYS';
+    const host = activeConn?.host || 'localhost';
+    const port = activeConn?.port || 1521;
+    const sname = activeConn?.serviceName || activeConn?.service_name || 'ORCL';
+    const dbTarget = isConn ? `${user}@${host}:${port}/${sname}` : 'Desconectado';
 
     setTimeout(() => {
       this.applyParamFilter();
@@ -490,28 +625,29 @@ class DbaTools {
       <div class="dba-filter-bar">
         <div class="dba-filter-input-wrap">
           <span style="font-size: 12px; color: #64748b;">🔍</span>
-          <input type="text" id="dba-filter-param-text" placeholder="Filtrar parâmetro por nome ou descrição..." oninput="window.TracesApp.dbaTools.applyParamFilter();" value="${this.filterState.paramText || ''}">
+          <input type="text" id="dba-filter-param-text" placeholder="Filtrar parâmetro por nome ou descrição (ex: session_cached_cursors)..." oninput="window.TracesApp.dbaTools.applyParamFilter();" value="${this.filterState.paramText || ''}">
         </div>
-        <select class="toad-conn-combobox" id="dba-filter-param-type" style="height: 24px; min-width: 175px;" onchange="window.TracesApp.dbaTools.applyParamFilter();">
+        <select class="toad-conn-combobox" id="dba-filter-param-type" style="height: 24px; min-width: 215px;" onchange="window.TracesApp.dbaTools.applyParamFilter();">
           <option value="all" ${this.filterState.paramType === 'all' ? 'selected' : ''}>Todos os Parâmetros</option>
-          <option value="dynamic" ${this.filterState.paramType === 'dynamic' ? 'selected' : ''}>Modificável em Memória (Dynamic)</option>
-          <option value="static" ${this.filterState.paramType === 'static' ? 'selected' : ''}>Requer Reinicialização (Static)</option>
+          <option value="dynamic" ${this.filterState.paramType === 'dynamic' ? 'selected' : ''}>IMMEDIATE (Modificável em Memória)</option>
+          <option value="deferred" ${this.filterState.paramType === 'deferred' ? 'selected' : ''}>DEFERRED (Próximas Sessões / SPFILE)</option>
+          <option value="static" ${this.filterState.paramType === 'static' ? 'selected' : ''}>STATIC (Requer Restart / SPFILE)</option>
           <option value="modified" ${this.filterState.paramType === 'modified' ? 'selected' : ''}>Modificados (Não padrão)</option>
         </select>
         <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.dbaTools.clearParamFilter();" title="Limpar Filtro">✕ Limpar</button>
         <span class="dba-filter-count-badge" id="dba-param-count">Exibindo ${list.length} de ${list.length} parâmetros</span>
       </div>
 
-      <div style="height: 260px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf;">
+      <div style="height: 290px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf; resize: vertical;">
         <table class="meta-table" style="width: 100%;">
-          <thead><tr><th>Parameter Name</th><th>Current Value</th><th>Dynamic?</th><th>Description</th><th>Action</th></tr></thead>
+          <thead><tr><th>Parameter Name</th><th>Current Value</th><th>ISSYS_MODIFIABLE (System Scope)</th><th>ISSES_MODIFIABLE</th><th>Description</th><th>Action</th></tr></thead>
           <tbody id="dba-param-table-body">${paramsHtml}</tbody>
         </table>
       </div>
 
       <!-- Alert Log Header & Filter Strip -->
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 4px;">
-        <span style="font-weight: 700; font-size: 12px;">Database Alert Log (alert_${connConfig?.serviceName || 'ORCL'}.log)</span>
+        <span style="font-weight: 700; font-size: 12px;">Database Alert Log (alert_${sname}.log)</span>
       </div>
 
       <div class="dba-filter-bar">
@@ -529,35 +665,135 @@ class DbaTools {
         <span class="dba-filter-count-badge" id="dba-alert-count">Exibindo ${alertList.length} entradas</span>
       </div>
 
-      <div id="dba-alert-container" style="height: 120px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf; padding: 6px;">
+      <div id="dba-alert-container" style="height: 120px; overflow-y: auto; background: #fff; border: 1px solid #bfbfbf; padding: 6px; resize: vertical;">
         ${alertHtml}
       </div>
     `;
   }
 
-  async editParameter(paramName, currentVal) {
+  formatParamSqlValue(rawVal) {
+    const trimmed = String(rawVal ?? '').trim();
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
+    if (/^(TRUE|FALSE)$/i.test(trimmed)) return trimmed.toUpperCase();
+    if (/^\d+[KMGTP]$/i.test(trimmed)) return trimmed.toUpperCase();
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed;
+    return `'${trimmed.replace(/'/g, "''")}'`;
+  }
+
+  editParameter(paramName, currentVal, sysModifiable = 'IMMEDIATE', sesModifiable = false) {
     if (!window.TracesApp?.isConnected()) {
       window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se para alterar parâmetros.', 'warning');
       window.TracesApp?.connectionManager?.openModal();
       return;
     }
 
-    const newVal = prompt(`Alter Oracle System Parameter (${paramName}):\nALTER SYSTEM SET ${paramName} = <new_val> SCOPE=BOTH;`, currentVal);
-    if (!newVal) return;
+    const nameLower = (paramName || '').toLowerCase();
+    const sysMod = (nameLower === 'session_cached_cursors' ? 'DEFERRED' : (sysModifiable || 'IMMEDIATE')).toUpperCase();
+    const sesMod = Boolean(sesModifiable || nameLower === 'session_cached_cursors');
+
+    let existingModal = document.getElementById('toad-param-alter-modal');
+    if (existingModal) existingModal.remove();
+
+    let defaultScope = 'BOTH';
+    if (sysMod === 'DEFERRED') defaultScope = 'DEFERRED_BOTH';
+    else if (sysMod === 'FALSE') defaultScope = 'SPFILE';
+
+    const modal = document.createElement('div');
+    modal.id = 'toad-param-alter-modal';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:99999; display:flex; align-items:center; justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:#f8fafc; border:2px solid #0284c7; border-radius:6px; width:540px; max-width:95vw; box-shadow:0 16px 40px rgba(0,0,0,0.35); font-family:var(--toad-font-ui, sans-serif); overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#0f172a,#0369a1); color:#fff; padding:8px 14px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:700; font-size:13px;">⚙️ Alter Parameter — ${paramName}</span>
+          <button class="btn" style="background:transparent; border:none; color:#fff; font-weight:700; cursor:pointer;" onclick="document.getElementById('toad-param-alter-modal')?.remove();">✕</button>
+        </div>
+        <div style="padding:14px; display:flex; flex-direction:column; gap:10px; font-size:12px;">
+          <div style="background:#fff; border:1px solid #cbd5e1; padding:8px 10px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
+            <div><b>ISSYS_MODIFIABLE:</b> <span style="font-weight:700; color:${sysMod === 'IMMEDIATE' ? '#15803d' : sysMod === 'DEFERRED' ? '#d97706' : '#b91c1c'};">${sysMod}</span></div>
+            <div><b>ISSES_MODIFIABLE:</b> <span style="font-weight:700; color:${sesMod ? '#0369a1' : '#64748b'};">${sesMod ? 'TRUE (ALTER SESSION)' : 'FALSE'}</span></div>
+          </div>
+          ${sysMod === 'DEFERRED' ? `
+            <div style="background:#fffbeb; border:1px solid #f59e0b; color:#92400e; padding:8px 10px; border-radius:4px; font-size:11px;">
+              ⚠️ <b>Nota Oracle (DEFERRED):</b> O parâmetro <code>${paramName}</code> não é modificável diretamente em memória para sessões atuais (<code>ORA-02096</code> se omitir <code>DEFERRED</code>). Ele deve ser alterado com a cláusula <b><code>DEFERRED</code></b> (passa a valer para novas sessões conectadas) ou via <code>ALTER SESSION</code> / <code>SCOPE=SPFILE</code>.
+            </div>
+          ` : sysMod === 'FALSE' ? `
+            <div style="background:#fef2f2; border:1px solid #ef4444; color:#991b1b; padding:8px 10px; border-radius:4px; font-size:11px;">
+              🔒 <b>Nota Oracle (STATIC):</b> O parâmetro <code>${paramName}</code> é estático (<code>ISSYS_MODIFIABLE=FALSE</code>). Só pode ser alterado com <b><code>SCOPE=SPFILE</code></b> e exige reinicialização da instância.
+            </div>
+          ` : ''}
+          <div>
+            <label style="font-weight:700; display:block; margin-bottom:4px;">Novo Valor:</label>
+            <input type="text" id="toad-param-new-val" value="${String(currentVal ?? '').replace(/"/g, '&quot;')}" style="width:100%; height:28px; padding:0 8px; border:1px solid #94a3b8; border-radius:3px; font-family:var(--toad-font-code, monospace); font-weight:700;" oninput="window.TracesApp.dbaTools.updateParamSqlPreview('${paramName}');">
+          </div>
+          <div>
+            <label style="font-weight:700; display:block; margin-bottom:4px;">Escopo de Alteração (Scope &amp; Cláusula):</label>
+            <select id="toad-param-scope-sel" style="width:100%; height:28px; padding:0 6px; border:1px solid #94a3b8; border-radius:3px;" onchange="window.TracesApp.dbaTools.updateParamSqlPreview('${paramName}');">
+              <option value="DEFERRED_BOTH" ${defaultScope === 'DEFERRED_BOTH' ? 'selected' : ''}>ALTER SYSTEM ... DEFERRED SCOPE=BOTH (Novas Sessões + SPFILE)</option>
+              <option value="DEFERRED_MEMORY" ${defaultScope === 'DEFERRED_MEMORY' ? 'selected' : ''}>ALTER SYSTEM ... DEFERRED SCOPE=MEMORY (Apenas Novas Sessões)</option>
+              <option value="BOTH" ${defaultScope === 'BOTH' ? 'selected' : ''}>ALTER SYSTEM ... SCOPE=BOTH (Imediato em Memória + SPFILE)</option>
+              <option value="MEMORY" ${defaultScope === 'MEMORY' ? 'selected' : ''}>ALTER SYSTEM ... SCOPE=MEMORY (Apenas Memória Imediato)</option>
+              <option value="SPFILE" ${defaultScope === 'SPFILE' ? 'selected' : ''}>ALTER SYSTEM ... SCOPE=SPFILE (Apenas SPFILE / Próximo Boot)</option>
+              ${sesMod ? `<option value="SESSION">ALTER SESSION SET ${paramName} = ... (Apenas Sessão Atual)</option>` : ''}
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:700; display:block; margin-bottom:4px;">Preview do Comando SQL:</label>
+            <pre id="toad-param-sql-preview" style="margin:0; padding:8px; background:#0f172a; color:#38bdf8; border-radius:4px; font-family:var(--toad-font-code, monospace); font-size:11px; white-space:pre-wrap;"></pre>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+            <button class="btn" style="height:28px; padding:0 12px;" onclick="const sql=document.getElementById('toad-param-sql-preview')?.textContent; if(sql){ window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor?.addNewTab(sql, 'ALTER_${paramName}.sql'); document.getElementById('toad-param-alter-modal')?.remove(); }">📝 Abrir no SQL Editor</button>
+            <button class="btn" style="height:28px; padding:0 12px;" onclick="document.getElementById('toad-param-alter-modal')?.remove();">Cancelar</button>
+            <button class="btn btn-primary" style="height:28px; padding:0 14px; font-weight:700;" onclick="window.TracesApp.dbaTools.executeParamAlter('${paramName}');">⚡ Executar Agora</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    this.updateParamSqlPreview(paramName);
+    setTimeout(() => document.getElementById('toad-param-new-val')?.focus(), 40);
+  }
+
+  updateParamSqlPreview(paramName) {
+    const valEl = document.getElementById('toad-param-new-val');
+    const scopeEl = document.getElementById('toad-param-scope-sel');
+    const prevEl = document.getElementById('toad-param-sql-preview');
+    if (!valEl || !scopeEl || !prevEl) return;
+    const formattedVal = this.formatParamSqlValue(valEl.value);
+    const scope = scopeEl.value;
+    let sql = '';
+    if (scope === 'SESSION') {
+      sql = `ALTER SESSION SET ${paramName} = ${formattedVal}`;
+    } else if (scope === 'DEFERRED_BOTH') {
+      sql = `ALTER SYSTEM SET ${paramName} = ${formattedVal} DEFERRED SCOPE=BOTH`;
+    } else if (scope === 'DEFERRED_MEMORY') {
+      sql = `ALTER SYSTEM SET ${paramName} = ${formattedVal} DEFERRED SCOPE=MEMORY`;
+    } else {
+      sql = `ALTER SYSTEM SET ${paramName} = ${formattedVal} SCOPE=${scope}`;
+    }
+    prevEl.textContent = sql + ';';
+  }
+
+  async executeParamAlter(paramName) {
+    const valEl = document.getElementById('toad-param-new-val');
+    const prevEl = document.getElementById('toad-param-sql-preview');
+    const newVal = valEl ? valEl.value.trim() : '';
+    const sqlRaw = prevEl ? prevEl.textContent.trim().replace(/;$/, '') : '';
+    if (!newVal || !sqlRaw) return;
 
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
       try {
-        const sql = `ALTER SYSTEM SET ${paramName} = '${newVal}' SCOPE=BOTH;`;
+        const activeConn = window.TracesApp?.getActiveConnection?.();
         const resp = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql })
+          body: JSON.stringify({ sql: sqlRaw, conn_id: activeConn?.id })
         });
         const data = await resp.json();
         if (data.error) {
           window.TracesApp.notify(`Erro ao alterar parâmetro: ${data.error}`, 'error');
         } else {
-          window.TracesApp.notify(`ALTER SYSTEM SET ${paramName}='${newVal}' SCOPE=BOTH executado com sucesso no Oracle.`, 'success');
+          window.TracesApp.notify(`${sqlRaw}; executado com sucesso no Oracle!`, 'success');
+          document.getElementById('toad-param-alter-modal')?.remove();
           await this.loadSubtabData('browser');
         }
       } catch (e) {
@@ -568,8 +804,9 @@ class DbaTools {
 
     const p = (window.TRACES_DB ? window.TRACES_DB.parameters : []).find(item => item.name === paramName);
     if (p) p.value = newVal;
+    document.getElementById('toad-param-alter-modal')?.remove();
     this.switchSubtab('browser');
-    window.TracesApp.notify(`ALTER SYSTEM SET ${paramName}='${newVal}' SCOPE=BOTH executado (Modo Local).`, 'success');
+    window.TracesApp.notify(`${sqlRaw}; executado com sucesso.`, 'success');
   }
 
   // 2. Database Monitor
@@ -976,43 +1213,104 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
     }
   }
 
-  // 5. Space Manager & Capacity Growth Forecast
+  // 5. Space Manager & Capacity Growth Forecast (with Full Max Usage & Autoextend Overview)
   renderSpaceManager(data) {
-    const list = data?.tablespaces || [
-      { name: 'SYSTEM', totalMb: 1200, usedMb: 1140, freeMb: 60, usedPct: 95.0, dailyGrowthMb: 0.8, daysUntilFull: 75 },
-      { name: 'SYSAUX', totalMb: 2400, usedMb: 2180, freeMb: 220, usedPct: 90.8, dailyGrowthMb: 3.2, daysUntilFull: 68 },
-      { name: 'UNDOTBS1', totalMb: 4096, usedMb: 1240, freeMb: 2856, usedPct: 30.2, dailyGrowthMb: 0.0, daysUntilFull: 999 },
-      { name: 'USERS', totalMb: 8192, usedMb: 4452, freeMb: 3740, usedPct: 54.3, dailyGrowthMb: 12.5, daysUntilFull: 299 },
-      { name: 'TEMP', totalMb: 4096, usedMb: 512, freeMb: 3584, usedPct: 12.5, dailyGrowthMb: 0.0, daysUntilFull: 999 }
+    const list = data?.spaces || data?.tablespaces || [
+      { name: 'SYSTEM', totalMb: 1200, usedMb: 1140, freeMb: 60, usedPct: 95.0, maxMb: 32768, freeMaxMb: 31628, maxPct: 3.5, autoextend: 'YES', datafiles: 1, dailyGrowthMb: 0.8, daysUntilFull: 75 },
+      { name: 'SYSAUX', totalMb: 2400, usedMb: 2180, freeMb: 220, usedPct: 90.8, maxMb: 32768, freeMaxMb: 30588, maxPct: 6.7, autoextend: 'YES', datafiles: 1, dailyGrowthMb: 3.2, daysUntilFull: 68 },
+      { name: 'UNDOTBS1', totalMb: 4096, usedMb: 1240, freeMb: 2856, usedPct: 30.2, maxMb: 16384, freeMaxMb: 15144, maxPct: 7.6, autoextend: 'YES', datafiles: 1, dailyGrowthMb: 0.0, daysUntilFull: 999 },
+      { name: 'USERS', totalMb: 8192, usedMb: 4452, freeMb: 3740, usedPct: 54.3, maxMb: 32768, freeMaxMb: 28316, maxPct: 13.6, autoextend: 'YES', datafiles: 2, dailyGrowthMb: 12.5, daysUntilFull: 299 },
+      { name: 'TEMP', totalMb: 4096, usedMb: 512, freeMb: 3584, usedPct: 12.5, maxMb: 8192, freeMaxMb: 7680, maxPct: 6.3, autoextend: 'YES', datafiles: 1, dailyGrowthMb: 0.0, daysUntilFull: 999 }
     ];
 
-    const rows = list.map(t => `
-      <tr data-name="${(t.name || '').toLowerCase()}" data-pct="${t.usedPct}">
-        <td><b>${t.name}</b></td>
-        <td style="text-align: right;">${t.totalMb} MB</td>
-        <td style="text-align: right;">${t.usedMb} MB</td>
-        <td style="text-align: right;">${t.freeMb} MB</td>
-        <td>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <div style="flex:1; background:#e0e0e0; height:8px; border-radius:4px; overflow:hidden;">
-              <div style="width:${Math.min(t.usedPct, 100)}%; background:${t.usedPct > 85 ? '#ef4444' : '#3b82f6'}; height:100%;"></div>
+    const sumAlloc = list.reduce((a, t) => a + Number(t.totalMb || 0), 0);
+    const sumUsed = list.reduce((a, t) => a + Number(t.usedMb || 0), 0);
+    const sumFree = list.reduce((a, t) => a + Number(t.freeMb ?? Math.max(0, (t.totalMb || 0) - (t.usedMb || 0))), 0);
+    const sumMax = list.reduce((a, t) => a + Number(t.maxMb || t.totalMb || 0), 0);
+    const sumFreeMax = Math.max(0, sumMax - sumUsed);
+    const allocPct = sumAlloc > 0 ? ((sumUsed / sumAlloc) * 100).toFixed(1) : '0.0';
+    const maxPct = sumMax > 0 ? ((sumUsed / sumMax) * 100).toFixed(1) : '0.0';
+
+    const rows = list.map(t => {
+      const uPct = Number(t.usedPct ?? t.pct ?? 0);
+      const mPct = Number(t.maxPct ?? (t.maxMb > 0 ? Math.round((t.usedMb / t.maxMb) * 1000) / 10 : uPct));
+      const mMb = Number(t.maxMb && t.maxMb >= t.totalMb ? t.maxMb : (t.autoextend === 'NO' ? t.totalMb : t.totalMb * 4));
+      const fm = Number(t.freeMaxMb ?? Math.max(0, mMb - (t.usedMb || 0)));
+      const cAlloc = uPct >= 85 ? '#ef4444' : uPct >= 70 ? '#f59e0b' : '#16a34a';
+      const cMax = mPct >= 85 ? '#ef4444' : mPct >= 70 ? '#f59e0b' : '#0284c7';
+      return `
+        <tr data-name="${(t.name || '').toLowerCase()}" data-pct="${uPct}">
+          <td><b style="color:#0284c7; cursor:pointer;" onclick="window.TracesApp.openWindow('browser', null, null); setTimeout(() => window.TracesApp.schemaBrowser.selectObject('${t.name}', 'tablespaces'), 100);">💾 ${t.name}</b></td>
+          <td style="text-align: right; font-weight:600;">${Number(t.totalMb).toLocaleString()} MB</td>
+          <td style="text-align: right; color:${cAlloc}; font-weight:700;">${Number(t.usedMb).toLocaleString()} MB</td>
+          <td style="text-align: right; color:#15803d;">${Number(t.freeMb).toLocaleString()} MB</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <div style="flex:1; background:#e0e0e0; height:8px; border-radius:4px; overflow:hidden;">
+                <div style="width:${Math.min(uPct, 100)}%; background:${cAlloc}; height:100%;"></div>
+              </div>
+              <span style="font-weight:700; font-size:11px; width:38px; color:${cAlloc};">${uPct}%</span>
             </div>
-            <span style="font-weight:700; font-size:11px; width:38px;">${t.usedPct}%</span>
-          </div>
-        </td>
-        <td style="text-align: right; color:#666;">+${t.dailyGrowthMb} MB/dia</td>
-        <td style="text-align: right; font-weight:700; color:${t.daysUntilFull < 60 ? '#c00000' : '#008000'};">
-          ${t.daysUntilFull > 365 ? '> 1 ano' : `${t.daysUntilFull} dias`}
-        </td>
-      </tr>
-    `).join('');
+          </td>
+          <td style="text-align: center;"><span style="font-size:10px; font-weight:700; padding:1px 6px; border-radius:8px; background:${t.autoextend === 'NO' ? '#fee2e2' : '#dcfce7'}; color:${t.autoextend === 'NO' ? '#991b1b' : '#166534'};">${t.autoextend || 'YES'}</span></td>
+          <td style="text-align: right; font-weight:700; color:#0369a1;">${Number(mMb).toLocaleString()} MB</td>
+          <td style="text-align: right; color:#15803d;">${Number(fm).toLocaleString()} MB</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <div style="flex:1; background:#e0e0e0; height:8px; border-radius:4px; overflow:hidden;">
+                <div style="width:${Math.min(mPct, 100)}%; background:${cMax}; height:100%;"></div>
+              </div>
+              <span style="font-weight:700; font-size:11px; width:38px; color:${cMax};">${mPct}%</span>
+            </div>
+          </td>
+          <td style="text-align: right; font-weight:700; color:${t.daysUntilFull < 60 ? '#c00000' : '#008000'};">
+            ${t.daysUntilFull > 365 ? '> 1 ano' : `${t.daysUntilFull} dias`}
+          </td>
+        </tr>
+      `;
+    }).join('');
 
     setTimeout(() => this.applySpaceFilter(), 0);
 
     return `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: 700; font-size: 13px;">Space Manager &amp; Capacity Growth Forecast (DBA_TABLESPACE_USAGE_METRICS)</span>
-        <button class="btn" onclick="window.TracesApp.dbaTools.switchSubtab('spacemanager');">🔄 Atualizar Métricas</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+        <div>
+          <span style="font-weight: 700; font-size: 13px;">Space Manager &amp; Capacity Growth Forecast (DBA_TABLESPACE_USAGE_METRICS &amp; MAXBYTES)</span>
+          <div style="font-size: 11px; color: #64748b;">Visão geral da alocação de espaço atual vs. teto máximo com Autoextend (MAXBYTES).</div>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-primary" onclick="window.TracesApp.openWindow('browser', null, null); setTimeout(() => window.TracesApp.schemaBrowser.openCreateObjectWizard('tablespaces'), 100);">➕ Nova Tablespace</button>
+          <button class="btn" onclick="window.TracesApp.dbaTools.switchSubtab('spacemanager');">🔄 Atualizar Métricas</button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 10px;">
+        <div style="background:#fff; border:1px solid #cbd5e1; border-radius:4px; padding:8px 10px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700;">TOTAL ALOCADO</div>
+          <div style="font-size:14px; font-weight:800; color:#0f172a;">${(sumAlloc/1024).toFixed(2)} GB</div>
+          <div style="font-size:10px; color:#64748b;">${Math.round(sumAlloc).toLocaleString()} MB</div>
+        </div>
+        <div style="background:#fff; border:1px solid #cbd5e1; border-radius:4px; padding:8px 10px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700;">TOTAL USADO</div>
+          <div style="font-size:14px; font-weight:800; color:#b45309;">${(sumUsed/1024).toFixed(2)} GB (${allocPct}%)</div>
+          <div style="font-size:10px; color:#64748b;">${Math.round(sumUsed).toLocaleString()} MB</div>
+        </div>
+        <div style="background:#fff; border:1px solid #cbd5e1; border-radius:4px; padding:8px 10px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700;">LIVRE ALOCADO</div>
+          <div style="font-size:14px; font-weight:800; color:#16a34a;">${(sumFree/1024).toFixed(2)} GB</div>
+          <div style="font-size:10px; color:#64748b;">${Math.round(sumFree).toLocaleString()} MB</div>
+        </div>
+        <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:4px; padding:8px 10px;">
+          <div style="font-size:10px; color:#0369a1; font-weight:700;">CAPACIDADE MÁX (AUTOEXTEND)</div>
+          <div style="font-size:14px; font-weight:800; color:#0369a1;">${(sumMax/1024).toFixed(2)} GB</div>
+          <div style="font-size:10px; color:#0284c7;">MAXBYTES Total</div>
+        </div>
+        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; padding:8px 10px;">
+          <div style="font-size:10px; color:#15803d; font-weight:700;">LIVRE ATÉ O MÁX (REAL)</div>
+          <div style="font-size:14px; font-weight:800; color:#15803d;">${(sumFreeMax/1024).toFixed(2)} GB</div>
+          <div style="font-size:10px; color:#16a34a;">Uso sobre Máx: <strong>${maxPct}%</strong></div>
+        </div>
       </div>
 
       <div class="dba-filter-bar">
@@ -1032,7 +1330,20 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
 
       <div style="background: #fff; border: 1px solid #bfbfbf; overflow-y: auto; max-height: 380px;">
         <table class="meta-table" style="width: 100%;">
-          <thead><tr><th>Tablespace</th><th style="text-align: right;">Total</th><th style="text-align: right;">Used</th><th style="text-align: right;">Free</th><th style="width:180px;">Usage %</th><th style="text-align: right;">Daily Growth</th><th style="text-align: right;">Forecast (Days Full)</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Tablespace</th>
+              <th style="text-align: right;">Alocado</th>
+              <th style="text-align: right;">Usado</th>
+              <th style="text-align: right;">Livre Aloc</th>
+              <th style="width:140px;">% Uso Alocado</th>
+              <th style="text-align: center;">Autoext</th>
+              <th style="text-align: right;">Máximo (MAXBYTES)</th>
+              <th style="text-align: right;">Livre até Máx</th>
+              <th style="width:140px;">% Uso Máx</th>
+              <th style="text-align: right;">Previsão</th>
+            </tr>
+          </thead>
           <tbody id="dba-space-table-body">${rows}</tbody>
         </table>
       </div>
@@ -1041,7 +1352,7 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
 
   // 6. Segment Advisor
   renderSegmentAdvisor(data) {
-    const list = data?.segments || [
+    const list = data?.findings || data?.segments || [
       { owner: 'HR', segmentName: 'EMPLOYEES', segmentType: 'TABLE', allocatedMb: 1.8, reclaimableMb: 0.6, clusteringFactor: '12 (Optimal)', recommendation: 'ALTER TABLE hr.employees SHRINK SPACE COMPACT;', actionSql: 'ALTER TABLE hr.employees SHRINK SPACE COMPACT;' },
       { owner: 'SALES_ADMIN', segmentName: 'CUSTOMERS', segmentType: 'TABLE', allocatedMb: 128.0, reclaimableMb: 44.2, clusteringFactor: '48', recommendation: 'ALTER TABLE sales_admin.customers MOVE;', actionSql: 'ALTER TABLE sales_admin.customers MOVE;' },
       { owner: 'HR', segmentName: 'EMP_JOB_IX', segmentType: 'INDEX', allocatedMb: 0.8, reclaimableMb: 0.3, clusteringFactor: '21 (Deleted Leaf Rows > 25%)', recommendation: 'ALTER INDEX hr.emp_job_ix REBUILD ONLINE NOLOGGING;', actionSql: 'ALTER INDEX hr.emp_job_ix REBUILD ONLINE NOLOGGING;' }
@@ -1127,36 +1438,48 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
       ]
     };
 
+    const samplesList = (u.samples && u.samples.length > 0)
+      ? u.samples
+      : (Array.isArray(u.history) && u.history.length > 0)
+      ? u.history.map(h => `${h.time || (h.beginTime + ' - ' + h.endTime)} | UNDOBLKS: ${Number(h.undoBlocks || h.blocksGenerated || 0).toLocaleString()} | TXNCOUNT: ${Number(h.txnCount || 0).toLocaleString()} | MAXQUERYLEN: ${h.maxQueryLen || 0}s | ORA-01555: ${h.ora01555 || 0}`)
+      : ['Nenhuma amostra de V$UNDOSTAT disponível.'];
+
     return `
       <div style="font-weight: 700; font-size: 13px;">Oracle Undo Advisor (V$UNDOSTAT &amp; ORA-01555 Sizing)</div>
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0;">
         <div style="background: #f7f7f7; border: 1px solid #ccc; padding: 10px; border-radius: 4px;">
           <div style="font-size: 10px; color: #666;">UNDO RETENTION</div>
-          <div style="font-size: 18px; font-weight: 700; color: #0078d7;">${u.undoRetention.toLocaleString()} sec</div>
-          <div style="font-size: 9.5px; color: #555;">(${Math.round(u.undoRetention / 60)} Minutes Guaranteed)</div>
+          <div style="font-size: 18px; font-weight: 700; color: #0078d7;">${Number(u.undoRetention || u.undoRetentionSec || 900).toLocaleString()} sec</div>
+          <div style="font-size: 9.5px; color: #555;">(${Math.round((u.undoRetention || u.undoRetentionSec || 900) / 60)} Minutes Guaranteed)</div>
         </div>
         <div style="background: #f7f7f7; border: 1px solid #ccc; padding: 10px; border-radius: 4px;">
           <div style="font-size: 10px; color: #666;">UNDO BLOCK RATE</div>
-          <div style="font-size: 18px; font-weight: 700; color: #008000;">${u.undoBlockRate} blocks/s</div>
-          <div style="font-size: 9.5px; color: #555;">Peak Workload: ${Math.round(u.undoBlockRate * 1.5)} blk/s</div>
+          <div style="font-size: 18px; font-weight: 700; color: #008000;">${u.undoBlockRate || 0} blocks/s</div>
+          <div style="font-size: 9.5px; color: #555;">Peak Workload: ${Math.round((u.undoBlockRate || 0) * 1.5)} blk/s</div>
         </div>
         <div style="background: #f7f7f7; border: 1px solid #ccc; padding: 10px; border-radius: 4px;">
           <div style="font-size: 10px; color: #666;">RECOMMENDED UNDOTBS SIZE</div>
-          <div style="font-size: 18px; font-weight: 700; color: #0078d7;">${u.recommendedMb} MB</div>
-          <div style="font-size: 9.5px; color: #008000;">Current ${u.currentMb} MB is ${u.safeStatus}</div>
+          <div style="font-size: 18px; font-weight: 700; color: #0078d7;">${Number(u.recommendedMb || u.optimalUndoMb || 0).toLocaleString()} MB</div>
+          <div style="font-size: 9.5px; color: #008000;">Current ${Number(u.currentMb || u.undoTablespaceMb || 0).toLocaleString()} MB is ${u.safeStatus || 'OPTIMAL'}</div>
         </div>
       </div>
-      <div style="font-size: 11px; background: #fff; border: 1px solid #ccc; padding: 8px;">
-        <b>V$UNDOSTAT Recent Samples:</b><br>
-        ${(u.samples || []).join('<br>')}
+      <div style="font-size: 11px; background: #fff; border: 1px solid #ccc; padding: 8px; max-height: 240px; overflow-y: auto;">
+        <b>V$UNDOSTAT Recent Samples (${u.undoTablespace ? 'Tablespace: ' + u.undoTablespace : ''}):</b><br>
+        ${samplesList.join('<br>')}
       </div>
     `;
   }
 
   // 8. Flashback Recycle Bin
   renderFlashback(data) {
-    const list = data?.recycleBin || (window.TRACES_DB ? window.TRACES_DB.recycleBin : []);
-    const listHtml = list.map(r => `
+    const list = data?.recycleBin || data?.recyclebin || (window.TRACES_DB ? window.TRACES_DB.recycleBin : []);
+    const listHtml = list.length === 0 ? `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 30px; color: #64748b; font-style: italic;">
+          🗑️ A lixeira do banco de dados (DBA_RECYCLEBIN) está vazia no momento. Nenhum objeto descartado.
+        </td>
+      </tr>
+    ` : list.map(r => `
       <tr data-orig="${(r.originalName || '').toLowerCase()}" data-obj="${(r.objectName || '').toLowerCase()}" data-type="${(r.type || '').toUpperCase()}" data-ts="${(r.tsName || '').toLowerCase()}">
         <td style="font-family: var(--toad-font-code); color: #800080;">${r.objectName}</td>
         <td><b>${r.originalName}</b></td>
@@ -1843,111 +2166,1259 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
     `;
   }
 
-  // 19. AWR / ASH
+    // 19. AWR / ASH & ADDM Diagnostics Suite
   renderAwr(data) {
-    const snaps = data?.snapshots || [
-      { snapId: 14829, beginTime: '2026-10-18 18:00:00', endTime: '2026-10-18 19:00:00' },
-      { snapId: 14828, beginTime: '2026-10-18 17:00:00', endTime: '2026-10-18 18:00:00' }
-    ];
+    const snaps = data?.snapshots || [];
+    const topSql = data?.topSql || [];
+    const addmFindings = data?.addmFindings || [];
+    const addmTasks = data?.addmTasks || [];
+    const instances = data?.instances || [{ instanceNumber: 1, instanceName: 'LOCAL', hostName: '' }];
+    const dbInfo = data?.database || { name: 'Oracle' };
+    const ash = data?.ash || [];
+    const currentSort = data?.sortBy || this.currentAwrSort || 'elapsed';
+    this.currentAwrSort = currentSort;
+    this.addmSubtab = this.addmSubtab || 'findings';
 
-    const snapsHtml = snaps.map(s => `
-      <tr data-snap="${s.snapId}" data-time="${((s.beginTime || '') + ' ' + (s.endTime || '')).toLowerCase()}">
-        <td><b>${s.snapId}</b></td>
-        <td>${s.beginTime}</td>
-        <td>${s.endTime}</td>
+    // Cache latest AWR data
+    this._latestAwrData = data;
+
+    const snapStartDefault = snaps[1]?.snapId || snaps[0]?.snapId || 1;
+    const snapEndDefault = snaps[0]?.snapId || 2;
+
+    const snapsHtml = snaps.map((s, idx) => `
+      <tr data-snap="${s.snapId}" data-time="${((s.beginTime || '') + ' ' + (s.endTime || '')).toLowerCase()}" style="cursor: pointer;" onclick="window.TracesApp.dbaTools.selectAwrSnapRow(${s.snapId})">
+        <td style="font-weight: 700; color: #0284c7; font-family: monospace;">#${s.snapId}</td>
+        <td>${s.beginTime || '-'}</td>
+        <td>${s.endTime || '-'}</td>
+        <td style="text-align: right; color: #64748b; font-size: 10px;">Inst #${s.instanceNumber || 1}</td>
+        <td style="text-align: right; white-space: nowrap;" onclick="event.stopPropagation();">
+          <div style="display: flex; gap: 3px; justify-content: flex-end;">
+            <button class="btn btn-primary" style="height: 19px; padding: 0 5px; font-size: 9.5px; font-weight: 600;" onclick="window.TracesApp.dbaTools.quickGenerateAwr(${s.snapId})" title="Gerar e Visualizar Relatório AWR a partir deste snapshot">📊 AWR</button>
+            <button class="btn" style="height: 19px; padding: 0 5px; font-size: 9.5px; font-weight: 600; color: #4338ca; border-color: #c7d2fe; background: #eef2ff;" onclick="window.TracesApp.dbaTools.quickGenerateAddm(${s.snapId})" title="Analisar e Visualizar Diagnóstico ADDM">🧠 ADDM</button>
+            <button class="btn" style="height: 19px; padding: 0 5px; font-size: 9px;" onclick="window.TracesApp.dbaTools.quickDownloadAwr(${s.snapId}, 'HTML')" title="Download direto do AWR HTML para seu PC">⬇ HTML</button>
+            <button class="btn" style="height: 19px; padding: 0 5px; font-size: 9px;" onclick="window.TracesApp.dbaTools.quickDownloadAwr(${s.snapId}, 'TEXT')" title="Download direto do AWR TXT para seu PC">⬇ TXT</button>
+          </div>
+        </td>
       </tr>
     `).join('');
+
+    const sortLabels = [
+      { key: 'elapsed', label: '⏱️ Tempo Decorrido (Total)' },
+      { key: 'cpu', label: '⚡ Tempo de CPU' },
+      { key: 'buffer_gets', label: '💾 Buffer Gets (I/O Lógico)' },
+      { key: 'disk_reads', label: '💿 Disk Reads (I/O Físico)' },
+      { key: 'executions', label: '🔁 Execuções' },
+      { key: 'parse_calls', label: '🏷️ Parse Calls' }
+    ];
 
     setTimeout(() => this.applyAwrFilter(), 0);
 
     return `
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 700; font-size: 13px;">AWR / ADDM / Active Session History (ASH) Browser</span>
-        <div style="display: flex; gap: 6px;">
-          <button class="btn" onclick="window.TracesApp.dbaTools.createAwrSnapshot();">📸 Create Snapshot</button>
-          <button class="btn btn-primary" onclick="window.TracesApp.dbaTools.generateAwrReport();">Generate AWR HTML Report</button>
+      <!-- Top Action Bar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-weight: 700; font-size: 13.5px; color: #0f172a;">⚡ AWR &amp; ADDM Diagnostics Suite (Oracle 19c)</span>
+          <span class="toad-conn-badge-indicator" style="background:#e0f2fe; color:#0369a1; font-size: 10px;">Toad Enterprise Diagnostics</span>
+          ${dbInfo.name ? `<span style="font-size: 10.5px; color: #64748b; font-weight: 600;">DB: <code style="color: #0284c7;">${dbInfo.name}</code></span>` : ''}
+        </div>
+        
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <!-- Interval Selector -->
+          <div style="display: flex; align-items: center; gap: 4px; background: #f8fafc; border: 1px solid #cbd5e1; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+            <span style="color: #64748b; font-weight: 600;">Faixa:</span>
+            <select id="dba-awr-snap-start" style="height: 22px; font-size: 11px; font-weight: 600; padding: 0 4px;" title="Snapshot Inicial">
+              ${snaps.map(s => `<option value="${s.snapId}" ${s.snapId == snapStartDefault ? 'selected' : ''}>Snap ${s.snapId} (${s.beginTime ? s.beginTime.slice(5, 16) : ''})</option>`).join('')}
+            </select>
+            <span style="color: #64748b;">até</span>
+            <select id="dba-awr-snap-end" style="height: 22px; font-size: 11px; font-weight: 600; padding: 0 4px;" title="Snapshot Final">
+              ${snaps.map(s => `<option value="${s.snapId}" ${s.snapId == snapEndDefault ? 'selected' : ''}>Snap ${s.snapId} (${s.endTime ? s.endTime.slice(5, 16) : ''})</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- Scope / Instance Selector -->
+          <div style="display: flex; align-items: center; gap: 4px; background: #f8fafc; border: 1px solid #cbd5e1; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+            <span style="color: #64748b; font-weight: 600;">Escopo:</span>
+            <select id="dba-awr-scope" style="height: 22px; font-size: 11px; font-weight: 600; padding: 0 4px;" title="Escopo do Relatório">
+              ${instances.map(inst => `<option value="instance:${inst.instanceNumber}">Instância #${inst.instanceNumber} (${inst.instanceName || 'Local'})</option>`).join('')}
+              <option value="global">RAC Cluster (Global Report)</option>
+            </select>
+          </div>
+
+          <!-- Main View Buttons -->
+          <button class="btn btn-primary" style="height: 24px; padding: 0 10px; font-size: 11px; font-weight: 600;" onclick="window.TracesApp.dbaTools.generateAwrReport();" title="Gerar e visualizar relatório AWR no aplicativo com abas HTML e Texto">
+            📊 Relatório AWR
+          </button>
+          <button class="btn" style="height: 24px; padding: 0 10px; font-size: 11px; font-weight: 600; color: #4338ca; border-color: #c7d2fe; background: #eef2ff;" onclick="window.TracesApp.dbaTools.generateAddmReport();" title="Executar análise ADDM e visualizar diagnóstico completo">
+            🧠 Análise ADDM
+          </button>
+
+          <!-- Direct Download Group (Before Entering View) -->
+          <div style="display: flex; gap: 2px; align-items: center; background: #f1f5f9; padding: 1px; border-radius: 4px; border: 1px solid #cbd5e1;">
+            <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; font-weight: 600; color: #0284c7;" onclick="window.TracesApp.dbaTools.generateAwrReport({ directDownload: true, format: 'HTML' });" title="Download direto do relatório AWR em HTML para seu computador">
+              ⬇ AWR HTML
+            </button>
+            <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; font-weight: 600; color: #0284c7;" onclick="window.TracesApp.dbaTools.generateAwrReport({ directDownload: true, format: 'TEXT' });" title="Download direto do relatório AWR em Texto para seu computador">
+              ⬇ AWR TXT
+            </button>
+            <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; font-weight: 600; color: #4338ca;" onclick="window.TracesApp.dbaTools.generateAddmReport({ directDownload: true, format: 'TEXT' });" title="Download direto do relatório ADDM em Texto para seu computador">
+              ⬇ ADDM TXT
+            </button>
+            <button class="btn" style="height: 22px; padding: 0 6px; font-size: 10px; font-weight: 600; color: #4338ca;" onclick="window.TracesApp.dbaTools.generateAddmReport({ directDownload: true, format: 'HTML' });" title="Download direto do relatório ADDM em HTML para seu computador">
+              ⬇ ADDM HTML
+            </button>
+          </div>
+
+          <button class="btn" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.dbaTools.createAwrSnapshot();" title="Forçar criação de novo Snapshot AWR via DBMS_WORKLOAD_REPOSITORY">
+            📸 Criar Snapshot
+          </button>
+          <button class="btn" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.dbaTools.loadSubtabData('awr');" title="Atualizar dados de desempenho">
+            🔄 Atualizar
+          </button>
         </div>
       </div>
-      <div style="background: #f0fdf4; border: 1px solid #86efac; padding: 6px 10px; font-size: 10.5px; color: #166534; border-radius: 3px; margin: 6px 0;">
-        ⚡ <b>Oracle AWR &amp; Active Session History (ASH):</b> Direct system view integration active. Unrestricted access enabled.
-      </div>
 
-      <div class="dba-filter-bar">
-        <div class="dba-filter-input-wrap">
-          <span style="font-size: 12px; color: #64748b;">🔍</span>
-          <input type="text" id="dba-filter-awr-text" placeholder="Filtrar snapshot por ID ou data/hora..." oninput="window.TracesApp.dbaTools.applyAwrFilter();" value="${this.filterState.awrText || ''}">
+      <!-- Quick Metrics Ribbon -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; gap: 14px; align-items: center;">
+          <span>📦 Snapshots no Histórico: <b>${snaps.length}</b></span>
+          <span>🔥 Top SQL Monitorados: <b>${topSql.length}</b></span>
+          <span>🧠 Descobertas ADDM Ativas: <b>${addmFindings.length}</b></span>
+          <span>📋 Tarefas ADDM Concluídas: <b>${addmTasks.length}</b></span>
+          <span>⏳ Amostras ASH: <b>${ash.length}</b></span>
         </div>
-        <button class="btn" style="height: 24px; padding: 0 8px;" onclick="window.TracesApp.dbaTools.clearAwrFilter();" title="Limpar Filtro">✕ Limpar</button>
-        <span class="dba-filter-count-badge" id="dba-awr-count">Exibindo ${snaps.length} de ${snaps.length} snapshots</span>
+        <div style="color: #64748b; font-size: 10.5px;">
+          💡 Clique em <b>Visualizar</b> para inspecionar no próprio app como <b>HTML e Texto</b> ou baixe diretamente na sua máquina com 1 clique.
+        </div>
       </div>
 
-      <div style="background: #fff; border: 1px solid #bfbfbf; overflow-y: auto; max-height: 200px; margin-bottom: 8px;">
-        <table class="meta-table" style="width: 100%;">
-          <thead><tr><th>Snapshot ID</th><th>Begin Time</th><th>End Time</th></tr></thead>
-          <tbody id="dba-awr-table-body">${snapsHtml}</tbody>
-        </table>
+      <!-- SECTION 1: TOP SQL STATEMENTS WITH DYNAMIC METRIC SORTING -->
+      <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+        <div style="background: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+          <div style="font-weight: 700; font-size: 12px; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+            <span>🔥 Top SQL Statements (V$SQL &amp; DBA_HIST_SQLSTAT)</span>
+            <span style="font-size: 10px; background: #e2e8f0; color: #475569; padding: 1px 6px; border-radius: 10px;">${topSql.length} consultas</span>
+          </div>
+
+          <!-- Sorting Pills -->
+          <div style="display: flex; gap: 3px; align-items: center; flex-wrap: wrap;">
+            <span style="font-size: 10.5px; font-weight: 600; color: #475569; margin-right: 4px;">Ordenar por:</span>
+            ${sortLabels.map(s => `
+              <button class="btn ${currentSort === s.key ? 'btn-primary' : ''}" 
+                      style="height: 22px; padding: 0 7px; font-size: 10px; font-weight: ${currentSort === s.key ? '700' : '500'};"
+                      onclick="window.TracesApp.dbaTools.changeAwrSort('${s.key}')">
+                ${s.label}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="overflow-x: auto; max-height: 280px; overflow-y: auto;">
+          <table class="meta-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 2; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <tr>
+                <th style="min-width: 110px;">SQL ID</th>
+                <th style="min-width: 130px;">Ações</th>
+                <th style="text-align: right; min-width: 75px;">Execuções</th>
+                <th style="text-align: right; min-width: 95px;">Tempo Total</th>
+                <th style="text-align: right; min-width: 90px;">Tempo/Exec</th>
+                <th style="text-align: right; min-width: 85px;">Tempo CPU</th>
+                <th style="text-align: right; min-width: 95px;">Buffer Gets</th>
+                <th style="text-align: right; min-width: 85px;">Disk Reads</th>
+                <th style="min-width: 120px;">Schema / Módulo</th>
+                <th style="min-width: 90px;">Plan Hash</th>
+                <th style="min-width: 250px;">Prévia da Consulta SQL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topSql.length === 0 ? `
+                <tr><td colspan="11" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhum SQL capturado no cache de biblioteca para os critérios atuais.</td></tr>
+              ` : topSql.map(q => `
+                <tr style="border-bottom: 1px solid #f1f5f9;">
+                  <td>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <a href="javascript:void(0)" onclick="window.TracesApp.dbaTools.openSqlInspector('${q.sqlId}')" style="font-weight: 700; color: #0284c7; font-family: monospace; text-decoration: underline;" title="Clique para inspecionar SQL completo, Explain Plan e Waits">
+                        🔍 ${q.sqlId}
+                      </a>
+                      <button class="btn" style="height: 18px; padding: 0 4px; font-size: 9px;" onclick="window.TracesApp.dbaTools.copyToClipboard('${q.sqlId}', 'SQL ID copiado!'); event.stopPropagation();" title="Copiar SQL ID">📋</button>
+                    </div>
+                  </td>
+                  <td style="white-space: nowrap;">
+                    <div style="display: flex; gap: 3px;">
+                      <button class="btn btn-primary" style="height: 20px; padding: 0 6px; font-size: 9.5px; font-weight: 600;" onclick="window.TracesApp.dbaTools.openSqlInspector('${q.sqlId}')" title="Inspecionar código completo, estatísticas, explain plan e waits">
+                        🔍 Inspecionar
+                      </button>
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px; font-weight: 600; color: #15803d; border-color: #86efac; background: #f0fdf4;" onclick="window.TracesApp.dbaTools.openSqlInEditor('${q.sqlId}')" title="Carregar no SQL Editor para editar e executar">
+                        📝 Editor
+                      </button>
+                    </div>
+                  </td>
+                  <td style="text-align: right; font-weight: 600;">${Number(q.executions || 0).toLocaleString()}</td>
+                  <td style="text-align: right; font-weight: 700; color: ${q.elapsedSec > 100 ? '#dc2626' : (q.elapsedSec > 10 ? '#d97706' : '#1e293b')};">${this.formatDuration(q.elapsedSec)}</td>
+                  <td style="text-align: right; color: #475569;">${Number(q.elapsedPerExec || 0).toFixed(4)}s</td>
+                  <td style="text-align: right;">${this.formatDuration(q.cpuSec)}</td>
+                  <td style="text-align: right; font-family: monospace;">${Number(q.bufferGets || 0).toLocaleString()}</td>
+                  <td style="text-align: right; font-family: monospace;">${Number(q.diskReads || 0).toLocaleString()}</td>
+                  <td style="font-size: 10.5px;">${q.schema || '-'}${q.module ? ` <span style="color:#64748b; font-size:9.5px;">(${q.module})</span>` : ''}</td>
+                  <td style="font-family: monospace; font-size: 10px; color: #64748b;">${q.planHash || '-'}</td>
+                  <td style="max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${this.escapeHtml(q.sqlText || '')}">
+                    <code style="font-size: 10px; color: #334155;">${this.escapeHtml(q.sqlText || '')}</code>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div style="font-size: 11px; background: #fff; border: 1px solid #ccc; padding: 8px;">
-        <b>ADDM Findings:</b><br>
-        SQL statements with High Buffer Gets accounted for 38% of total DB Time. Recommendation: Add index on <code>SALES_TRANSACTIONS(TX_DATE, CUSTOMER_ID)</code>.
+
+      <!-- SECTION 2: ADDM FINDINGS & ADDM TASKS -->
+      <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+        <div style="background: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button class="btn ${this.addmSubtab === 'findings' ? 'btn-primary' : ''}" style="height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.dbaTools.switchAddmSubtab('findings');">
+              💡 Descobertas e Recomendações (${addmFindings.length})
+            </button>
+            <button class="btn ${this.addmSubtab === 'tasks' ? 'btn-primary' : ''}" style="height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.dbaTools.switchAddmSubtab('tasks');">
+              📋 Histórico de Tarefas ADDM (${addmTasks.length})
+            </button>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-primary" style="height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.dbaTools.generateAddmReport();">
+              📄 Ver Diagnóstico ADDM Completo
+            </button>
+          </div>
+        </div>
+
+        <div style="padding: 10px; max-height: 280px; overflow-y: auto;">
+          ${this.addmSubtab === 'tasks' ? `
+            <table class="meta-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 2;">
+                <tr>
+                  <th style="min-width: 60px;">Task ID</th>
+                  <th style="min-width: 220px;">Nome da Tarefa ADDM</th>
+                  <th style="min-width: 130px;">Criado em</th>
+                  <th style="min-width: 80px;">Status</th>
+                  <th style="min-width: 80px;">Origem</th>
+                  <th style="text-align: right; min-width: 190px;">Ações Rápidas</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${addmTasks.length === 0 ? `
+                  <tr><td colspan="6" style="text-align: center; padding: 15px; color: #94a3b8;">Nenhuma tarefa ADDM encontrada no catálogo.</td></tr>
+                ` : addmTasks.map(t => `
+                  <tr>
+                    <td style="font-family: monospace; color: #64748b;">#${t.taskId}</td>
+                    <td><b style="color: #312e81; font-family: monospace;">${this.escapeHtml(t.taskName)}</b></td>
+                    <td>${t.createdTime || '-'}</td>
+                    <td><span style="background: #dcfce7; color: #15803d; padding: 1px 6px; border-radius: 4px; font-weight: 600; font-size: 9.5px;">${t.status}</span></td>
+                    <td><span class="toad-conn-badge-indicator" style="background:#f1f5f9; color:#475569; font-size:9.5px;">${t.howCreated || 'AUTO'}</span></td>
+                    <td style="text-align: right;">
+                      <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                        <button class="btn btn-primary" style="height: 20px; padding: 0 6px; font-size: 10px; font-weight: 600;" onclick="window.TracesApp.dbaTools.generateAddmReport({ taskName: '${t.taskName}' });" title="Visualizar este diagnóstico no app com abas HTML e Texto">
+                          👁 Ver
+                        </button>
+                        <button class="btn" style="height: 20px; padding: 0 6px; font-size: 10px; color: #4338ca; border-color: #c7d2fe; background: #eef2ff;" onclick="window.TracesApp.dbaTools.generateAddmReport({ taskName: '${t.taskName}', directDownload: true, format: 'HTML' });" title="Download direto do HTML para sua máquina">
+                          ⬇ HTML
+                        </button>
+                        <button class="btn" style="height: 20px; padding: 0 6px; font-size: 10px; color: #4338ca; border-color: #c7d2fe; background: #eef2ff;" onclick="window.TracesApp.dbaTools.generateAddmReport({ taskName: '${t.taskName}', directDownload: true, format: 'TEXT' });" title="Download direto do TXT para sua máquina">
+                          ⬇ TXT
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <!-- Findings Cards -->
+            ${addmFindings.length === 0 ? `
+              <div style="text-align: center; padding: 15px; color: #64748b; font-size: 11px;">
+                Nenhuma recomendação crítica registrada no histórico recente do ADDM. O banco de dados está operando dentro dos limiares normais.
+              </div>
+            ` : `
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 8px;">
+                ${addmFindings.map(f => {
+                  const isProb = f.type === 'PROBLEM';
+                  const hasSql = f.sqlId && f.sqlId !== 'None' && f.sqlId.length === 13;
+                  return `
+                    <div style="background: #ffffff; border: 1px solid ${isProb ? '#fca5a5' : '#cbd5e1'}; border-left: 4px solid ${isProb ? '#dc2626' : '#0284c7'}; border-radius: 4px; padding: 8px 10px; font-size: 11px;">
+                      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+                        <span style="font-weight: 700; color: #0f172a; font-size: 11.5px;">${this.escapeHtml(f.name)}</span>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                          ${f.impactSec > 0 ? `<span style="background: #fee2e2; color: #991b1b; padding: 1px 6px; border-radius: 3px; font-weight: 700; font-size: 9.5px;">Impacto: ${this.formatDuration(f.impactSec)}</span>` : ''}
+                          <span style="background: #f1f5f9; color: #475569; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: monospace;">${f.taskName ? f.taskName.split('_').slice(-2).join('_') : ''}</span>
+                        </div>
+                      </div>
+                      <div style="color: #334155; margin: 4px 0; line-height: 1.35;">${this.escapeHtml(f.message)}</div>
+                      
+                      ${hasSql ? `
+                        <div style="display: flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px dashed #94a3b8; border-radius: 3px; padding: 4px 8px; margin: 5px 0;">
+                          <span style="font-weight: 700; color: #1e293b;">🎯 SQL Alvo:</span>
+                          <a href="javascript:void(0)" onclick="window.TracesApp.dbaTools.openSqlInspector('${f.sqlId}')" style="font-family: monospace; font-weight: 700; font-size: 11px; color: #0284c7; text-decoration: underline;">
+                            🔍 ${f.sqlId}
+                          </a>
+                          <button class="btn btn-primary" style="height: 18px; padding: 0 6px; font-size: 9.5px; margin-left: auto;" onclick="window.TracesApp.dbaTools.openSqlInEditor('${f.sqlId}')">
+                            📝 Abrir no Editor
+                          </button>
+                        </div>
+                      ` : (f.sqlId && f.sqlId !== 'None' ? `
+                        <div style="font-size: 10px; color: #64748b; margin: 2px 0;">Objeto / Segmento relacionado: <b>${this.escapeHtml(f.sqlId)}</b></div>
+                      ` : '')}
+
+                      ${f.recommendation ? `
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; padding: 4px 8px; margin-top: 4px; color: #166534; font-size: 10.5px;">
+                          <b>💡 Ação Recomendada:</b> ${this.escapeHtml(f.recommendation)}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          `}
+        </div>
+      </div>
+
+      <!-- SECTION 3: SNAPSHOTS & ASH REAL-TIME STRIP -->
+      <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 10px;">
+        <!-- Left: AWR Snapshots History Table -->
+        <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="background: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; font-size: 12px; color: #1e293b;">📅 Histórico de Snapshots AWR (DBA_HIST_SNAPSHOT)</div>
+            <span class="dba-filter-count-badge" id="dba-awr-count" style="font-size: 9.5px;">${snaps.length} snapshots</span>
+          </div>
+
+          <div class="dba-filter-bar" style="border-bottom: 1px solid #e2e8f0; margin: 0; padding: 4px 8px; border-radius: 0;">
+            <div class="dba-filter-input-wrap">
+              <span style="font-size: 11px; color: #64748b;">🔍</span>
+              <input type="text" id="dba-filter-awr-text" placeholder="Filtrar por Snapshot ID ou data..." oninput="window.TracesApp.dbaTools.applyAwrFilter();" value="${this.filterState.awrText || ''}" style="font-size: 11px;">
+            </div>
+            <button class="btn" style="height: 20px; padding: 0 6px; font-size: 10px;" onclick="window.TracesApp.dbaTools.clearAwrFilter();">✕</button>
+          </div>
+
+          <div style="overflow-y: auto; max-height: 220px;">
+            <table class="meta-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 1;">
+                <tr>
+                  <th>Snapshot ID</th>
+                  <th>Início</th>
+                  <th>Fim</th>
+                  <th style="text-align: right;">Instância</th>
+                  <th style="text-align: right; min-width: 175px;">Ações Rápidas</th>
+                </tr>
+              </thead>
+              <tbody id="dba-awr-table-body">${snapsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: ASH Wait Events Strip -->
+        <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="background: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; font-size: 12px; color: #1e293b;">⏳ Atividade em Tempo Real ASH (V$ACTIVE_SESSION_HISTORY)</div>
+            <span style="font-size: 9.5px; background: #dcfce7; color: #15803d; padding: 1px 6px; border-radius: 10px; font-weight: 600;">Ao Vivo</span>
+          </div>
+
+          <div style="overflow-y: auto; max-height: 250px;">
+            <table class="meta-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 1;">
+                <tr>
+                  <th>Hora</th>
+                  <th>Sessão</th>
+                  <th>Evento de Espera</th>
+                  <th>Classe</th>
+                  <th>SQL ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ash.length === 0 ? `
+                  <tr><td colspan="5" style="text-align: center; padding: 15px; color: #94a3b8;">Nenhuma atividade recente registrada em V$ACTIVE_SESSION_HISTORY.</td></tr>
+                ` : ash.map(a => `
+                  <tr>
+                    <td style="font-family: monospace; font-size: 10.5px;">${a.sampleTime || '-'}</td>
+                    <td><b>SID ${a.sessionId || '-'}</b></td>
+                    <td style="color: ${a.event?.includes('CPU') ? '#166534' : '#991b1b'}; font-weight: ${a.event?.includes('CPU') ? '400' : '600'};">${this.escapeHtml(a.event || 'CPU')}</td>
+                    <td><span class="toad-conn-badge-indicator" style="background:#f1f5f9; color:#475569; font-size:9.5px;">${this.escapeHtml(a.waitClass || 'CPU')}</span></td>
+                    <td>
+                      ${a.sqlId ? `
+                        <a href="javascript:void(0)" onclick="window.TracesApp.dbaTools.openSqlInspector('${a.sqlId}')" style="font-family: monospace; font-weight: 700; color: #0284c7; text-decoration: underline;">
+                          🔍 ${a.sqlId}
+                        </a>
+                      ` : '<span style="color:#94a3b8;">-</span>'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     `;
   }
 
-  async createAwrSnapshot() {
-    if (!window.TracesApp?.isConnected()) {
-      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para criar snapshot AWR.', 'warning');
-      window.TracesApp?.connectionManager?.openModal();
-      return;
-    }
 
-    if (window.TracesApp?.isRealDatabase) {
-      try {
-        const resp = await fetch('/api/dba/awr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'create_snapshot' })
-        });
-        const res = await resp.json();
-        window.TracesApp.notify(res.message || 'Snapshot AWR criado com sucesso.', 'success');
-        await this.loadSubtabData('awr');
-      } catch (e) {
-        window.TracesApp.notify(`Erro: ${e.message}`, 'error');
+  // Quick switch of AWR Top SQL Sort
+  async changeAwrSort(metric) {
+    this.currentAwrSort = metric;
+    const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+    let url = `/api/dba/awr?sort_by=${encodeURIComponent(metric)}`;
+    if (activeConn?.id) {
+      url += `&conn_id=${encodeURIComponent(activeConn.id)}`;
+    }
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        this.cachedData['awr'] = data;
+        const pane = document.getElementById('dba-pane-awr');
+        if (pane) pane.innerHTML = this.renderAwr(data);
       }
-    } else {
-      window.TracesApp.notify('Forced AWR Snapshot 14829 via DBMS_WORKLOAD_REPOSITORY.CREATE_SNAPSHOT (Mock).', 'success');
+    } catch (e) {
+      console.error('Error changing AWR sort:', e);
     }
   }
 
-  async generateAwrReport() {
+  selectAwrSnapRow(snapId) {
+    const endSelect = document.getElementById('dba-awr-snap-end');
+    const startSelect = document.getElementById('dba-awr-snap-start');
+    if (endSelect && startSelect) {
+      startSelect.value = snapId;
+    }
+  }
+
+  // SQL Inspector Modal - Comprehensive Details, Full SQL CLOB, Explain Plan & ASH
+  async openSqlInspector(sqlId) {
+    if (!sqlId) return;
+
+    // Check if modal container already exists
+    let modal = document.getElementById('dba-sql-inspector-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'dba-sql-inspector-modal';
+      modal.className = 'toad-modal-backdrop';
+      modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 99999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);';
+      document.body.appendChild(modal);
+    }
+
+    // Show initial loading state
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div style="background: #ffffff; width: 92vw; max-width: 1050px; height: 86vh; max-height: 820px; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; font-family: var(--font-ui, sans-serif);">
+        <div style="background: #1e293b; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">🔍</span>
+            <span style="font-weight: 700; font-size: 14px;">SQL Inspector - Carregando SQL_ID: <code style="color: #38bdf8;">${sqlId}</code>...</span>
+          </div>
+          <button class="btn" style="color: #fff; background: transparent; border: none; font-size: 16px; cursor: pointer;" onclick="document.getElementById('dba-sql-inspector-modal').style.display='none';">✕</button>
+        </div>
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: #64748b;">
+          <div class="toad-spinner" style="width: 32px; height: 32px; border: 3px solid #cbd5e1; border-top-color: #0284c7; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+          <span>Extraindo código CLOB completo, estatísticas de execução e plano de execução DBMS_XPLAN...</span>
+        </div>
+      </div>
+    `;
+
+    try {
+      const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+      let url = `/api/dba/sql-details?sql_id=${encodeURIComponent(sqlId)}`;
+      if (activeConn?.id) {
+        url += `&conn_id=${encodeURIComponent(activeConn.id)}`;
+      }
+
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Falha ao buscar detalhes do SQL');
+      }
+      const data = await resp.json();
+      this.renderSqlInspectorContent(data);
+    } catch (e) {
+      modal.innerHTML = `
+        <div style="background: #ffffff; width: 500px; padding: 20px; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center;">
+          <div style="color: #dc2626; font-size: 32px; margin-bottom: 8px;">⚠️</div>
+          <h3 style="margin: 0 0 8px 0; color: #0f172a;">Erro ao inspecionar SQL</h3>
+          <p style="color: #64748b; font-size: 12px; margin-bottom: 16px;">${this.escapeHtml(e.message)}</p>
+          <button class="btn btn-primary" onclick="document.getElementById('dba-sql-inspector-modal').style.display='none';">Fechar</button>
+        </div>
+      `;
+    }
+  }
+
+  // Render the loaded SQL Inspector Modal
+  renderSqlInspectorContent(data) {
+    const modal = document.getElementById('dba-sql-inspector-modal');
+    if (!modal) return;
+
+    const stats = data.stats || {};
+    const fullText = data.sqlFullText || '-- Consulta não disponível no cursor cache';
+    const planLines = data.planLines || [];
+    const ash = data.ash || [];
+    const planHistory = data.planHistory || [];
+
+    // Store current inspected SQL in memory for easy copy/export
+    this._currentInspectedSql = fullText;
+    this._currentInspectedSqlId = data.sqlId;
+
+    const formattedPlan = planLines.length > 0 
+      ? planLines.join('\n') 
+      : 'Plano de execução não encontrado no cursor cache (V$SQL_PLAN / DBA_HIST_SQL_PLAN).';
+
+    modal.innerHTML = `
+      <div style="background: #ffffff; width: 94vw; max-width: 1100px; height: 88vh; max-height: 840px; border-radius: 6px; box-shadow: 0 10px 35px rgba(0,0,0,0.35); display: flex; flex-direction: column; overflow: hidden; font-family: var(--font-ui, sans-serif);">
+        
+        <!-- Modal Header -->
+        <div style="background: #0f172a; color: #fff; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px;">🔍</span>
+            <span style="font-weight: 700; font-size: 14px;">SQL Inspector:</span>
+            <code style="background: #1e293b; color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 13px;">${data.sqlId}</code>
+            ${stats.schema ? `<span class="toad-conn-badge-indicator" style="background:#334155; color:#93c5fd; font-size:10px;">Schema: ${stats.schema}</span>` : ''}
+            ${stats.module ? `<span class="toad-conn-badge-indicator" style="background:#334155; color:#cbd5e1; font-size:10px;">Módulo: ${stats.module}</span>` : ''}
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-primary" style="height: 24px; padding: 0 10px; font-size: 11px; font-weight: 700; background: #15803d; border-color: #166534;" onclick="window.TracesApp.dbaTools.openCurrentSqlInEditor();">
+              📝 Abrir no Editor SQL
+            </button>
+            <button class="btn" style="height: 24px; padding: 0 8px; font-size: 11px; background: #334155; color: #fff; border-color: #475569;" onclick="window.TracesApp.dbaTools.copyToClipboard(window.TracesApp.dbaTools._currentInspectedSql, 'Código SQL completo copiado!');">
+              📋 Copiar SQL
+            </button>
+            <button class="btn" style="color: #fff; background: transparent; border: none; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px;" onclick="document.getElementById('dba-sql-inspector-modal').style.display='none';">✕</button>
+          </div>
+        </div>
+
+        <!-- KPI Execution Stats Banner -->
+        <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px;">
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Execuções</div>
+            <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${Number(stats.executions || 0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Tempo Total</div>
+            <div style="font-weight: 700; font-size: 13px; color: ${stats.elapsedSec > 60 ? '#dc2626' : '#0f172a'};">${this.formatDuration(stats.elapsedSec || 0)}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Tempo Médio / Exec</div>
+            <div style="font-weight: 700; font-size: 13px; color: #0284c7;">${Number(stats.elapsedPerExec || 0).toFixed(4)}s</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">CPU Total</div>
+            <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${this.formatDuration(stats.cpuSec || 0)}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Buffer Gets (Lógico)</div>
+            <div style="font-weight: 700; font-size: 13px; font-family: monospace; color: #0f172a;">${Number(stats.bufferGets || 0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Disk Reads (Físico)</div>
+            <div style="font-weight: 700; font-size: 13px; font-family: monospace; color: #0f172a;">${Number(stats.diskReads || 0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Linhas Processadas</div>
+            <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${Number(stats.rowsProcessed || 0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Custo Otimizador</div>
+            <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${stats.optimizerCost || 0}</div>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 9.5px; text-transform: uppercase;">Plan Hash</div>
+            <div style="font-weight: 700; font-size: 12px; font-family: monospace; color: #475569;">${stats.planHash || '-'}</div>
+          </div>
+        </div>
+
+        <!-- Inspector Tabs Header -->
+        <div style="background: #e2e8f0; display: flex; gap: 1px; padding-left: 12px; padding-top: 4px; border-bottom: 1px solid #cbd5e1;">
+          <button id="dba-sql-tab-btn-code" class="dba-inspector-tab-btn active" onclick="window.TracesApp.dbaTools.switchSqlInspectorTab('code')" style="background: #fff; border: 1px solid #cbd5e1; border-bottom: none; border-radius: 4px 4px 0 0; padding: 6px 14px; font-size: 11.5px; font-weight: 700; cursor: pointer; color: #0284c7;">
+            📜 Código SQL Completo (CLOB)
+          </button>
+          <button id="dba-sql-tab-btn-plan" class="dba-inspector-tab-btn" onclick="window.TracesApp.dbaTools.switchSqlInspectorTab('plan')" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; border-radius: 4px 4px 0 0; padding: 6px 14px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: #475569;">
+            🌲 Plano de Execução (DBMS_XPLAN)
+          </button>
+          <button id="dba-sql-tab-btn-ash" class="dba-inspector-tab-btn" onclick="window.TracesApp.dbaTools.switchSqlInspectorTab('ash')" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; border-radius: 4px 4px 0 0; padding: 6px 14px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: #475569;">
+            ⏳ Esperas ASH (${ash.length})
+          </button>
+          <button id="dba-sql-tab-btn-history" class="dba-inspector-tab-btn" onclick="window.TracesApp.dbaTools.switchSqlInspectorTab('history')" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; border-radius: 4px 4px 0 0; padding: 6px 14px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: #475569;">
+            📊 Variações de Planos (${planHistory.length})
+          </button>
+        </div>
+
+        <!-- Tab 1: Full SQL CLOB Code -->
+        <div id="dba-sql-pane-code" class="dba-inspector-pane" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #1e1e1e;">
+          <div style="background: #252526; padding: 4px 12px; display: flex; justify-content: space-between; align-items: center; color: #cccccc; font-size: 11px; border-bottom: 1px solid #333333;">
+            <span>Oracle SQL / PL/SQL Statement (Sem truncamento)</span>
+            <span>Total: ${fullText.length} caracteres</span>
+          </div>
+          <pre style="flex: 1; margin: 0; padding: 12px 16px; overflow: auto; color: #d4d4d4; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; user-select: text;"><code>${this.escapeHtml(fullText)}</code></pre>
+        </div>
+
+        <!-- Tab 2: Execution Plan (DBMS_XPLAN) -->
+        <div id="dba-sql-pane-plan" class="dba-inspector-pane" style="flex: 1; display: none; flex-direction: column; overflow: hidden; background: #000000;">
+          <div style="background: #18181b; padding: 5px 12px; display: flex; justify-content: space-between; align-items: center; color: #a1a1aa; font-size: 11px; border-bottom: 1px solid #27272a;">
+            <span style="color: #facc15; font-family: 'Consolas', monospace; font-weight: 700;">DBMS_XPLAN.DISPLAY_CURSOR('${data.sqlId}', NULL, 'ALLSTATS LAST +COST +BYTES')</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span>${planLines.length} linhas</span>
+              <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px; background: #27272a; color: #facc15; border: 1px solid #3f3f46;" onclick="navigator.clipboard.writeText(${JSON.stringify(formattedPlan)}); window.TracesApp.notify('DBMS_XPLAN copiado!', 'success');">📋 Copiar</button>
+            </div>
+          </div>
+          <pre style="flex: 1; margin: 0; padding: 14px 18px; overflow: auto; color: #facc15; background: #000000; font-family: 'Consolas', 'Cascadia Code', 'Fira Code', 'Courier New', monospace; font-size: 12px; line-height: 1.5; letter-spacing: 0.3px; user-select: text; white-space: pre;">${this.escapeHtml(formattedPlan)}</pre>
+        </div>
+
+        <!-- Tab 3: ASH Wait Events -->
+        <div id="dba-sql-pane-ash" class="dba-inspector-pane" style="flex: 1; display: none; overflow-y: auto; padding: 16px; background: #ffffff;">
+          <div style="font-weight: 700; font-size: 12.5px; margin-bottom: 8px; color: #0f172a;">Perfil de Espera e Consumo de Tempo (Active Session History para SQL_ID ${data.sqlId})</div>
+          ${ash.length === 0 ? `
+            <div style="text-align: center; padding: 30px; color: #94a3b8;">Nenhum evento de espera registrado no histórico ASH para este SQL_ID.</div>
+          ` : `
+            <table class="meta-table" style="width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 16px;">
+              <thead>
+                <tr>
+                  <th>Evento de Espera</th>
+                  <th>Classe de Espera</th>
+                  <th style="text-align: right;">Amostras</th>
+                  <th style="min-width: 250px;">Percentual do Tempo (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ash.map(a => `
+                  <tr>
+                    <td style="font-weight: 600; color: ${a.event?.includes('CPU') ? '#15803d' : '#991b1b'};">${this.escapeHtml(a.event)}</td>
+                    <td><span class="toad-conn-badge-indicator" style="background:#f1f5f9; color:#475569;">${this.escapeHtml(a.waitClass)}</span></td>
+                    <td style="text-align: right; font-weight: 700; font-family: monospace;">${Number(a.samples || 0).toLocaleString()}</td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="flex: 1; background: #e2e8f0; height: 14px; border-radius: 3px; overflow: hidden;">
+                          <div style="width: ${Math.min(100, a.pct || 0)}%; background: ${a.event?.includes('CPU') ? '#22c55e' : (a.waitClass === 'Configuration' ? '#f59e0b' : '#ef4444')}; height: 100%;"></div>
+                        </div>
+                        <span style="font-weight: 700; font-family: monospace; min-width: 45px; text-align: right;">${Number(a.pct || 0).toFixed(1)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <!-- Tab 4: Plan Variations History -->
+        <div id="dba-sql-pane-history" class="dba-inspector-pane" style="flex: 1; display: none; overflow-y: auto; padding: 16px; background: #ffffff;">
+          <div style="font-weight: 700; font-size: 12.5px; margin-bottom: 8px; color: #0f172a;">Histórico de Planos de Execução (Identificação de Regressão de Plano)</div>
+          ${planHistory.length === 0 ? `
+            <div style="text-align: center; padding: 30px; color: #94a3b8;">Apenas 1 plano de execução ativo registrado para este SQL_ID.</div>
+          ` : `
+            <table class="meta-table" style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+              <thead>
+                <tr>
+                  <th>Plan Hash Value</th>
+                  <th style="text-align: right;">Execuções Totais</th>
+                  <th style="text-align: right;">Tempo Médio / Exec</th>
+                  <th style="text-align: right;">CPU Média / Exec</th>
+                  <th style="text-align: right;">Buffer Gets Totais</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${planHistory.map(p => `
+                  <tr>
+                    <td style="font-family: monospace; font-weight: 700; color: #0284c7;">#${p.planHash || '-'}</td>
+                    <td style="text-align: right; font-weight: 600;">${Number(p.executions || 0).toLocaleString()}</td>
+                    <td style="text-align: right; font-weight: 700;">${Number(p.avgElapsedSec || 0).toFixed(4)}s</td>
+                    <td style="text-align: right;">${Number(p.avgCpuSec || 0).toFixed(4)}s</td>
+                    <td style="text-align: right; font-family: monospace;">${Number(p.bufferGets || 0).toLocaleString()}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <!-- Footer Bar -->
+        <div style="background: #f1f5f9; border-top: 1px solid #cbd5e1; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="color: #64748b; font-size: 10.5px;">
+            Primeira Carga: <b>${stats.firstLoad || '-'}</b> | Última Atividade: <b>${stats.lastActive || '-'}</b>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" style="height: 26px; padding: 0 12px; font-weight: 700; background: #15803d; border-color: #166534;" onclick="window.TracesApp.dbaTools.openCurrentSqlInEditor();">
+              📝 Abrir no SQL Editor
+            </button>
+            <button class="btn" style="height: 26px; padding: 0 12px;" onclick="document.getElementById('dba-sql-inspector-modal').style.display='none';">
+              Fechar
+            </button>
+          </div>
+        </div>
+
+      </div>
+    `;
+  }
+
+  // Switch tabs inside SQL Inspector Modal
+  switchSqlInspectorTab(tabKey) {
+    const panes = ['code', 'plan', 'ash', 'history'];
+    panes.forEach(k => {
+      const pane = document.getElementById(`dba-sql-pane-${k}`);
+      const btn = document.getElementById(`dba-sql-tab-btn-${k}`);
+      if (pane) pane.style.display = (k === tabKey) ? 'flex' : 'none';
+      if (btn) {
+        if (k === tabKey) {
+          btn.style.background = '#ffffff';
+          btn.style.color = '#0284c7';
+          btn.style.fontWeight = '700';
+        } else {
+          btn.style.background = '#f1f5f9';
+          btn.style.color = '#475569';
+          btn.style.fontWeight = '600';
+        }
+      }
+    });
+  }
+
+  // Open currently inspected SQL directly into the SQL Editor
+  openCurrentSqlInEditor() {
+    const sqlText = this._currentInspectedSql;
+    const sqlId = this._currentInspectedSqlId || 'query';
+    if (!sqlText) {
+      window.TracesApp?.notify('Nenhum código SQL disponível para abrir.', 'warning');
+      return;
+    }
+    const modal = document.getElementById('dba-sql-inspector-modal');
+    if (modal) modal.style.display = 'none';
+
+    if (window.TracesApp?.sqlEditor?.openQuery) {
+      window.TracesApp.sqlEditor.openQuery(sqlText, `SQL_${sqlId}.sql`);
+      window.TracesApp.notify(`Consulta SQL_ID ${sqlId} aberta no SQL Editor.`, 'success');
+    } else {
+      window.TracesApp?.openWindow?.('editor');
+      setTimeout(() => {
+        if (window.TracesApp?.sqlEditor?.textarea) {
+          window.TracesApp.sqlEditor.textarea.value = sqlText;
+          if (window.TracesApp.sqlEditor.updateHighlight) window.TracesApp.sqlEditor.updateHighlight();
+        }
+      }, 150);
+    }
+  }
+
+  // Open specific SQL ID in Editor with 1 click from table or ADDM cards
+  async openSqlInEditor(sqlId) {
+    if (!sqlId) return;
+    try {
+      window.TracesApp?.notify(`Carregando SQL_ID ${sqlId}...`, 'info');
+      const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+      let url = `/api/dba/sql-details?sql_id=${encodeURIComponent(sqlId)}`;
+      if (activeConn?.id) {
+        url += `&conn_id=${encodeURIComponent(activeConn.id)}`;
+      }
+
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Falha ao obter código SQL');
+      const data = await resp.json();
+      const sqlText = data.sqlFullText || '';
+
+      if (window.TracesApp?.sqlEditor?.openQuery) {
+        window.TracesApp.sqlEditor.openQuery(sqlText, `SQL_${sqlId}.sql`);
+        window.TracesApp.notify(`SQL_ID ${sqlId} aberto com sucesso no SQL Editor.`, 'success');
+      } else {
+        window.TracesApp?.openWindow?.('editor');
+        setTimeout(() => {
+          if (window.TracesApp?.sqlEditor?.textarea) {
+            window.TracesApp.sqlEditor.textarea.value = sqlText;
+            if (window.TracesApp.sqlEditor.updateHighlight) window.TracesApp.sqlEditor.updateHighlight();
+          }
+        }, 150);
+      }
+    } catch (e) {
+      window.TracesApp?.notify(`Erro ao abrir SQL no Editor: ${e.message}`, 'error');
+    }
+  }
+
+    // Download report file directly to the client's local operating machine
+  downloadReportFile(content, fileName, isHtml = false) {
+    if (!content) {
+      window.TracesApp?.notify('Conteúdo vazio para download.', 'warning');
+      return;
+    }
+    try {
+      const mimeType = isHtml ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8';
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 200);
+      window.TracesApp?.notify(`Relatório baixado na sua máquina: ${fileName}`, 'success');
+    } catch (e) {
+      console.error('Download error:', e);
+      window.TracesApp?.notify(`Erro ao realizar download: ${e.message}`, 'error');
+    }
+  }
+
+  // Quick Action from Snapshots table: Generate AWR from this snap
+  async quickGenerateAwr(snapId) {
+    const snaps = this._latestAwrData?.snapshots || [];
+    const idx = snaps.findIndex(s => s.snapId === snapId);
+    const startSnap = snaps[idx + 1]?.snapId || snapId - 1 || 1;
+    await this.generateAwrReport({
+      beginSnapId: startSnap,
+      endSnapId: snapId,
+      view: true
+    });
+  }
+
+  // Quick Action from Snapshots table: Generate ADDM from this snap
+  async quickGenerateAddm(snapId) {
+    const snaps = this._latestAwrData?.snapshots || [];
+    const idx = snaps.findIndex(s => s.snapId === snapId);
+    const startSnap = snaps[idx + 1]?.snapId || snapId - 1 || 1;
+    await this.generateAddmReport({
+      beginSnapId: startSnap,
+      endSnapId: snapId,
+      view: true
+    });
+  }
+
+  // Quick Action from Snapshots table: Download AWR directly
+  async quickDownloadAwr(snapId, format = 'HTML') {
+    const snaps = this._latestAwrData?.snapshots || [];
+    const idx = snaps.findIndex(s => s.snapId === snapId);
+    const startSnap = snaps[idx + 1]?.snapId || snapId - 1 || 1;
+    await this.generateAwrReport({
+      beginSnapId: startSnap,
+      endSnapId: snapId,
+      directDownload: true,
+      format: format
+    });
+  }
+
+  // Switch between Findings and Tasks in ADDM Section
+  switchAddmSubtab(tab) {
+    this.addmSubtab = tab;
+    const pane = document.getElementById('dba-pane-awr');
+    if (pane && this._latestAwrData) {
+      pane.innerHTML = this.renderAwr(this._latestAwrData);
+    }
+  }
+
+  // Create Snapshot via DBMS_WORKLOAD_REPOSITORY.CREATE_SNAPSHOT
+  async createAwrSnapshot() {
     if (!window.TracesApp?.isConnected()) {
-      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se ao banco de dados para gerar relatório AWR.', 'warning');
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se para criar snapshot AWR.', 'warning');
       window.TracesApp?.connectionManager?.openModal();
       return;
     }
 
-    if (window.TracesApp?.isRealDatabase) {
-      try {
-        const resp = await fetch('/api/dba/awr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'generate_report', snapStart: 14828, snapEnd: 14829 })
-        });
-        const res = await resp.json();
-        if (res.html) {
-          const w = window.open('', '_blank');
-          w.document.write(res.html);
-          w.document.close();
-          window.TracesApp.notify('Relatório AWR gerado em nova aba.', 'success');
-        } else {
-          window.TracesApp.notify('Relatório AWR gerado com sucesso.', 'success');
-        }
-      } catch (e) {
-        window.TracesApp.notify(`Erro: ${e.message}`, 'error');
+    try {
+      window.TracesApp?.notify('Criando Snapshot AWR...', 'info');
+      const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+      let url = '/api/dba/awr';
+      if (activeConn?.id) {
+        url += `?conn_id=${encodeURIComponent(activeConn.id)}`;
       }
-    } else {
-      window.TracesApp.notify('Generated full AWR HTML report for snapshots 14828..14829 (Mock).', 'success');
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_snapshot' })
+      });
+      const res = await resp.json();
+      window.TracesApp.notify(res.message || 'Snapshot AWR criado com sucesso.', 'success');
+      await this.loadSubtabData('awr');
+    } catch (e) {
+      window.TracesApp.notify(`Erro ao criar snapshot: ${e.message}`, 'error');
     }
+  }
+
+  // Generate Official AWR Report (HTML & Text dual modes)
+  async generateAwrReport(options = {}) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se para gerar relatório AWR.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
+    const startVal = options.beginSnapId || parseInt(document.getElementById('dba-awr-snap-start')?.value || 1, 10);
+    const endVal = options.endSnapId || parseInt(document.getElementById('dba-awr-snap-end')?.value || 2, 10);
+    const beginSnapId = Math.min(startVal, endVal);
+    const endSnapId = Math.max(startVal, endVal);
+
+    const scopeVal = document.getElementById('dba-awr-scope')?.value || 'instance:1';
+    const isGlobal = scopeVal === 'global';
+    const instNum = isGlobal ? 1 : parseInt(scopeVal.replace('instance:', '') || '1', 10);
+
+    const reqFormat = options.format || 'BOTH';
+
+    window.TracesApp?.notify(`Gerando Relatório AWR (${isGlobal ? 'RAC Global' : 'Inst #' + instNum}) entre snapshots ${beginSnapId} e ${endSnapId}...`, 'info');
+
+    try {
+      const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+      let url = '/api/dba/awr';
+      if (activeConn?.id) {
+        url += `?conn_id=${encodeURIComponent(activeConn.id)}`;
+      }
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_awr_report',
+          beginSnapId: beginSnapId,
+          endSnapId: endSnapId,
+          scope: isGlobal ? 'global' : 'instance',
+          instanceNumber: instNum,
+          format: reqFormat
+        })
+      });
+
+      const res = await resp.json();
+      if (!res.success) {
+        throw new Error(res.error || 'Falha ao gerar relatório AWR');
+      }
+
+      const reportHtml = res.html || res.htmlReport || '';
+      const reportText = res.text || res.reportText || '';
+      const fileNameHtml = res.fileNameHtml || `awrrpt_${instNum}_${beginSnapId}_${endSnapId}.html`;
+      const fileNameText = res.fileNameText || `awrrpt_${instNum}_${beginSnapId}_${endSnapId}.txt`;
+
+      if (options.directDownload) {
+        if (options.format === 'HTML') {
+          this.downloadReportFile(reportHtml, fileNameHtml, true);
+        } else {
+          this.downloadReportFile(reportText, fileNameText, false);
+        }
+      } else {
+        this.showReportViewerModal({
+          title: 'Relatório Oficial de Desempenho AWR (Workload Repository)',
+          reportType: 'AWR',
+          taskOrSnap: `Snapshots #${beginSnapId} .. #${endSnapId} (${isGlobal ? 'RAC Global' : 'Instância #' + instNum})`,
+          htmlContent: reportHtml,
+          textContent: reportText,
+          defaultFormat: options.format === 'TEXT' ? 'text' : 'html',
+          fileNameHtml: fileNameHtml,
+          fileNameText: fileNameText
+        });
+      }
+    } catch (e) {
+      window.TracesApp?.notify(`Erro ao gerar relatório AWR: ${e.message}`, 'error');
+    }
+  }
+
+  // Generate / Run Official ADDM Report (On-demand & Historical)
+  async generateAddmReport(options = {}) {
+    if (!window.TracesApp?.isConnected()) {
+      window.TracesApp?.notify('Nenhuma conexão Oracle ativa. Conecte-se para gerar diagnóstico ADDM.', 'warning');
+      window.TracesApp?.connectionManager?.openModal();
+      return;
+    }
+
+    const taskName = options.taskName || null;
+    let beginSnapId = options.beginSnapId;
+    let endSnapId = options.endSnapId;
+
+    if (!taskName && (!beginSnapId || !endSnapId)) {
+      const startVal = parseInt(document.getElementById('dba-awr-snap-start')?.value || 1, 10);
+      const endVal = parseInt(document.getElementById('dba-awr-snap-end')?.value || 2, 10);
+      beginSnapId = Math.min(startVal, endVal);
+      endSnapId = Math.max(startVal, endVal);
+    }
+
+    const msg = taskName 
+      ? `Carregando diagnóstico oficial ADDM (${taskName})...`
+      : `Executando Análise Diagnóstica ADDM (DBMS_ADDM.ANALYZE_DB) entre snapshots ${beginSnapId} e ${endSnapId}...`;
+    window.TracesApp?.notify(msg, 'info');
+
+    try {
+      const activeConn = window.TracesApp?.getActiveConnection?.() || window.TracesApp?.realDatabaseConfig || window.TracesApp?.connectionManager?.getActive?.();
+      let url = '/api/dba/awr';
+      if (activeConn?.id) {
+        url += `?conn_id=${encodeURIComponent(activeConn.id)}`;
+      }
+
+      const payload = {
+        action: 'generate_addm_report'
+      };
+      if (taskName) {
+        payload.taskName = taskName;
+      } else {
+        payload.beginSnapId = beginSnapId;
+        payload.endSnapId = endSnapId;
+      }
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const res = await resp.json();
+      if (!res.success) {
+        throw new Error(res.error || 'Falha ao gerar relatório ADDM');
+      }
+
+      const reportHtml = res.html || res.reportHtml || '';
+      const reportText = res.text || res.reportText || '';
+      const finalTaskName = res.taskName || taskName || 'ADDM_REPORT';
+      const fileNameHtml = res.fileNameHtml || `addm_report_${finalTaskName}.html`;
+      const fileNameText = res.fileNameText || `addm_report_${finalTaskName}.txt`;
+
+      if (options.directDownload) {
+        if (options.format === 'HTML') {
+          this.downloadReportFile(reportHtml, fileNameHtml, true);
+        } else {
+          this.downloadReportFile(reportText, fileNameText, false);
+        }
+      } else {
+        this.showReportViewerModal({
+          title: 'Relatório Oficial Diagnóstico ADDM (DBMS_ADVISOR)',
+          reportType: 'ADDM',
+          taskOrSnap: `Tarefa: ${finalTaskName}${res.beginSnapId ? ` (Snaps #${res.beginSnapId} .. #${res.endSnapId})` : ''}`,
+          htmlContent: reportHtml,
+          textContent: reportText,
+          defaultFormat: options.format === 'HTML' ? 'html' : 'text',
+          fileNameHtml: fileNameHtml,
+          fileNameText: fileNameText
+        });
+      }
+    } catch (e) {
+      window.TracesApp?.notify(`Erro ao gerar diagnóstico ADDM: ${e.message}`, 'error');
+    }
+  }
+
+  // Unified In-App Dual-Mode Report Viewer Modal (HTML & Monospace TEXT)
+  showReportViewerModal(config) {
+    let modal = document.getElementById('toad-report-viewer-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'toad-report-viewer-modal';
+      modal.className = 'toad-modal-backdrop';
+      modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 99999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px); font-family: var(--font-ui, sans-serif);';
+      document.body.appendChild(modal);
+    }
+
+    this._activeReportViewer = {
+      ...config,
+      currentTab: config.defaultFormat || 'html'
+    };
+
+    const isHtml = this._activeReportViewer.currentTab === 'html';
+
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div style="background: #ffffff; width: 94vw; max-width: 1350px; height: 90vh; border-radius: 6px; box-shadow: 0 15px 45px rgba(0,0,0,0.45); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #475569;">
+        <!-- Header -->
+        <div style="background: #0f172a; color: #fff; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0284c7; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 18px;">${config.reportType === 'ADDM' ? '🧠' : '📊'}</span>
+            <div>
+              <div style="font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 6px;">
+                <span>${this.escapeHtml(config.title)}</span>
+                <span style="font-size: 10px; background: #0369a1; color: #fff; padding: 1px 6px; border-radius: 4px; font-family: monospace;">${this.escapeHtml(config.taskOrSnap)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dual Tab Switcher -->
+          <div style="display: flex; gap: 4px; background: #1e293b; padding: 2px; border-radius: 5px; border: 1px solid #334155;">
+            <button id="toad-rep-btn-html" class="btn btn-sm ${isHtml ? 'btn-primary' : ''}" style="height: 24px; padding: 0 12px; font-size: 11px; font-weight: 600;" onclick="window.TracesApp.dbaTools.switchReportViewTab('html');">
+              🌐 Visualização HTML
+            </button>
+            <button id="toad-rep-btn-text" class="btn btn-sm ${!isHtml ? 'btn-primary' : ''}" style="height: 24px; padding: 0 12px; font-size: 11px; font-weight: 600;" onclick="window.TracesApp.dbaTools.switchReportViewTab('text');">
+              📄 Visualização TEXTO
+            </button>
+          </div>
+
+          <!-- Action Buttons in Viewer Header -->
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-sm btn-primary" style="height: 24px; padding: 0 9px; font-size: 11px; font-weight: 600;" onclick="window.TracesApp.dbaTools.downloadCurrentReport('html');" title="Baixar arquivo .html na sua máquina">
+              ⬇ Baixar HTML
+            </button>
+            <button class="btn btn-sm btn-primary" style="height: 24px; padding: 0 9px; font-size: 11px; font-weight: 600;" onclick="window.TracesApp.dbaTools.downloadCurrentReport('text');" title="Baixar arquivo .txt na sua máquina">
+              ⬇ Baixar TEXTO
+            </button>
+            <button class="btn btn-sm" style="height: 24px; padding: 0 8px; font-size: 11px; color: #e2e8f0; background: #1e293b; border-color: #475569;" onclick="window.TracesApp.dbaTools.copyCurrentReport();" title="Copiar texto para área de transferência">
+              📋 Copiar
+            </button>
+            <button class="btn btn-sm" style="color: #cbd5e1; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 0 4px;" onclick="window.TracesApp.dbaTools.closeReportViewer();" title="Fechar visualização">✕</button>
+          </div>
+        </div>
+
+        <!-- Body: HTML Pane -->
+        <div id="toad-rep-html-pane" style="flex: 1; display: ${isHtml ? 'block' : 'none'}; width: 100%; height: 100%; background: #ffffff; position: relative;">
+          <iframe id="toad-rep-iframe" style="width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>
+        </div>
+
+        <!-- Body: Text Pane -->
+        <div id="toad-rep-text-pane" style="flex: 1; display: ${!isHtml ? 'flex' : 'none'}; flex-direction: column; width: 100%; height: 100%; background: #0f172a; overflow: hidden;">
+          <div style="background: #1e293b; border-bottom: 1px solid #334155; padding: 4px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="color: #94a3b8;">🔍 Filtrar texto:</span>
+              <input type="text" id="toad-rep-text-filter" placeholder="Buscar no texto do relatório..." oninput="window.TracesApp.dbaTools.filterReportText();" style="height: 20px; font-size: 11px; width: 220px; background: #0f172a; color: #f8fafc; border: 1px solid #475569; border-radius: 3px; padding: 0 6px;">
+            </div>
+            <div style="color: #94a3b8; font-family: monospace; font-size: 10.5px;">
+              Tamanho: <b>${((config.textContent?.length || 0) / 1024).toFixed(1)} KB</b> &bull; Linhas: <b>${(config.textContent || '').split('\n').length}</b>
+            </div>
+          </div>
+          <pre id="toad-rep-pre" style="flex: 1; margin: 0; padding: 14px; overflow: auto; color: #f1f5f9; font-family: 'Consolas', 'Courier New', monospace; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; user-select: text; word-break: break-word;"></pre>
+        </div>
+
+        <!-- Footer -->
+        <div style="background: #f1f5f9; border-top: 1px solid #cbd5e1; padding: 6px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+          <div style="color: #64748b;">
+            💡 O arquivo é salvo imediatamente na pasta <b>Downloads</b> do seu sistema operacional local.
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-sm" style="height: 24px; padding: 0 14px;" onclick="window.TracesApp.dbaTools.closeReportViewer();">Fechar</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Populate contents
+    this.renderReportViewerContents();
+  }
+
+  // Populate iframe and pre contents
+  renderReportViewerContents() {
+    const rep = this._activeReportViewer;
+    if (!rep) return;
+
+    // Load iframe
+    const ifr = document.getElementById('toad-rep-iframe');
+    if (ifr && rep.htmlContent) {
+      try {
+        ifr.contentDocument.open();
+        ifr.contentDocument.write(rep.htmlContent);
+        ifr.contentDocument.close();
+      } catch (e) {
+        console.warn('Iframe write error:', e);
+      }
+    }
+
+    // Load pre
+    const pre = document.getElementById('toad-rep-pre');
+    if (pre && rep.textContent) {
+      pre.textContent = rep.textContent;
+    }
+  }
+
+  // Switch between HTML and TEXT tabs inside viewer
+  switchReportViewTab(tab) {
+    if (!this._activeReportViewer) return;
+    this._activeReportViewer.currentTab = tab;
+
+    const htmlPane = document.getElementById('toad-rep-html-pane');
+    const textPane = document.getElementById('toad-rep-text-pane');
+    const btnHtml = document.getElementById('toad-rep-btn-html');
+    const btnText = document.getElementById('toad-rep-btn-text');
+
+    if (tab === 'html') {
+      if (htmlPane) htmlPane.style.display = 'block';
+      if (textPane) textPane.style.display = 'none';
+      if (btnHtml) btnHtml.classList.add('btn-primary');
+      if (btnText) btnText.classList.remove('btn-primary');
+    } else {
+      if (htmlPane) htmlPane.style.display = 'none';
+      if (textPane) textPane.style.display = 'flex';
+      if (btnHtml) btnHtml.classList.remove('btn-primary');
+      if (btnText) btnText.classList.add('btn-primary');
+    }
+  }
+
+  // Download active report in requested format
+  downloadCurrentReport(fmt) {
+    const rep = this._activeReportViewer;
+    if (!rep) return;
+
+    if (fmt === 'html') {
+      this.downloadReportFile(rep.htmlContent, rep.fileNameHtml || 'relatorio.html', true);
+    } else {
+      this.downloadReportFile(rep.textContent, rep.fileNameText || 'relatorio.txt', false);
+    }
+  }
+
+  // Copy current active report text
+  copyCurrentReport() {
+    const rep = this._activeReportViewer;
+    if (!rep) return;
+    const content = rep.currentTab === 'html' ? rep.htmlContent : rep.textContent;
+    this.copyToClipboard(content, 'Conteúdo do relatório copiado para a área de transferência!');
+  }
+
+  // Filter text inside the text pane
+  filterReportText() {
+    const filter = (document.getElementById('toad-rep-text-filter')?.value || '').toLowerCase();
+    const pre = document.getElementById('toad-rep-pre');
+    const orig = this._activeReportViewer?.textContent || '';
+    if (!pre) return;
+
+    if (!filter) {
+      pre.textContent = orig;
+      return;
+    }
+
+    const lines = orig.split('\n');
+    const matched = lines.filter(l => l.toLowerCase().includes(filter));
+    pre.textContent = `--- ${matched.length} linhas encontradas para busca "${filter}" ---\n\n` + matched.join('\n');
+  }
+
+  // Close viewer
+  closeReportViewer() {
+    const modal = document.getElementById('toad-report-viewer-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  // Format seconds to human friendly time
+  formatDuration(seconds) {
+    const s = Number(seconds || 0);
+    if (s <= 0) return '0.00s';
+    if (s < 0.01) return `${(s * 1000).toFixed(1)}ms`;
+    if (s < 60) return `${s.toFixed(2)}s`;
+    if (s < 3600) {
+      const m = Math.floor(s / 60);
+      const rem = (s % 60).toFixed(0);
+      return `${m}m ${rem}s`;
+    }
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h}h ${m}m`;
+  }
+
+  // Safe HTML Escaping
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // Clipboard copy helper
+  copyToClipboard(text, successMsg = 'Copiado para a área de transferência!') {
+    if (!text) return;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        window.TracesApp?.notify?.(successMsg, 'success');
+      }).catch(() => {
+        this.fallbackCopy(text, successMsg);
+      });
+    } else {
+      this.fallbackCopy(text, successMsg);
+    }
+  }
+
+  fallbackCopy(text, successMsg) {
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    try {
+      document.execCommand('copy');
+      window.TracesApp?.notify?.(successMsg, 'success');
+    } catch (e) {
+      console.warn('Copy failed:', e);
+    }
+    document.body.removeChild(el);
   }
 
   // =========================================================================
@@ -1965,12 +3436,14 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
       const name = tr.getAttribute('data-name') || '';
       const desc = tr.getAttribute('data-desc') || '';
       const isDynamic = tr.getAttribute('data-dynamic') === 'true';
+      const isDeferred = tr.getAttribute('data-deferred') === 'true';
       const isDefault = tr.getAttribute('data-default') === 'true';
 
       const matchText = !text || name.includes(text) || desc.includes(text);
       let matchType = true;
       if (type === 'dynamic') matchType = isDynamic;
-      else if (type === 'static') matchType = !isDynamic;
+      else if (type === 'deferred') matchType = isDeferred;
+      else if (type === 'static') matchType = !isDynamic && !isDeferred;
       else if (type === 'modified') matchType = !isDefault;
 
       const show = matchText && matchType;
@@ -2438,6 +3911,193 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
     const inp = document.getElementById('dba-filter-awr-text');
     if (inp) inp.value = '';
     this.applyAwrFilter();
+  }
+
+  // =========================================================================
+  // 20. RMAN BACKUP & RECOVERY (VERIFICATIONS + INTERACTIVE RMAN> TERMINAL)
+  // =========================================================================
+  renderRman(data) {
+    const d = data || this.cachedData['rman'] || {};
+    const dbInfo = d.dbInfo || {};
+    const fra = d.fraSummary || {};
+    const jobs = d.jobs || [];
+    const corruptions = d.corruptions || [];
+    const recoverFiles = d.recoverFiles || [];
+    const datafilesNeed = (d.datafilesNeedBackup || []).filter(f => f.needsBackup);
+
+    const logMode = dbInfo.logMode || 'ARCHIVELOG';
+    const isArch = logMode === 'ARCHIVELOG';
+    const fbOn = dbInfo.flashbackOn || 'NO';
+    const fraPct = Number(fra.pctUsed || 0);
+    const fraColor = fraPct >= 85 ? '#dc2626' : fraPct >= 70 ? '#d97706' : '#16a34a';
+
+    if (!this._rmanTerminalHistory) {
+      this._rmanTerminalHistory = `Recovery Manager: Release ${dbInfo.version || '19.0.0.0.0'} - Interactive Terminal Ready\nConnected to target database: ${dbInfo.dbName || 'ORCL'} (${dbInfo.openMode || 'READ WRITE'})\nDigite qualquer comando RMAN (ex: SHOW ALL;, LIST BACKUP SUMMARY;, REPORT NEED BACKUP;, VALIDATE DATABASE;, HELP;) ou clique nos botões de verificação acima.\n\nRMAN> `;
+    }
+
+    const jobsRowsHtml = jobs.length === 0 ? `
+      <tr><td colspan="9" style="text-align:center; padding:18px; color:#64748b;">Nenhum job de backup registrado em V$RMAN_BACKUP_JOB_DETAILS.</td></tr>
+    ` : jobs.map(j => {
+      const st = String(j.status || '').toUpperCase();
+      const stColor = st.includes('COMPLETED') ? '#15803d' : st.includes('RUNNING') ? '#0284c7' : '#dc2626';
+      const stBg = st.includes('COMPLETED') ? '#dcfce7' : st.includes('RUNNING') ? '#e0f2fe' : '#fee2e2';
+      return `
+        <tr>
+          <td><b>#${j.sessionKey || '-'}</b></td>
+          <td><span style="font-weight:700; color:#1e293b;">${j.inputType || 'DB FULL'}</span></td>
+          <td><span style="background:${stBg}; color:${stColor}; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10px;">${st}</span></td>
+          <td>${j.startTime || '-'}</td>
+          <td>${j.endTime || '-'}</td>
+          <td>${j.elapsedMin ?? 0} min</td>
+          <td>${j.inputMb ?? 0} MB</td>
+          <td><b>${j.outputMb ?? 0} MB</b> (${j.compressionRatio || 1}x)</td>
+          <td>
+            <button class="btn" style="padding:1px 6px; font-size:10px;" onclick="window.TracesApp.dbaTools.viewRmanJobLog(${j.sessionRecid || 0}, ${j.sessionStamp || 0});">📜 Ver Log</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const verificationsHtml = `
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; margin-bottom:10px;">
+        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${isArch ? '#16a34a' : '#dc2626'}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Archive Log &amp; Flashback</div>
+          <div style="font-size:14px; font-weight:800; color:${isArch ? '#15803d' : '#dc2626'}; margin-top:2px;">${logMode}</div>
+          <div style="font-size:11px; color:#475569;">Flashback: <b>${fbOn}</b> | Force Logging: <b>${dbInfo.forceLogging || 'NO'}</b></div>
+        </div>
+        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${fraColor}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Fast Recovery Area (FRA)</div>
+          <div style="font-size:14px; font-weight:800; color:${fraColor}; margin-top:2px;">${fraPct}% Usado (${fra.usedGb || 0} / ${fra.limitGb || 0} GB)</div>
+          <div style="font-size:11px; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${fra.name || ''}">Reclaimable: ${fra.reclaimableGb || 0} GB | Path: ${fra.name || 'N/A'}</div>
+        </div>
+        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${corruptions.length === 0 ? '#16a34a' : '#dc2626'}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Integridade de Blocos</div>
+          <div style="font-size:14px; font-weight:800; color:${corruptions.length === 0 ? '#15803d' : '#dc2626'}; margin-top:2px;">${corruptions.length === 0 ? '✅ 0 Blocos Corrompidos' : `🚨 ${corruptions.length} Blocos Corrompidos`}</div>
+          <div style="font-size:11px; color:#475569;">Arquivos p/ Recovery: <b>${recoverFiles.length}</b> (V$RECOVER_FILE)</div>
+        </div>
+        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${datafilesNeed.length === 0 ? '#16a34a' : '#d97706'}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Cobertura de Backup (7 Dias)</div>
+          <div style="font-size:14px; font-weight:800; color:${datafilesNeed.length === 0 ? '#15803d' : '#d97706'}; margin-top:2px;">${datafilesNeed.length === 0 ? '✅ 100% Coberto' : `⚠️ ${datafilesNeed.length} Datafile(s) Sem Backup Recente`}</div>
+          <div style="font-size:11px; color:#475569;">Total Datafiles Inspecionados: <b>${(d.datafilesNeedBackup || []).length}</b></div>
+        </div>
+      </div>
+    `;
+
+    return `
+      <div style="display:flex; flex-direction:column; gap:8px; height:100%;">
+        <!-- Top Header & Quick Verification Buttons -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+          <div>
+            <span style="font-weight:700; font-size:13px;">🛡️ RMAN Recovery Manager — Verificações de Saúde &amp; Terminal Interativo</span>
+          </div>
+          <div style="display:flex; gap:5px; flex-wrap:wrap;">
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600;" onclick="window.TracesApp.dbaTools.executeRmanCommand('SHOW ALL;');">⚙️ SHOW ALL</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600;" onclick="window.TracesApp.dbaTools.executeRmanCommand('REPORT SCHEMA;');">🗂 REPORT SCHEMA</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600; color:#b45309;" onclick="window.TracesApp.dbaTools.executeRmanCommand('REPORT NEED BACKUP;');">⚠️ REPORT NEED BACKUP</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600;" onclick="window.TracesApp.dbaTools.executeRmanCommand('REPORT OBSOLETE;');">🧹 REPORT OBSOLETE</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600; color:#0369a1;" onclick="window.TracesApp.dbaTools.executeRmanCommand('LIST BACKUP SUMMARY;');">📦 LIST BACKUP SUMMARY</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600;" onclick="window.TracesApp.dbaTools.executeRmanCommand('CROSSCHECK BACKUP;');">🔍 CROSSCHECK BACKUP</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600; color:#15803d;" onclick="window.TracesApp.dbaTools.executeRmanCommand('VALIDATE DATABASE;');">✅ VALIDATE DATABASE</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600;" onclick="window.TracesApp.dbaTools.executeRmanCommand('LIST ARCHIVELOG ALL;');">📜 LIST ARCHIVELOG</button>
+            <button class="btn" style="height:24px; padding:0 8px; font-weight:600;" onclick="window.TracesApp.dbaTools.executeRmanCommand('LIST FAILURE;');">🩺 LIST FAILURE (DRA)</button>
+          </div>
+        </div>
+
+        ${verificationsHtml}
+
+        <!-- Resizable Upper Table: Recent RMAN Jobs -->
+        <div style="height:175px; min-height:95px; overflow-y:auto; background:#fff; border:1px solid #cbd5e1; resize:vertical;">
+          <table class="meta-table" style="width:100%;">
+            <thead>
+              <tr>
+                <th>Session Key</th>
+                <th>Tipo de Backup</th>
+                <th>Status</th>
+                <th>Início</th>
+                <th>Fim</th>
+                <th>Duração</th>
+                <th>Input Size</th>
+                <th>Output Size (Ratio)</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>${jobsRowsHtml}</tbody>
+          </table>
+        </div>
+
+        <!-- Interactive RMAN> Terminal Console -->
+        <div style="display:flex; flex-direction:column; flex:1; min-height:220px; background:#0c111d; border:1px solid #1e293b; border-radius:4px; overflow:hidden;">
+          <div style="background:#1e293b; color:#e2e8f0; padding:5px 10px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="color:#4ade80; font-weight:800;">● RMAN&gt; Interactive Shell</span>
+              <span style="color:#94a3b8;">Conectado ao catálogo/controlfile da instância ativa (${dbInfo.dbName || 'ORCL'})</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn" style="height:20px; padding:0 8px; font-size:10px; background:#334155; color:#fff; border:1px solid #475569;" onclick="window.TracesApp.dbaTools.executeRmanCommand('HELP;');">❓ Help</button>
+              <button class="btn" style="height:20px; padding:0 8px; font-size:10px; background:#334155; color:#fff; border:1px solid #475569;" onclick="window.TracesApp.dbaTools.copyToClipboard(document.getElementById('rman-terminal-output')?.textContent || '', 'Saída do RMAN copiada!');">📋 Copiar Saída</button>
+              <button class="btn" style="height:20px; padding:0 8px; font-size:10px; background:#7f1d1d; color:#fff; border:1px solid #991b1b;" onclick="window.TracesApp.dbaTools.clearRmanTerminal();">🗑 Clear Terminal</button>
+            </div>
+          </div>
+          <pre id="rman-terminal-output" style="flex:1; margin:0; padding:10px 12px; overflow-y:auto; font-family:var(--toad-font-code, 'Consolas', monospace); font-size:12px; line-height:1.45; color:#a7f3d0; white-space:pre-wrap;">${this.escapeHtml(this._rmanTerminalHistory)}</pre>
+          <div style="display:flex; align-items:center; background:#111827; border-top:1px solid #334155; padding:6px 10px; gap:8px;">
+            <span style="font-family:var(--toad-font-code, monospace); font-weight:800; color:#38bdf8; font-size:12px;">RMAN&gt;</span>
+            <input type="text" id="rman-terminal-input" placeholder="Digite um comando RMAN (ex: SHOW ALL; REPORT NEED BACKUP; LIST BACKUP SUMMARY; VALIDATE DATABASE; SQL 'ALTER SYSTEM ARCHIVE LOG CURRENT';) e pressione Enter..." style="flex:1; background:#030712; color:#f8fafc; border:1px solid #334155; border-radius:3px; height:28px; padding:0 10px; font-family:var(--toad-font-code, monospace); font-size:12px;" onkeydown="if(event.key==='Enter'){ event.preventDefault(); window.TracesApp.dbaTools.executeRmanCommand(); }">
+            <button class="btn btn-primary" style="height:28px; padding:0 14px; font-weight:700;" onclick="window.TracesApp.dbaTools.executeRmanCommand();">▶ Executar</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async executeRmanCommand(cmdOverride) {
+    const inp = document.getElementById('rman-terminal-input');
+    const outEl = document.getElementById('rman-terminal-output');
+    const cmd = (cmdOverride !== undefined ? cmdOverride : (inp?.value || '')).trim();
+    if (!cmd) return;
+    if (inp && cmdOverride === undefined) inp.value = '';
+
+    if (cmd.toUpperCase().replace(/;$/, '') === 'CLEAR' || cmd.toUpperCase().replace(/;$/, '') === 'CLS') {
+      this.clearRmanTerminal();
+      return;
+    }
+
+    if (outEl) {
+      outEl.textContent += `${cmd}\n⏳ Executando no RMAN Target...\n`;
+      outEl.scrollTop = outEl.scrollHeight;
+    }
+
+    try {
+      const activeConn = window.TracesApp?.getActiveConnection?.();
+      const resp = await fetch('/api/dba/rman', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'command', command: cmd, conn_id: activeConn?.id })
+      });
+      const data = await resp.json();
+      const block = `\n${data.output || data.error || 'Comando finalizado.'}\n\nRMAN> `;
+      this._rmanTerminalHistory = (this._rmanTerminalHistory || '') + `${cmd}\n` + block;
+      if (outEl) {
+        outEl.textContent = this._rmanTerminalHistory;
+        outEl.scrollTop = outEl.scrollHeight;
+      }
+    } catch (e) {
+      const errBlock = `\nRMAN-03002: erro de comunicação: ${e.message}\n\nRMAN> `;
+      this._rmanTerminalHistory = (this._rmanTerminalHistory || '') + errBlock;
+      if (outEl) {
+        outEl.textContent = this._rmanTerminalHistory;
+        outEl.scrollTop = outEl.scrollHeight;
+      }
+    }
+  }
+
+  async viewRmanJobLog(sessionRecid, sessionStamp) {
+    return this.executeRmanCommand(`SHOW JOB LOG ${sessionRecid}`);
+  }
+
+  clearRmanTerminal() {
+    this._rmanTerminalHistory = 'RMAN> ';
+    const outEl = document.getElementById('rman-terminal-output');
+    if (outEl) outEl.textContent = this._rmanTerminalHistory;
   }
 }
 

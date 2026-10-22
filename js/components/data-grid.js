@@ -284,6 +284,10 @@ class DataGrid {
   changePageSize(newSize) {
     this.pageSize = parseInt(newSize, 10) || 50;
     this.page = 1;
+    if (this.hasMoreOnServer && (this.pageSize > this.data.length || this.pageSize >= 999999)) {
+      this.fetchAllRows();
+      return;
+    }
     this.render();
   }
 

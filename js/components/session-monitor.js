@@ -23,7 +23,10 @@ class SessionMonitor {
     this.currentFilter = 'all';
     this.searchQuery = '';
     this.hideBackground = false;
-    this.autoRefreshInterval = 5;
+    this.autoRefreshInterval = 10;
+    this.isAutoRefreshPaused = false;
+    this.isFetchingSessions = false;
+    this.lastRefreshTime = 0;
     this.autoRefreshTimer = null;
     this.currentDetailTab = 'sql';
     this.sessionDetails = null;
@@ -413,29 +416,88 @@ class SessionMonitor {
     window.addEventListener('mouseup', onUp);
   }
 
+  updateRefreshStatusBadge() {
+    const badge = document.getElementById('session-refresh-status-badge');
+    const pauseBtn = document.getElementById('btn-session-pause-refresh');
+    if (pauseBtn) {
+      if (this.isAutoRefreshPaused || this.autoRefreshInterval <= 0) {
+        pauseBtn.innerHTML = '▶ Retomar';
+        pauseBtn.style.background = '#fef3c7';
+        pauseBtn.style.borderColor = '#f59e0b';
+        pauseBtn.style.color = '#92400e';
+      } else {
+        pauseBtn.innerHTML = '⏸ Pausar';
+        pauseBtn.style.background = '';
+        pauseBtn.style.borderColor = '';
+        pauseBtn.style.color = '';
+      }
+    }
+    if (badge) {
+      const timeStr = this.lastRefreshTime ? new Date(this.lastRefreshTime).toLocaleTimeString() : '--:--:--';
+      if (this.autoRefreshInterval <= 0) {
+        badge.textContent = `Auto: Off | Última: ${timeStr}`;
+        badge.style.background = '#f1f5f9';
+        badge.style.color = '#64748b';
+      } else if (this.isAutoRefreshPaused) {
+        badge.textContent = `Auto: Pausado (${this.autoRefreshInterval}s) | Última: ${timeStr}`;
+        badge.style.background = '#fef3c7';
+        badge.style.color = '#92400e';
+      } else {
+        badge.textContent = `Auto: ${this.autoRefreshInterval}s | Última: ${timeStr}`;
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#166534';
+      }
+    }
+  }
+
+  togglePauseAutoRefresh() {
+    if (this.autoRefreshInterval <= 0) {
+      this.autoRefreshInterval = 10;
+      if (this.autoRefreshSelect) this.autoRefreshSelect.value = '10';
+      this.isAutoRefreshPaused = false;
+    } else {
+      this.isAutoRefreshPaused = !this.isAutoRefreshPaused;
+    }
+    this.setupAutoRefresh();
+    window.TracesApp?.notify(
+      this.isAutoRefreshPaused
+        ? 'Auto-Refresh do Session Browser PAUSADO.'
+        : `Auto-Refresh do Session Browser RETOMADO (a cada ${this.autoRefreshInterval}s).`,
+      'info'
+    );
+  }
+
   setupAutoRefresh() {
     if (this.autoRefreshTimer) {
       clearInterval(this.autoRefreshTimer);
       this.autoRefreshTimer = null;
     }
-    if (this.autoRefreshInterval > 0) {
+    this.updateRefreshStatusBadge();
+    if (this.autoRefreshInterval > 0 && !this.isAutoRefreshPaused) {
+      const intervalMs = Math.max(2000, this.autoRefreshInterval * 1000);
       this.autoRefreshTimer = setInterval(() => {
-        if (window.TracesApp && window.TracesApp.currentView === 'sessions') {
-          this.refresh(true);
+        const recentlyScrolled = this._lastUserScroll && (Date.now() - this._lastUserScroll < 4000);
+        if (this._isViewVisible() && !this.isAutoRefreshPaused && !this.isFetchingSessions && !recentlyScrolled) {
+          this.loadRealSessions(true);
         }
-      }, this.autoRefreshInterval * 1000);
+      }, intervalMs);
     }
   }
 
   setAutoRefresh(seconds) {
-    this.autoRefreshInterval = parseInt(seconds, 10);
+    const parsed = parseInt(seconds, 10);
+    this.autoRefreshInterval = Number.isNaN(parsed) ? 0 : parsed;
+    if (this.autoRefreshInterval > 0) {
+      this.isAutoRefreshPaused = false;
+    }
     this.setupAutoRefresh();
-    window.TracesApp.notify(`Auto-Refresh de sessões ajustado para ${this.autoRefreshInterval > 0 ? this.autoRefreshInterval + 's' : 'Desativado'}.`, 'info');
+    window.TracesApp?.notify(`Auto-Refresh de sessões ajustado para ${this.autoRefreshInterval > 0 ? this.autoRefreshInterval + 's' : 'Desativado (Off)'}.`, 'info');
   }
 
   onFilterChanged(filterId) {
     this.currentFilter = filterId;
-    this.refresh();
+    this._forceNext = true;
+    this.refresh(true);
   }
 
   async refresh(isSilent = false) {
@@ -445,11 +507,38 @@ class SessionMonitor {
       return;
     }
 
-    await this.loadRealSessions();
+    // Silent refreshes (view switch / connection events / timer) are throttled; explicit ones are forced.
+    await this.loadRealSessions(!isSilent || this._forceNext === true);
+    this._forceNext = false;
     if (!isSilent) window.TracesApp.notify('Sessões atualizadas ao vivo do Oracle.', 'info');
   }
 
-  async loadRealSessions() {
+  _isViewVisible() {
+    if (document.hidden) return false;
+    if (window.TracesApp && window.TracesApp.currentView !== 'sessions') return false;
+    return true;
+  }
+
+  async loadRealSessions(force = false) {
+    if (this.isFetchingSessions) return;
+    if (this.autoRefreshSelect) {
+      const selVal = parseInt(this.autoRefreshSelect.value, 10);
+      if (!Number.isNaN(selVal) && selVal !== this.autoRefreshInterval) {
+        this.autoRefreshInterval = selVal;
+      }
+    }
+    // Guard against external callers hammering refresh:
+    // ignore non-forced calls made inside the selected auto-refresh interval, or when hidden/Off.
+    if (!force) {
+      if (!this._isViewVisible()) return;
+      if (this.autoRefreshInterval <= 0 || this.isAutoRefreshPaused) return;
+      if (this.lastRefreshTime) {
+        const minGap = Math.max(2000, this.autoRefreshInterval * 1000) - 200;
+        if (Date.now() - this.lastRefreshTime < minGap) return;
+      }
+    }
+    this.isFetchingSessions = true;
+    this.lastRefreshTime = Date.now();
     try {
       const activeConn = window.TracesApp?.connectionManager?.getActive?.();
       const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
@@ -461,20 +550,22 @@ class SessionMonitor {
       if (data.success !== false && data.sessions) {
         this.sessions = data.sessions;
         this.locks = data.locks || [];
+        this.lastRefreshTime = Date.now();
+        this.updateRefreshStatusBadge();
 
         if (!this.selectedSid || !this.sessions.some(s => s.sid === this.selectedSid)) {
           const preferred = this.sessions.find(s => s.username && s.username !== 'BACKGROUND') || this.sessions[0];
           if (preferred) {
             this.selectedSid = preferred.sid;
             this.selectedSerial = preferred.serial;
-            this.loadSessionDetails(this.selectedSid);
+            await this.loadSessionDetails(this.selectedSid, true);
           } else {
             this.selectedSid = null;
             this.selectedSerial = null;
             this.sessionDetails = null;
           }
         } else if (this.selectedSid) {
-          this.loadSessionDetails(this.selectedSid);
+          await this.loadSessionDetails(this.selectedSid, true);
         }
 
         if (data.metrics) {
@@ -487,10 +578,19 @@ class SessionMonitor {
           });
         }
 
+        const tablePane = document.getElementById('session-table-pane');
+        const prevScrollTop = tablePane ? tablePane.scrollTop : 0;
+        const prevScrollLeft = tablePane ? tablePane.scrollLeft : 0;
         this.render();
+        if (tablePane) {
+          tablePane.scrollTop = prevScrollTop;
+          tablePane.scrollLeft = prevScrollLeft;
+        }
       }
     } catch (e) {
       console.warn('Real sessions fetch error', e);
+    } finally {
+      this.isFetchingSessions = false;
     }
   }
 
@@ -811,17 +911,17 @@ class SessionMonitor {
     }
   }
 
-  async loadSessionDetails(sid) {
+  async loadSessionDetails(sid, skipRender = false) {
     try {
       const activeConn = window.TracesApp?.connectionManager?.getActive?.();
       const connParam = activeConn?.id ? `&conn_id=${encodeURIComponent(activeConn.id)}` : '';
       const resp = await fetch(`/api/session-details?sid=${sid}${connParam}`);
       const data = await resp.json();
       this.sessionDetails = data.details || data;
-      this.renderDetail();
+      if (!skipRender) this.renderDetail();
     } catch (e) {
       console.warn('Session details load error', e);
-      this.renderDetail();
+      if (!skipRender) this.renderDetail();
     }
   }
 

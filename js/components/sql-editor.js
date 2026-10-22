@@ -77,6 +77,38 @@ END;`
     this.consoleScript = document.getElementById('console-script-output');
     this.autotraceTable = document.getElementById('autotrace-metrics-body');
 
+    this.lastFocusedInput = this.textarea || null;
+    this.lastSelection = { start: 0, end: 0 };
+
+    // Track last focused input/textarea globally so top menu Edit -> Cut/Copy/Paste/Select All works anywhere
+    document.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(el.type)))) {
+        this.lastFocusedInput = el;
+        try {
+          this.lastSelection = {
+            start: typeof el.selectionStart === 'number' ? el.selectionStart : 0,
+            end: typeof el.selectionEnd === 'number' ? el.selectionEnd : 0
+          };
+        } catch (_) {}
+      }
+    }, true);
+
+    const saveSel = (e) => {
+      const el = e.target;
+      if (el && el === this.lastFocusedInput) {
+        try {
+          this.lastSelection = {
+            start: typeof el.selectionStart === 'number' ? el.selectionStart : 0,
+            end: typeof el.selectionEnd === 'number' ? el.selectionEnd : 0
+          };
+        } catch (_) {}
+      }
+    };
+    document.addEventListener('keyup', saveSel, true);
+    document.addEventListener('mouseup', saveSel, true);
+    document.addEventListener('select', saveSel, true);
+
     this.initCodeInsight();
   }
 
@@ -99,6 +131,28 @@ END;`
         this.hideInsight();
       });
       this.textarea.addEventListener('select', () => this.updateCursorPosition());
+
+      // Ensure native Windows Ctrl+V / Paste records Undo history and updates line numbers immediately
+      this.textarea.addEventListener('paste', () => {
+        this._pasteHandledNatively = true;
+        this.pushHistorySnapshot();
+        setTimeout(() => {
+          this.saveActiveTabContent();
+          this.scheduleGutterUpdate();
+          this.updateCursorPosition();
+          this.pushHistorySnapshot();
+        }, 5);
+      });
+
+      this.textarea.addEventListener('cut', () => {
+        this.pushHistorySnapshot();
+        setTimeout(() => {
+          this.saveActiveTabContent();
+          this.scheduleGutterUpdate();
+          this.updateCursorPosition();
+          this.pushHistorySnapshot();
+        }, 5);
+      });
 
       this.textarea.addEventListener('scroll', () => {
         if (this.highlightEl) {
@@ -248,6 +302,17 @@ END;`
           }
         }
 
+        // 15. Ctrl+V fallback if native paste is blocked by WebView / OS container
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'v') {
+          this._pasteHandledNatively = false;
+          const beforeVal = this.textarea.value;
+          setTimeout(() => {
+            if (!this._pasteHandledNatively && this.textarea && this.textarea.value === beforeVal) {
+              this.paste();
+            }
+          }, 60);
+        }
+
         // Teclas tratadas aqui NÃO podem subir para o handler global da janela (app.js),
         // senão o mesmo statement é executado duas vezes (DML duplicado).
         if (e.key === 'F9') {
@@ -292,13 +357,8 @@ END;`
       });
     }
 
-    if (this.btnNewTab) this.btnNewTab.addEventListener('click', () => this.addNewTab());
-    if (this.btnRun) this.btnRun.addEventListener('click', () => this.executeStatement());
-    if (this.btnRunScript) this.btnRunScript.addEventListener('click', () => this.executeScript());
-    if (this.btnExplain) this.btnExplain.addEventListener('click', () => this.explainPlan());
-    if (this.btnFormat) this.btnFormat.addEventListener('click', () => this.formatSql());
-    if (this.btnCommit) this.btnCommit.addEventListener('click', () => this.commitTransaction());
-    if (this.btnRollback) this.btnRollback.addEventListener('click', () => this.rollbackTransaction());
+    // Note: Toolbar buttons (#btn-run-statement, #btn-run-script, #btn-explain-plan, #btn-format-sql, #btn-commit, #btn-rollback)
+    // already have inline onclick handlers in index.html; do NOT bind duplicate click listeners here.
 
     if (this.outputTabs) {
       this.outputTabs.forEach(tab => {
@@ -311,15 +371,68 @@ END;`
   }
 
   renderTabs() {
-    this.tabBar.innerHTML = this.tabs.map(tab => `
-      <div class="worksheet-tab ${tab.id === this.activeTabId ? 'active' : ''}" 
-           onclick="window.TracesApp.sqlEditor.switchTab('${tab.id}')">
-        <span>${tab.title}</span>
-        <span class="tab-close-btn" onclick="event.stopPropagation(); window.TracesApp.sqlEditor.closeTab('${tab.id}')">×</span>
+    if (!this.tabBar) this.tabBar = document.getElementById('worksheet-tabs-bar');
+    if (!this.tabBar) return;
+
+    const connMgr = window.TracesApp?.connectionManager;
+    const activeConns = connMgr?.activeConnections;
+    const activeTab = this.getActiveTab();
+    const currentConnId = activeTab?.connId || 'auto';
+
+    let connSelectHtml = '';
+    if (activeConns && activeConns.size > 0) {
+      connSelectHtml = `
+        <div class="worksheet-conn-selector-wrapper" style="margin-left: auto; display: flex; align-items: center; gap: 6px; padding-right: 8px;">
+          <label style="font-size: 10px; color: #475569; font-weight: 700; text-transform: uppercase;" title="Banco de dados de destino para este script/worksheet">Banco:</label>
+          <select class="toad-conn-combobox" id="worksheet-conn-select" 
+                  style="height: 22px; font-size: 10.5px; padding: 1px 6px; max-width: 260px; font-weight: 600;" 
+                  onchange="window.TracesApp.sqlEditor.setWorksheetConnection(this.value)"
+                  title="Selecione o banco de dados que executará esta worksheet">
+            <option value="auto" ${currentConnId === 'auto' ? 'selected' : ''}>⚡ Banco Ativo (${connMgr.activeConn ? connMgr.activeConn.user + '@' + connMgr.activeConn.serviceName : 'Global'})</option>
+            ${Array.from(activeConns.entries()).map(([cid, entry]) => {
+              const c = entry.config;
+              return `<option value="${cid}" ${currentConnId === cid ? 'selected' : ''}>🟢 ${c.name || c.user} (${c.user}@${c.serviceName} - ${c.host})</option>`;
+            }).join('')}
+          </select>
+        </div>
+      `;
+    }
+
+    this.tabBar.innerHTML = `
+      <div style="display: flex; align-items: center; flex: 1; overflow-x: auto;">
+        ${this.tabs.map(tab => {
+          let badge = '';
+          if (tab.connId && tab.connId !== 'auto' && activeConns?.has(tab.connId)) {
+            const tabCfg = activeConns.get(tab.connId)?.config;
+            if (tabCfg) {
+              badge = `<span style="font-size: 9px; background: ${tabCfg.color || '#0284c7'}; color: #fff; padding: 0 4px; border-radius: 3px; margin-left: 4px; font-weight: 700;">${tabCfg.serviceName}</span>`;
+            }
+          }
+          return `
+          <div class="worksheet-tab ${tab.id === this.activeTabId ? 'active' : ''}" 
+               onclick="window.TracesApp.sqlEditor.switchTab('${tab.id}')">
+            <span>${tab.title}</span>
+            ${badge}
+            <span class="tab-close-btn" onclick="event.stopPropagation(); window.TracesApp.sqlEditor.closeTab('${tab.id}')">×</span>
+          </div>
+        `}).join('')}
+        <button class="btn-new-tab" id="btn-new-tab" title="Nova Worksheet SQL" onclick="window.TracesApp.sqlEditor.addNewTab()">+</button>
       </div>
-    `).join('') + `
-      <button class="btn-new-tab" id="btn-new-tab" title="New SQL Worksheet" onclick="window.TracesApp.sqlEditor.addNewTab()">+</button>
+      ${connSelectHtml}
     `;
+  }
+
+  setWorksheetConnection(connId) {
+    const tab = this.getActiveTab();
+    if (tab) {
+      tab.connId = connId;
+      this.renderTabs();
+      const connMgr = window.TracesApp?.connectionManager;
+      const targetName = connId === 'auto' 
+        ? (connMgr?.activeConn ? `${connMgr.activeConn.user}@${connMgr.activeConn.serviceName}` : 'Banco Ativo Global')
+        : (connMgr?.activeConnections?.get(connId)?.config?.name || connId);
+      window.TracesApp?.notify(`Worksheet "${tab.title}" direcionada para: ${targetName}`, 'info');
+    }
   }
 
   switchTab(tabId) {
@@ -329,18 +442,72 @@ END;`
     this.loadTabContent();
   }
 
-  addNewTab() {
-    const newId = `tab-${Date.now()}`;
+  addNewTab(arg1 = null, arg2 = null) {
+    this.saveActiveTabContent();
+    const newId = `tab-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const newNum = this.tabs.length + 1;
-    const defaultContent = `-- Worksheet ${newNum}\nSELECT * FROM hr.departments;`;
+    let title = `worksheet_${newNum}.sql`;
+    let content = `-- Worksheet ${newNum}\nSELECT * FROM hr.departments;`;
+
+    if (arg1 !== null && arg2 !== null) {
+      const s1 = String(arg1);
+      const s2 = String(arg2);
+      const s1LooksLikeTitle = !s1.includes('\n') && s1.length <= 80 && (/\.(sql|pls|pks|pkb|prc|fnc|trg|txt)$/i.test(s1) || s2.includes('\n') || s2.length > s1.length);
+      if (s1LooksLikeTitle) {
+        title = s1;
+        content = s2;
+      } else {
+        content = s1;
+        title = s2 || title;
+      }
+    } else if (arg1 !== null) {
+      const s1 = String(arg1);
+      if (!s1.includes('\n') && /\.(sql|pls|pks|pkb|prc|fnc|trg|txt)$/i.test(s1)) {
+        title = s1;
+      } else {
+        content = s1;
+      }
+    }
+
     this.tabs.push({
       id: newId,
-      title: `worksheet_${newNum}.sql`,
-      content: defaultContent,
-      history: [{ content: defaultContent, selStart: 0, selEnd: 0 }],
+      title: title,
+      content: content,
+      history: [{ content: content, selStart: 0, selEnd: 0 }],
       future: []
     });
     this.switchTab(newId);
+    setTimeout(() => {
+      if (this.textarea) this.textarea.focus();
+    }, 50);
+  }
+
+  getActiveQuery() {
+    if (this.textarea) return this.textarea.value;
+    const tab = this.getActiveTab();
+    return tab ? (tab.content || '') : '';
+  }
+
+  openQuery(sqlText, title = 'query.sql') {
+    const newId = `tab-${Date.now()}`;
+    this.saveActiveTabContent();
+    this.tabs.push({
+      id: newId,
+      title: title,
+      content: sqlText,
+      history: [{ content: sqlText, selStart: 0, selEnd: 0 }],
+      future: []
+    });
+    this.switchTab(newId);
+    if (window.TracesApp?.openWindow) {
+      window.TracesApp.openWindow('editor');
+    }
+    setTimeout(() => {
+      if (this.textarea) {
+        this.textarea.focus();
+        this.textarea.setSelectionRange(0, 0);
+      }
+    }, 100);
   }
 
   closeTab(tabId) {
@@ -495,86 +662,156 @@ END;`
     }
   }
 
+  getTargetEditable() {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'TEXTAREA' || (active.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(active.type)))) {
+      return active;
+    }
+    if (this.lastFocusedInput && document.body.contains(this.lastFocusedInput) && this.lastFocusedInput.offsetParent !== null) {
+      return this.lastFocusedInput;
+    }
+    return this.textarea;
+  }
+
+  async writeWindowsClipboard(text) {
+    if (!text) return;
+    let wrote = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        wrote = true;
+      } catch (_) {}
+    }
+    try {
+      await fetch('/api/clipboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      wrote = true;
+    } catch (_) {}
+    if (!wrote) {
+      try {
+        document.execCommand('copy');
+      } catch (_) {}
+    }
+  }
+
+  async readWindowsClipboard() {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      try {
+        const t = await navigator.clipboard.readText();
+        if (typeof t === 'string' && t.length > 0) return t;
+      } catch (_) {}
+    }
+    try {
+      const resp = await fetch('/api/clipboard');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && typeof data.text === 'string') return data.text;
+      }
+    } catch (_) {}
+    return '';
+  }
+
   selectAll() {
-    if (!this.textarea) return;
-    this.textarea.focus();
-    this.textarea.select();
+    const target = this.getTargetEditable();
+    if (!target) return;
+    target.focus();
+    target.select();
   }
 
   async copy() {
-    if (!this.textarea) return;
-    const start = this.textarea.selectionStart;
-    const end = this.textarea.selectionEnd;
+    const target = this.getTargetEditable();
+    if (!target) return;
+    target.focus();
+    const start = typeof target.selectionStart === 'number' ? target.selectionStart : (this.lastSelection.start || 0);
+    const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : (this.lastSelection.end || 0);
     let textToCopy = '';
     if (start !== end) {
-      textToCopy = this.textarea.value.substring(start, end);
+      textToCopy = target.value.substring(start, end);
     } else {
-      const val = this.textarea.value;
-      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
-      let lineEnd = val.indexOf('\n', start);
-      if (lineEnd === -1) lineEnd = val.length;
-      textToCopy = val.substring(lineStart, lineEnd);
+      const winSel = window.getSelection ? window.getSelection().toString() : '';
+      if (winSel) {
+        textToCopy = winSel;
+      } else {
+        const val = target.value || '';
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+        let lineEnd = val.indexOf('\n', start);
+        if (lineEnd === -1) lineEnd = val.length;
+        textToCopy = val.substring(lineStart, lineEnd);
+      }
     }
     if (textToCopy) {
-      try {
-        await navigator.clipboard.writeText(textToCopy);
-      } catch (e) {
-        document.execCommand('copy');
-      }
+      await this.writeWindowsClipboard(textToCopy);
+      window.TracesApp?.notify('Copiado para a área de transferência.', 'info');
     }
   }
 
   async cut() {
-    if (!this.textarea) return;
-    this.pushHistorySnapshot();
-    const start = this.textarea.selectionStart;
-    const end = this.textarea.selectionEnd;
+    const target = this.getTargetEditable();
+    if (!target) return;
+    target.focus();
+    if (target === this.textarea) this.pushHistorySnapshot();
+    const start = typeof target.selectionStart === 'number' ? target.selectionStart : (this.lastSelection.start || 0);
+    const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : (this.lastSelection.end || 0);
+    const val = target.value || '';
     if (start !== end) {
-      const textToCut = this.textarea.value.substring(start, end);
-      try {
-        await navigator.clipboard.writeText(textToCut);
-      } catch (e) {}
-      this.textarea.value = this.textarea.value.substring(0, start) + this.textarea.value.substring(end);
-      this.textarea.selectionStart = this.textarea.selectionEnd = start;
+      const textToCut = val.substring(start, end);
+      await this.writeWindowsClipboard(textToCut);
+      target.value = val.substring(0, start) + val.substring(end);
+      target.selectionStart = target.selectionEnd = start;
     } else {
-      const val = this.textarea.value;
       const lineStart = val.lastIndexOf('\n', start - 1) + 1;
       let lineEnd = val.indexOf('\n', start);
       const hasNewline = lineEnd !== -1;
       if (lineEnd === -1) lineEnd = val.length;
       const textToCut = val.substring(lineStart, lineEnd);
-      try {
-        await navigator.clipboard.writeText(textToCut);
-      } catch (e) {}
+      await this.writeWindowsClipboard(textToCut);
       const cutEnd = hasNewline ? lineEnd + 1 : lineEnd;
-      this.textarea.value = val.substring(0, lineStart) + val.substring(cutEnd);
-      this.textarea.selectionStart = this.textarea.selectionEnd = Math.min(lineStart, this.textarea.value.length);
+      target.value = val.substring(0, lineStart) + val.substring(cutEnd);
+      target.selectionStart = target.selectionEnd = Math.min(lineStart, target.value.length);
     }
-    this.saveActiveTabContent();
-    this.updateHighlighting();
-    this.updateGutter();
-    this.pushHistorySnapshot();
+    this.lastSelection = { start: target.selectionStart, end: target.selectionEnd };
+    if (target === this.textarea) {
+      this.saveActiveTabContent();
+      this.updateHighlighting();
+      this.updateGutter();
+      this.updateCursorPosition();
+      this.pushHistorySnapshot();
+    } else {
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   }
 
   async paste() {
-    if (!this.textarea) return;
-    this.pushHistorySnapshot();
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        const start = this.textarea.selectionStart || 0;
-        const end = this.textarea.selectionEnd || 0;
-        const val = this.textarea.value;
-        this.textarea.value = val.substring(0, start) + text + val.substring(end);
-        this.textarea.selectionStart = this.textarea.selectionEnd = start + text.length;
+    const target = this.getTargetEditable();
+    if (!target) return;
+    target.focus();
+    if (target === this.textarea) this.pushHistorySnapshot();
+    const text = await this.readWindowsClipboard();
+    if (text) {
+      const start = typeof target.selectionStart === 'number' ? target.selectionStart : (this.lastSelection.start || 0);
+      const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : (this.lastSelection.end || 0);
+      const val = target.value || '';
+      target.value = val.substring(0, start) + text + val.substring(end);
+      const newPos = start + text.length;
+      target.selectionStart = target.selectionEnd = newPos;
+      this.lastSelection = { start: newPos, end: newPos };
+      if (target === this.textarea) {
         this.saveActiveTabContent();
         this.updateHighlighting();
         this.updateGutter();
+        this.updateCursorPosition();
         this.pushHistorySnapshot();
-        return;
+      } else {
+        target.dispatchEvent(new Event('input', { bubbles: true }));
       }
-    } catch (e) {}
-    document.execCommand('paste');
+      return;
+    }
+    try {
+      document.execCommand('paste');
+    } catch (_) {}
   }
 
   indentSelection() {
@@ -1252,8 +1489,19 @@ END;`
       window.TracesApp.lastExecutedQuery = sql.trim();
     }
     try {
-      window.TracesApp.notify('Executing statement on Real Oracle Database via Bridge Gateway...', 'info');
+      const tab = this.getActiveTab();
+      let targetConnId = tab?.connId && tab.connId !== 'auto' ? tab.connId : null;
+      if (!targetConnId) {
+        targetConnId = window.TracesApp?.connectionManager?.activeConn?.id;
+      }
+      const targetConn = targetConnId ? window.TracesApp?.connectionManager?.activeConnections?.get(targetConnId)?.config : null;
+      const targetName = targetConn ? `${targetConn.user}@${targetConn.serviceName} (${targetConn.host})` : 'Oracle';
+
+      window.TracesApp.notify(`Executando statement em ${targetName}...`, 'info');
       const payload = { sql };
+      if (targetConnId) {
+        payload.conn_id = targetConnId;
+      }
       if (params) payload.params = params;
       if (window.TracesApp?.dataGrid?.fetchLimit !== undefined) {
         payload.limit = window.TracesApp.dataGrid.fetchLimit;
@@ -1344,12 +1592,24 @@ END;`
     const startTime = performance.now();
 
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
-      window.TracesApp.notify('Executing PL/SQL script on Real Oracle Database...', 'info');
+      const tab = this.getActiveTab();
+      let targetConnId = tab?.connId && tab.connId !== 'auto' ? tab.connId : null;
+      if (!targetConnId) {
+        targetConnId = window.TracesApp?.connectionManager?.activeConn?.id;
+      }
+      const targetConn = targetConnId ? window.TracesApp?.connectionManager?.activeConnections?.get(targetConnId)?.config : null;
+      const targetName = targetConn ? `${targetConn.user}@${targetConn.serviceName} (${targetConn.host})` : 'Oracle';
+
+      window.TracesApp.notify(`Executando script PL/SQL em ${targetName}...`, 'info');
       try {
+        const payload = { script: text };
+        if (targetConnId) {
+          payload.conn_id = targetConnId;
+        }
         const resp = await fetch('/api/script', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ script: text })
+          body: JSON.stringify(payload)
         });
         const data = await resp.json();
         const elapsed = data.elapsedMs || (performance.now() - startTime).toFixed(1);
@@ -1620,11 +1880,40 @@ END;`
   }
 
   logScriptOutput(msg) {
+    if (!this.consoleScript) return;
     const div = document.createElement('div');
     div.className = 'console-line';
     div.innerHTML = `<span class="console-timestamp">${new Date().toLocaleTimeString()}</span> <span>${msg}</span>`;
     this.consoleScript.appendChild(div);
     this.consoleScript.scrollTop = this.consoleScript.scrollHeight;
+  }
+
+  clearOutputLogs() {
+    if (this.consoleScript) {
+      this.consoleScript.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Logs de execução limpos (Script Output).</div>`;
+    }
+    if (this.consoleDbms) {
+      this.consoleDbms.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Buffer DBMS_OUTPUT limpo.</div>`;
+    }
+    if (this.autotraceTable) {
+      this.autotraceTable.innerHTML = '';
+    }
+    window.TracesApp?.notify('Logs de execução (Script Output / DBMS Output) limpos com sucesso.', 'info');
+  }
+
+  async copyOutputLogs() {
+    const activeTab = document.querySelector('.output-tab.active')?.getAttribute('data-tab') || 'script';
+    let text = '';
+    if (activeTab === 'dbms' && this.consoleDbms) {
+      text = this.consoleDbms.innerText || '';
+    } else if (this.consoleScript) {
+      text = this.consoleScript.innerText || '';
+    }
+    if (!text.trim() && this.consoleScript) {
+      text = this.consoleScript.innerText || '';
+    }
+    await this.writeWindowsClipboard(text);
+    window.TracesApp?.notify('Logs de execução copiados para a área de transferência.', 'success');
   }
 
   updateAutotrace(metrics = null) {

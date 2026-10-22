@@ -119,6 +119,137 @@ class ExplainPlan {
         }
       ]
     };
+    this.planText = `Plan hash value: 60291807
+
+----------------------------------------------------------------------
+| Id  | Operation            | Name           | Starts | E-Rows |
+----------------------------------------------------------------------
+|   0 | SELECT STATEMENT     |                |      1 |        |
+|   1 |   SORT AGGREGATE     |                |      1 |      1 |
+|   2 |     NESTED LOOPS     |                |      1 |   145K |
+|*  3 |       TABLE ACCESS FULL| CUSTOMERS      |      1 |   1115 |
+|*  4 |       INDEX RANGE SCAN | SALES_CUST_IDX |   3341 |    130 |
+----------------------------------------------------------------------
+
+Predicate Information (identified by operation id):
+---------------------------------------------------
+*  3 - filter("CUSTOMERS"."STATUS"='ACTIVE')
+*  4 - access("SALES"."CUST_ID"="CUSTOMERS"."ID")`;
+  }
+
+  formatToadDbmsXplan(nodes, planHash = '60291807') {
+    if (!nodes || nodes.length === 0) return '';
+    const formatErows = (val, id = 0, op = '') => {
+      if ((id === 0 && (op || '').toUpperCase().includes('STATEMENT')) || val == null || val === '') return '';
+      const n = Number(val);
+      if (isNaN(n)) return String(val);
+      if (n >= 1000000000) return `${Math.round(n / 1000000000)}G`;
+      if (n >= 100000000) return `${Math.round(n / 1000000)}M`;
+      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`.replace('.0M', 'M');
+      if (n >= 10000) return `${Math.round(n / 1000)}K`;
+      return String(n);
+    };
+
+    const byId = {};
+    const childrenMap = {};
+    nodes.forEach(n => {
+      byId[n.id] = Object.assign({}, n);
+      childrenMap[n.id] = [];
+    });
+    nodes.forEach(n => {
+      if (n.parentId != null && childrenMap[n.parentId] && n.parentId !== n.id) {
+        childrenMap[n.parentId].push(n.id);
+      }
+    });
+
+    const computeStats = (nid, depth = 0, parentStarts = 1, isInner = false, outerCard = 1) => {
+      if (!byId[nid]) return;
+      const n = byId[nid];
+      n.depth = depth;
+      if (n.starts != null && n.starts !== 0) {
+        n.calcStarts = Number(n.starts);
+      } else if (nid === 0) {
+        n.calcStarts = 1;
+      } else if (isInner) {
+        n.calcStarts = Math.max(1, parentStarts * outerCard);
+      } else {
+        n.calcStarts = Math.max(1, parentStarts);
+      }
+
+      const ch = childrenMap[nid] || [];
+      const op = (n.operation || '').toUpperCase();
+      const isLoop = op.includes('NESTED LOOPS') || op.includes('FILTER');
+      let firstCard = 1;
+      ch.forEach((cid, idx) => {
+        const childNode = byId[cid];
+        if (idx === 0) {
+          computeStats(cid, depth + 1, n.calcStarts, false, 1);
+          firstCard = Number(childNode?.cardinality || childNode?.a_rows || 1);
+        } else {
+          computeStats(cid, depth + 1, n.calcStarts, isLoop, firstCard);
+        }
+      });
+    };
+
+    const rootId = nodes[0]?.id ?? 0;
+    computeStats(rootId);
+
+    const tableRows = [];
+    const preds = [];
+    nodes.forEach(n => {
+      const nid = n.id;
+      const hasPred = Boolean(n.accessPredicates || n.filterPredicates);
+      const star = hasPred ? '*' : ' ';
+      const idCol = `${star}${String(nid).padStart(3, ' ')}`;
+      const depth = byId[nid]?.depth || 0;
+      const indent = '  '.repeat(depth);
+      let opTitle = n.operation || '';
+      if (n.options) opTitle += ` ${n.options}`;
+      const opStr = `${indent}${opTitle}`;
+      const nameStr = n.objectName || '';
+      const startsVal = byId[nid]?.calcStarts ?? 1;
+      const startsStr = String(startsVal);
+      const erowsStr = formatErows(n.cardinality, nid, opTitle);
+      tableRows.push([idCol, opStr, nameStr, startsStr, erowsStr]);
+
+      if (n.filterPredicates) preds.push({ id: nid, type: 'filter', txt: n.filterPredicates });
+      if (n.accessPredicates) preds.push({ id: nid, type: 'access', txt: n.accessPredicates });
+    });
+
+    const wOp = Math.max(9, ...tableRows.map(r => r[1].length));
+    const wName = Math.max(4, ...tableRows.map(r => r[2].length));
+    const wStarts = Math.max(6, ...tableRows.map(r => r[3].length));
+    const wErows = Math.max(6, ...tableRows.map(r => r[4].length));
+
+    const header = `| Id  | ${'Operation'.padEnd(wOp, ' ')} | ${'Name'.padEnd(wName, ' ')} | ${'Starts'.padStart(wStarts, ' ')} | ${'E-Rows'.padStart(wErows, ' ')} |`;
+    const dash = '-'.repeat(header.length);
+
+    const lines = [];
+    if (planHash) {
+      lines.push(`Plan hash value: ${planHash}`);
+      lines.push('');
+    }
+    lines.push(dash);
+    lines.push(header);
+    lines.push(dash);
+    tableRows.forEach(r => {
+      const rawId = r[0];
+      const idPart = rawId.startsWith('*') ? `*${rawId.substring(1).padStart(3, ' ')}` : rawId.padStart(4, ' ');
+      lines.push(`|${idPart} | ${r[1].padEnd(wOp, ' ')} | ${r[2].padEnd(wName, ' ')} | ${r[3].padStart(wStarts, ' ')} | ${r[4].padStart(wErows, ' ')} |`);
+    });
+    lines.push(dash);
+
+    if (preds.length > 0) {
+      lines.push('');
+      lines.push('Predicate Information (identified by operation id):');
+      lines.push('---------------------------------------------------');
+      preds.sort((a, b) => a.id - b.id);
+      preds.forEach(p => {
+        lines.push(`*${String(p.id).padStart(3, ' ')} - ${p.type}(${p.txt})`);
+      });
+    }
+
+    return lines.join('\n');
   }
 
   initElements() {
@@ -189,10 +320,18 @@ class ExplainPlan {
     if (window.TracesApp && window.TracesApp.isRealDatabase) {
       window.TracesApp.notify('Gerando Execution Plan via DBMS_XPLAN e PLAN_TABLE...', 'info');
       try {
+        const tab = window.TracesApp?.sqlEditor?.getActiveTab();
+        let targetConnId = tab?.connId && tab.connId !== 'auto' ? tab.connId : null;
+        if (!targetConnId) {
+          targetConnId = window.TracesApp?.connectionManager?.activeConn?.id;
+        }
+        const payload = { sql };
+        if (targetConnId) payload.conn_id = targetConnId;
+
         const resp = await fetch('/api/explain', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql })
+          body: JSON.stringify(payload)
         });
         const data = await resp.json();
 
@@ -204,6 +343,9 @@ class ExplainPlan {
         }
 
         this.planText = data.planText || '';
+        if ((!this.planText || !this.planText.includes('Starts')) && data.nodes && data.nodes.length > 0) {
+          this.planText = this.formatToadDbmsXplan(data.nodes, data.planHash);
+        }
 
         if (data.nodes && data.nodes.length > 0) {
           this.planTree = this.buildTreeFromNodes(data.nodes);
@@ -340,7 +482,19 @@ class ExplainPlan {
           ${this.renderNodeHtml(this.planTree)}
         </div>
       ` : `
-        <div style="background: #1e1e1e; color: #f8fafc; padding: 14px; font-family: var(--font-code); font-size: 11px; line-height: 1.45; overflow-x: auto; border-radius: 4px; border: 1px solid #334155; white-space: pre;">${this.escapeHtml(this.planText || '-- Run Explain Plan on connected Oracle Database to see DBMS_XPLAN')}</div>
+        <div class="toad-xplan-view" style="background: #000000; border: 1px solid #27272a; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column;">
+          <div style="background: #18181b; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="color: #facc15; font-weight: 700; font-size: 11px; font-family: var(--font-code);">⚡ DBMS_XPLAN Formatted Output (Starts &amp; E-Rows)</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn" style="height: 22px; padding: 0 8px; font-size: 10px; background: #27272a; color: #facc15; border: 1px solid #3f3f46;" onclick="navigator.clipboard.writeText(window.TracesApp.explainPlan.planText || ''); window.TracesApp.notify('DBMS_XPLAN copiado!', 'success');">
+                📋 Copiar XPlan
+              </button>
+            </div>
+          </div>
+          <pre style="margin: 0; padding: 16px 20px; overflow-x: auto; color: #facc15; background: #000000; font-family: 'Consolas', 'Cascadia Code', 'Fira Code', 'Courier New', monospace; font-size: 12px; line-height: 1.5; letter-spacing: 0.3px; user-select: text; white-space: pre;">${this.escapeHtml(this.planText || '-- Execute o Explain Plan em um banco Oracle conectado para visualizar o DBMS_XPLAN.')}</pre>
+        </div>
       `}
     `;
   }

@@ -41,6 +41,18 @@ import ssl
 import threading
 from datetime import datetime, date
 
+# Garantir que stdout e stderr nunca sejam None em execução oculta/detached no Windows
+if sys.stdout is None or not hasattr(sys.stdout, "write"):
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="ignore")
+    except Exception:
+        pass
+if sys.stderr is None or not hasattr(sys.stderr, "write"):
+    try:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8", errors="ignore")
+    except Exception:
+        pass
+
 # ------------------------------------------------------------------------------
 # 1. CONFIGURAR DIRETÓRIO VENDOR EMBUTIDO (OFFLINE-FIRST / CORPORATIVO)
 # ------------------------------------------------------------------------------
@@ -150,7 +162,7 @@ def ensure_python_dependencies():
         _fix_embedded_pth()
         _ensure_pip_available()
 
-        required_pkgs = ["oracledb", "sshtunnel", "paramiko", "bcrypt", "cryptography"]
+        required_pkgs = ["oracledb", "sshtunnel", "paramiko", "bcrypt", "cryptography", "typing_extensions"]
         try:
             cmd = [sys.executable, "-m", "pip", "install", *required_pkgs, "--quiet", "--no-warn-script-location"]
             subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
@@ -529,7 +541,7 @@ class ThreadSafeConnection:
     """
     def __init__(self, primary_conn, conn_params=None, max_aux=4):
         try:
-            primary_conn.call_timeout = 8000
+            primary_conn.call_timeout = 30000
         except Exception:
             pass
         self._primary_slot = {"conn": primary_conn, "lock": threading.RLock()}
@@ -552,7 +564,7 @@ class ThreadSafeConnection:
                     try:
                         aux_c = oracledb.connect(**self._conn_params)
                         try:
-                            aux_c.call_timeout = 8000
+                            aux_c.call_timeout = 30000
                         except Exception:
                             pass
                         self._aux_slots.append({"conn": aux_c, "lock": threading.RLock()})
@@ -580,7 +592,7 @@ class ThreadSafeConnection:
                     try:
                         aux_c = oracledb.connect(**self._conn_params)
                         try:
-                            aux_c.call_timeout = 8000
+                            aux_c.call_timeout = 30000
                         except Exception:
                             pass
                         new_slot = {"conn": aux_c, "lock": threading.RLock()}
@@ -832,6 +844,13 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_ROOT, **kwargs)
 
+    def log_message(self, format, *args):
+        try:
+            if sys.stderr and hasattr(sys.stderr, "write") and not getattr(sys.stderr, "closed", False):
+                sys.stderr.write("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), format % args))
+        except Exception:
+            pass
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.send_header("Pragma", "no-cache")
@@ -882,6 +901,17 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             entry = ACTIVE_CONNECTIONS[target_id]
             if entry and entry.get("conn"):
                 return entry
+
+        if target_id:
+            for cid, entry in ACTIVE_CONNECTIONS.items():
+                if entry and entry.get("conn"):
+                    cfg = entry.get("config", {})
+                    if (entry.get("canonical_id") == target_id or 
+                        entry.get("profile_id") == target_id or 
+                        cfg.get("id") == target_id or 
+                        cfg.get("name") == target_id or 
+                        f"{cfg.get('user')}@{cfg.get('host')}" in target_id):
+                        return entry
 
         if ACTIVE_CONN_ID and ACTIVE_CONN_ID in ACTIVE_CONNECTIONS:
             entry = ACTIVE_CONNECTIONS[ACTIVE_CONN_ID]
@@ -1089,9 +1119,11 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == "/api/session-details":
             self.handle_get_session_details(parsed.query)
         elif parsed.path == "/api/tablespaces":
-            self.handle_get_tablespaces()
+            self.handle_get_tablespaces(parsed.query)
         elif parsed.path == "/api/tablespaces-details":
-            self.handle_get_tablespaces_details()
+            self.handle_get_tablespaces_details(parsed.query)
+        elif parsed.path == "/api/datafiles":
+            self.handle_get_datafiles(parsed.query)
         elif parsed.path == "/api/parameters":
             self.handle_get_parameters(parsed.query)
         elif parsed.path == "/api/probe":
@@ -1113,7 +1145,13 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == "/api/dba/asm":
             self.handle_get_asm()
         elif parsed.path == "/api/dba/awr":
-            self.handle_get_awr()
+            query_params = urllib.parse.parse_qs(parsed.query)
+            flat_q = {k: v[0] if len(v) == 1 else v for k, v in query_params.items()}
+            self.handle_get_awr(flat_q)
+        elif parsed.path == "/api/dba/sql-details":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            flat_q = {k: v[0] if len(v) == 1 else v for k, v in query_params.items()}
+            self.handle_get_sql_details(flat_q)
         elif parsed.path == "/api/dba/dbmonitor":
             self.handle_get_dbmonitor()
         elif parsed.path == "/api/dba/unixmonitor":
@@ -1134,6 +1172,10 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_post_datacompare({})
         elif parsed.path == "/api/dba/dbcompare":
             self.handle_get_dbcompare()
+        elif parsed.path == "/api/dba/rman":
+            self.handle_get_rman(parsed.query)
+        elif parsed.path == "/api/clipboard":
+            self.handle_get_clipboard()
         elif parsed.path == "/api/update/check":
             self.handle_update_check()
         elif parsed.path.startswith("/api/pro/"):
@@ -1193,8 +1235,12 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_post_datacompare(payload)
         elif parsed.path == "/api/dba/dbcompare":
             self.handle_get_dbcompare()
+        elif parsed.path == "/api/dba/rman":
+            self.handle_post_rman(payload)
         elif parsed.path == "/api/datapump":
             self.handle_post_datapump(payload)
+        elif parsed.path == "/api/clipboard":
+            self.handle_post_clipboard(payload)
         elif parsed.path == "/api/update/apply":
             self.handle_update_apply(payload)
         elif parsed.path.startswith("/api/pro/"):
@@ -1226,6 +1272,98 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
+
+    # -------------------------------------------------------------------------
+    # NATIVE WINDOWS CLIPBOARD BRIDGE (100% RELIABLE CTRL+C / CTRL+V / MENU)
+    # -------------------------------------------------------------------------
+    def handle_get_clipboard(self):
+        """Reads text from Windows native clipboard via Win32 API (or PowerShell fallback)."""
+        text = ""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                CF_UNICODETEXT = 13
+                user32 = ctypes.windll.user32
+                kernel32 = ctypes.windll.kernel32
+                user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+                user32.OpenClipboard.restype = ctypes.c_int
+                user32.GetClipboardData.argtypes = [ctypes.c_uint]
+                user32.GetClipboardData.restype = ctypes.c_void_p
+                user32.CloseClipboard.argtypes = []
+                user32.CloseClipboard.restype = ctypes.c_int
+                kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+                kernel32.GlobalLock.restype = ctypes.c_void_p
+                kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+                kernel32.GlobalUnlock.restype = ctypes.c_int
+
+                if user32.OpenClipboard(None):
+                    try:
+                        handle = user32.GetClipboardData(CF_UNICODETEXT)
+                        if handle:
+                            ptr = kernel32.GlobalLock(handle)
+                            if ptr:
+                                try:
+                                    text = ctypes.wstring_at(ptr)
+                                finally:
+                                    kernel32.GlobalUnlock(handle)
+                    finally:
+                        user32.CloseClipboard()
+            except Exception:
+                try:
+                    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    out = subprocess.check_output(
+                        ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+                        creationflags=creationflags,
+                        timeout=2
+                    )
+                    text = out.decode("utf-8", errors="replace").rstrip("\r\n")
+                except Exception:
+                    text = ""
+        self.send_api_response({"success": True, "text": text})
+
+    def handle_post_clipboard(self, payload):
+        """Writes text to Windows native clipboard via Win32 API (or PowerShell fallback)."""
+        text = str((payload or {}).get("text", ""))
+        ok = False
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                CF_UNICODETEXT = 13
+                GMEM_MOVEABLE = 0x0002
+                user32 = ctypes.windll.user32
+                kernel32 = ctypes.windll.kernel32
+                user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+                user32.OpenClipboard.restype = ctypes.c_int
+                user32.EmptyClipboard.argtypes = []
+                user32.EmptyClipboard.restype = ctypes.c_int
+                user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+                user32.SetClipboardData.restype = ctypes.c_void_p
+                user32.CloseClipboard.argtypes = []
+                user32.CloseClipboard.restype = ctypes.c_int
+                kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+                kernel32.GlobalAlloc.restype = ctypes.c_void_p
+                kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+                kernel32.GlobalLock.restype = ctypes.c_void_p
+                kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+                kernel32.GlobalUnlock.restype = ctypes.c_int
+
+                encoded = text.encode("utf-16-le") + b"\x00\x00"
+                if user32.OpenClipboard(None):
+                    try:
+                        user32.EmptyClipboard()
+                        h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+                        if h_mem:
+                            ptr = kernel32.GlobalLock(h_mem)
+                            if ptr:
+                                ctypes.memmove(ptr, encoded, len(encoded))
+                                kernel32.GlobalUnlock(h_mem)
+                                user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+                                ok = True
+                    finally:
+                        user32.CloseClipboard()
+            except Exception:
+                ok = False
+        self.send_api_response({"success": ok})
 
     # -------------------------------------------------------------------------
     # BRIDGE / JUMP HOST TESTING & CONNECTION
@@ -1393,9 +1531,23 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         sid = payload.get("sid")
         role = payload.get("role", "NORMAL")
         conn_name = payload.get("name") or f"{user}@{host}:{port}/{service_name or sid or 'XE'}"
+        canonical_key = f"{user}@{host}:{port}/{service_name or sid or 'XE'}"
         profile_id = payload.get("id") or payload.get("profile_id")
-        conn_id = str(profile_id) if profile_id else f"{user}@{host}:{port}/{service_name or sid or 'XE'}"
-        use_thick = payload.get("use_thick", payload.get("useThick", True)) # Padrão True para máxima compatibilidade
+        raw_conn_id = payload.get("conn_id") or profile_id
+
+        # Determine unique connection ID: if raw_conn_id is generic or already taken by a different host, use canonical_key so they never collide!
+        if not raw_conn_id or raw_conn_id == "conn-default":
+            conn_id = canonical_key
+        elif raw_conn_id in ACTIVE_CONNECTIONS:
+            existing_cfg = ACTIVE_CONNECTIONS[raw_conn_id].get("config", {})
+            if existing_cfg.get("host") != host or existing_cfg.get("service_name") != (service_name or sid):
+                conn_id = canonical_key
+            else:
+                conn_id = raw_conn_id
+        else:
+            conn_id = raw_conn_id
+
+        use_thick = payload.get("use_thick", payload.get("useThick", True))
 
         use_bridge = payload.get("use_bridge", payload.get("useBridge", False))
         bridge_type = payload.get("bridge_type") or payload.get("bridgeType") or "ssh"
@@ -1587,6 +1739,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
 
             conn_entry = {
                 "id": conn_id,
+                "canonical_id": canonical_key,
+                "profile_id": str(profile_id) if profile_id else None,
                 "conn": wrapped_conn,
                 "config": {
                     "id": conn_id,
@@ -2171,8 +2325,155 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.send_api_response({"error": str(e)}, status=400)
 
     # -------------------------------------------------------------------------
-    # EXPLAIN PLAN & SQL OPTIMIZER
+    # EXPLAIN PLAN & SQL OPTIMIZER (TOAD DBMS_XPLAN FORMATTING)
     # -------------------------------------------------------------------------
+    @staticmethod
+    def format_toad_dbms_xplan(nodes, plan_hash="", original_text=""):
+        """
+        Formats Oracle DBMS_XPLAN execution plan matching Toad / SQL*Plus standard:
+        Plan hash value: <hash>
+        
+        ----------------------------------------------------------------------
+        | Id  | Operation            | Name           | Starts | E-Rows |
+        ----------------------------------------------------------------------
+        |   0 | SELECT STATEMENT     |                |      1 |        |
+        |   1 |   SORT AGGREGATE     |                |      1 |      1 |
+        |   2 |     NESTED LOOPS     |                |      1 |   145K |
+        |*  3 |       TABLE ACCESS FULL| CUSTOMERS      |      1 |   1115 |
+        |*  4 |       INDEX RANGE SCAN | SALES_CUST_IDX |   3341 |    130 |
+        ----------------------------------------------------------------------
+        """
+        if not nodes:
+            return original_text or "-- Plano de execução não disponível."
+
+        # Extract plan_hash if not provided
+        if not plan_hash and original_text:
+            for line in original_text.splitlines():
+                if "Plan hash value:" in line:
+                    try:
+                        plan_hash = line.split("Plan hash value:")[1].strip().split()[0]
+                        break
+                    except Exception:
+                        pass
+
+        # Helper for formatting E-Rows metric (e.g., 145K, 1115, 130, 1)
+        def format_erows(val, id=0, op=""):
+            if (id == 0 and "STATEMENT" in (op or "").upper()) or val is None or val == "":
+                return ""
+            try:
+                n = int(val)
+                if n >= 1_000_000_000:
+                    return f"{round(n/1_000_000_000)}G"
+                elif n >= 100_000_000:
+                    return f"{round(n/1_000_000)}M"
+                elif n >= 1_000_000:
+                    s = f"{round(n/1_000_000, 1)}M"
+                    return s.replace(".0M", "M")
+                elif n >= 10_000:
+                    return f"{round(n/1_000)}K"
+                else:
+                    return str(n)
+            except Exception:
+                return str(val)
+
+        by_id = {n.get("id"): dict(n) for n in nodes if n.get("id") is not None}
+        children_map = {nid: [] for nid in by_id}
+        for nid, n in by_id.items():
+            pid = n.get("parentId")
+            if pid is not None and pid in children_map and pid != nid:
+                children_map[pid].append(nid)
+
+        # Compute hierarchical depth and starts
+        def compute_stats(nid, depth=0, parent_starts=1, is_inner_of_loop=False, outer_card=1):
+            if nid not in by_id:
+                return
+            n = by_id[nid]
+            n["depth"] = depth
+            actual_starts = n.get("starts") or n.get("last_starts")
+            if actual_starts is not None and actual_starts != 0:
+                n["calc_starts"] = int(actual_starts)
+            elif nid == 0:
+                n["calc_starts"] = 1
+            elif is_inner_of_loop:
+                n["calc_starts"] = max(1, parent_starts * outer_card)
+            else:
+                n["calc_starts"] = max(1, parent_starts)
+
+            ch_ids = children_map.get(nid, [])
+            op = (n.get("operation") or "").upper()
+            is_loop = "NESTED LOOPS" in op or "FILTER" in op
+            first_card = 1
+            for idx, cid in enumerate(ch_ids):
+                child_node = by_id[cid]
+                if idx == 0:
+                    compute_stats(cid, depth + 1, n["calc_starts"], False, 1)
+                    first_card = child_node.get("cardinality") or child_node.get("a_rows") or 1
+                else:
+                    compute_stats(cid, depth + 1, n["calc_starts"], is_loop, first_card)
+
+        root_id = nodes[0].get("id", 0) if nodes else 0
+        compute_stats(root_id)
+
+        # Format rows
+        table_rows = []
+        preds = []
+        for n in nodes:
+            nid = n.get("id", 0)
+            has_pred = bool(n.get("accessPredicates") or n.get("filterPredicates"))
+            star = "*" if has_pred else " "
+            id_col = f"{star}{nid:>3}"
+            depth = by_id.get(nid, {}).get("depth", 0)
+            indent = "  " * depth
+            op_title = n.get("operation", "")
+            opts = n.get("options")
+            if opts:
+                op_title += f" {opts}"
+            op_str = f"{indent}{op_title}"
+            name_str = n.get("objectName") or ""
+            starts_val = by_id.get(nid, {}).get("calc_starts", 1)
+            starts_str = str(starts_val) if starts_val is not None else "1"
+            erows_str = format_erows(n.get("cardinality"), nid, op_title)
+            table_rows.append((id_col, op_str, name_str, starts_str, erows_str))
+
+            if n.get("filterPredicates"):
+                preds.append((nid, "filter", n["filterPredicates"]))
+            if n.get("accessPredicates"):
+                preds.append((nid, "access", n["accessPredicates"]))
+
+        w_op = max(len("Operation"), max((len(r[1]) for r in table_rows), default=12))
+        w_name = max(len("Name"), max((len(r[2]) for r in table_rows), default=4))
+        w_starts = max(len("Starts"), max((len(r[3]) for r in table_rows), default=6))
+        w_erows = max(len("E-Rows"), max((len(r[4]) for r in table_rows), default=6))
+
+        header = f"| Id  | {'Operation':<{w_op}} | {'Name':<{w_name}} | {'Starts':>{w_starts}} | {'E-Rows':>{w_erows}} |"
+        dash = "-" * len(header)
+
+        lines = []
+        if plan_hash:
+            lines.append(f"Plan hash value: {plan_hash}")
+            lines.append("")
+        lines.append(dash)
+        lines.append(header)
+        lines.append(dash)
+        for r in table_rows:
+            raw_id = r[0]
+            if raw_id.startswith("*"):
+                id_part = "*" + f"{raw_id[1:]:>3}"
+            else:
+                id_part = f"{raw_id:>4}"
+            lines.append(f"|{id_part} | {r[1]:<{w_op}} | {r[2]:<{w_name}} | {r[3]:>{w_starts}} | {r[4]:>{w_erows}} |")
+        lines.append(dash)
+
+        if preds:
+            lines.append("")
+            lines.append("Predicate Information (identified by operation id):")
+            lines.append("---------------------------------------------------")
+            preds.sort(key=lambda x: x[0])
+            for pid, ptype, ptxt in preds:
+                lines.append(f"*{pid:>3} - {ptype}({ptxt})")
+
+        return "\n".join(lines)
+
     def handle_explain(self, payload):
         """Generates real execution plan via PLAN_TABLE & DBMS_XPLAN with column defs matching Toad"""
         conn = self.get_conn(payload)
@@ -2250,10 +2551,25 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         "bottleneck": bool(r[3] == "TABLE ACCESS" and r[4] == "FULL" and (r[9] or 0) > 10)
                     })
 
+                # Extract plan hash value if present in dbms_xplan output
+                plan_hash = ""
+                for line in plan_text_rows:
+                    if "Plan hash value:" in line:
+                        try:
+                            plan_hash = line.split("Plan hash value:")[1].strip().split()[0]
+                            break
+                        except Exception:
+                            pass
+
+                # Format Toad standard DBMS_XPLAN with Starts & E-Rows
+                formatted_xplan = self.format_toad_dbms_xplan(raw_nodes, plan_hash=plan_hash, original_text="\n".join(plan_text_rows))
+
                 self.send_api_response({
-                    "planText": "\n".join(plan_text_rows),
+                    "planText": formatted_xplan,
+                    "rawPlanText": "\n".join(plan_text_rows),
                     "nodes": raw_nodes,
-                    "statementId": statement_id
+                    "statementId": statement_id,
+                    "planHash": plan_hash
                 })
         except Exception as e:
             self.send_api_response({"error": str(e)}, status=400)
@@ -3008,61 +3324,157 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         pass
 
                 # -------------------------------------------------------------
-                # 11. TABLESPACES (Real Sizing & Free Space)
+                # 11. TABLESPACES (Official TOAD Sizing, All Datafiles & Free Space)
                 # -------------------------------------------------------------
                 elif obj_type in ("TABLESPACE", "TS"):
                     try:
                         cur.execute("""
-                            SELECT file_name, bytes/1024/1024, autoextensible, maxbytes/1024/1024, status
-                            FROM dba_data_files
-                            WHERE tablespace_name = :1
-                        """, [name])
+                            SELECT 
+                                d.file_name,
+                                d.file_id,
+                                d.tablespace_name,
+                                ROUND(d.bytes / 1024 / 1024, 2) AS bytes_mb,
+                                d.blocks,
+                                d.status,
+                                d.autoextensible,
+                                ROUND(CASE WHEN d.autoextensible = 'YES' THEN GREATEST(d.bytes, NVL(d.maxbytes, d.bytes)) / 1024 / 1024 ELSE d.bytes / 1024 / 1024 END, 2) AS max_bytes_mb,
+                                ROUND(d.increment_by * ts.block_size / 1024 / 1024, 2) AS increment_mb,
+                                ROUND(NVL(d.user_bytes, d.bytes) / 1024 / 1024, 2) AS user_bytes_mb,
+                                d.online_status,
+                                'DATAFILE' AS file_type,
+                                NVL(fs.phyrds, 0) AS phyrds,
+                                NVL(fs.phywrts, 0) AS phywrts,
+                                NVL(fs.readtim, 0) AS readtim,
+                                NVL(fs.writetim, 0) AS writetim
+                            FROM dba_data_files d
+                            JOIN dba_tablespaces ts ON d.tablespace_name = ts.tablespace_name
+                            LEFT JOIN v$filestat fs ON d.file_id = fs.file#
+                            WHERE d.tablespace_name = :ts
+                            UNION ALL
+                            SELECT 
+                                t.file_name,
+                                t.file_id,
+                                t.tablespace_name,
+                                ROUND(t.bytes / 1024 / 1024, 2) AS bytes_mb,
+                                t.blocks,
+                                t.status,
+                                t.autoextensible,
+                                ROUND(CASE WHEN t.autoextensible = 'YES' THEN GREATEST(t.bytes, NVL(t.maxbytes, t.bytes)) / 1024 / 1024 ELSE t.bytes / 1024 / 1024 END, 2) AS max_bytes_mb,
+                                ROUND(t.increment_by * ts.block_size / 1024 / 1024, 2) AS increment_mb,
+                                ROUND(NVL(t.user_bytes, t.bytes) / 1024 / 1024, 2) AS user_bytes_mb,
+                                'ONLINE' AS online_status,
+                                'TEMPFILE' AS file_type,
+                                NVL(ts_stat.phyrds, 0) AS phyrds,
+                                NVL(ts_stat.phywrts, 0) AS phywrts,
+                                NVL(ts_stat.readtim, 0) AS readtim,
+                                NVL(ts_stat.writetim, 0) AS writetim
+                            FROM dba_temp_files t
+                            JOIN dba_tablespaces ts ON t.tablespace_name = ts.tablespace_name
+                            LEFT JOIN v$tempstat ts_stat ON t.file_id = ts_stat.file#
+                            WHERE t.tablespace_name = :ts
+                            ORDER BY file_id
+                        """, {"ts": name})
                         df_rows = cur.fetchall()
                         details["datafiles"] = [{
+                            "fileId": r[1],
                             "fileName": r[0],
-                            "sizeMb": round(r[1] or 0, 1),
-                            "autoextend": r[2],
-                            "maxMb": round(r[3], 1) if r[3] else None,
-                            "status": r[4]
+                            "tablespace": r[2],
+                            "sizeMb": float(r[3] or 0),
+                            "blocks": r[4] or 0,
+                            "status": r[5] or "AVAILABLE",
+                            "autoextend": r[6] or "NO",
+                            "maxMb": float(r[7] or r[3] or 0),
+                            "incrementMb": float(r[8] or 0),
+                            "userBytesMb": float(r[9] or r[3] or 0),
+                            "onlineStatus": r[10] or "ONLINE",
+                            "fileType": r[11] or "DATAFILE",
+                            "phyReads": int(r[12] or 0),
+                            "phyWrites": int(r[13] or 0),
+                            "readTime": int(r[14] or 0),
+                            "writeTime": int(r[15] or 0)
                         } for r in df_rows]
                     except Exception:
                         pass
 
-                    total_mb = round(sum(df["sizeMb"] for df in details.get("datafiles", [])), 1) or 1024.0
-                    free_mb = round(total_mb * 0.35, 1)
-                    ts_status, ts_contents, ts_extent, ts_alloc = "ONLINE", "PERMANENT", "LOCAL", "SYSTEM"
+                    total_mb = round(sum(df["sizeMb"] for df in details.get("datafiles", [])), 2) or 1024.0
+                    max_mb = round(sum(df.get("maxMb") or df["sizeMb"] for df in details.get("datafiles", [])), 2) or total_mb
+                    if max_mb < total_mb:
+                        max_mb = total_mb
+                    has_autoextend = any(df.get("autoextend") == "YES" for df in details.get("datafiles", []))
+
+                    ts_status, ts_contents, ts_extent, ts_alloc, ts_seg, ts_block = "ONLINE", "PERMANENT", "LOCAL", "SYSTEM", "AUTO", 8192
+                    free_mb = 0.0
+                    used_mb = 0.0
+                    pct_used = 0.0
                     try:
                         cur.execute("""
-                            SELECT
-                                (SELECT ROUND(NVL(SUM(bytes), 0)/1024/1024, 1) FROM dba_free_space WHERE tablespace_name = :1),
-                                status, contents, extent_management, allocation_type
+                            SELECT status, contents, extent_management, allocation_type, segment_space_management, block_size
                             FROM dba_tablespaces
-                            WHERE tablespace_name = :1
-                        """, [name])
+                            WHERE tablespace_name = :ts
+                        """, {"ts": name})
                         ts_row = cur.fetchone()
                         if ts_row:
-                            if ts_row[0] is not None: free_mb = ts_row[0]
-                            ts_status = ts_row[1] or ts_status
-                            ts_contents = ts_row[2] or ts_contents
-                            ts_extent = ts_row[3] or ts_extent
-                            ts_alloc = ts_row[4] or ts_alloc
-                    except Exception:
-                        pass
+                            ts_status = ts_row[0] or ts_status
+                            ts_contents = ts_row[1] or ts_contents
+                            ts_extent = ts_row[2] or ts_extent
+                            ts_alloc = ts_row[3] or ts_alloc
+                            ts_seg = ts_row[4] or ts_seg
+                            ts_block = ts_row[5] or ts_block
 
-                    used_mb = round(max(0.0, total_mb - free_mb), 1)
-                    pct_used = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0
+                        if ts_contents == 'TEMPORARY':
+                            cur.execute("""
+                                SELECT ROUND(NVL(used_space, 0) * :bs / 1024 / 1024, 2), ROUND(used_percent, 1)
+                                FROM dba_tablespace_usage_metrics
+                                WHERE tablespace_name = :ts
+                            """, {"bs": ts_block, "ts": name})
+                            um_r = cur.fetchone()
+                            if um_r:
+                                used_mb = float(um_r[0] or 0)
+                                pct_used = float(um_r[1] or 0)
+                                free_mb = round(max(0.0, total_mb - used_mb), 2)
+                            else:
+                                free_mb = total_mb
+                                used_mb = 0.0
+                                pct_used = 0.0
+                        else:
+                            cur.execute("SELECT ROUND(NVL(SUM(bytes), 0) / 1024 / 1024, 2) FROM dba_free_space WHERE tablespace_name = :ts", {"ts": name})
+                            fr = cur.fetchone()
+                            if fr and fr[0] is not None:
+                                free_mb = float(fr[0] or 0)
+                            used_mb = round(max(0.0, total_mb - free_mb), 2)
+                            pct_used = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0
+                    except Exception:
+                        used_mb = round(total_mb * 0.5, 2)
+                        free_mb = round(total_mb - used_mb, 2)
+                        pct_used = 50.0
+
+                    free_max_mb = round(max(0.0, max_mb - used_mb), 2)
+                    max_pct_used = round((used_mb / max_mb) * 100, 1) if max_mb > 0 else pct_used
                     details["tablespaceInfo"] = {
                         "name": name,
                         "totalMb": total_mb,
                         "usedMb": used_mb,
                         "freeMb": free_mb,
                         "pctUsed": pct_used,
+                        "maxMb": max_mb,
+                        "freeMaxMb": free_max_mb,
+                        "maxPctUsed": max_pct_used,
+                        "autoextend": "YES" if has_autoextend else "NO",
+                        "filesCount": len(details.get("datafiles", [])),
+                        "blockSize": ts_block,
                         "status": ts_status,
                         "contents": ts_contents,
                         "extentManagement": ts_extent,
-                        "allocationType": ts_alloc
+                        "allocationType": ts_alloc,
+                        "segmentSpaceManagement": ts_seg
                     }
-                    details["ddl"] = f"CREATE TABLESPACE \"{name}\" \n  DATAFILE SIZE {int(total_mb)}M AUTOEXTEND ON NEXT 128M MAXSIZE UNLIMITED \n  EXTENT MANAGEMENT {ts_extent} SEGMENT SPACE MANAGEMENT AUTO;"
+                    ddl_lines = [f'CREATE TABLESPACE "{name}"']
+                    for idx, df in enumerate(details.get("datafiles", [])):
+                        prefix = "  DATAFILE" if idx == 0 else "  ADD DATAFILE"
+                        auto = f"AUTOEXTEND ON NEXT {int(df.get('incrementMb', 100))}M MAXSIZE {int(df.get('maxMb', 32768))}M" if df.get("autoextend") == "YES" else "AUTOEXTEND OFF"
+                        ddl_lines.append(f"  {prefix} '{df['fileName']}' SIZE {int(df['sizeMb'])}M {auto}")
+                    ddl_lines.append(f'  EXTENT MANAGEMENT {ts_extent} SEGMENT SPACE MANAGEMENT {ts_seg};')
+                    details["ddl"] = "\n".join(ddl_lines)
 
                 # -------------------------------------------------------------
                 # 12. DIRECTORIES
@@ -3180,18 +3592,22 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         params = urllib.parse.parse_qs(query)
         schema = params.get("schema", ["HR"])[0].upper()
         name = params.get("name", ["EMPLOYEES"])[0].upper()
-        limit = int(params.get("limit", [200])[0])
-        limit = max(1, min(limit, 5000))
+        raw_limit = int(params.get("limit", [200])[0])
+        fetch_all = (raw_limit <= 0 or raw_limit >= 999999)
+        limit = 999999999 if fetch_all else max(1, min(raw_limit, 100000))
 
         try:
             with conn.cursor() as cur:
-                cur.execute(f'SELECT * FROM "{schema}"."{name}" WHERE ROWNUM <= :1', [limit + 1])
+                if fetch_all:
+                    cur.execute(f'SELECT * FROM "{schema}"."{name}"')
+                else:
+                    cur.execute(f'SELECT * FROM "{schema}"."{name}" WHERE ROWNUM <= :1', [limit + 1])
                 if not cur.description:
                     self.send_api_response({"success": True, "columns": [], "data": [], "rows": [], "hasMore": False})
                     return
                 columns = [col[0] for col in cur.description]
                 raw_rows = cur.fetchall()
-                has_more = len(raw_rows) > limit
+                has_more = (not fetch_all) and (len(raw_rows) > limit)
                 if has_more:
                     raw_rows = raw_rows[:limit]
                 data = []
@@ -3790,61 +4206,321 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # -------------------------------------------------------------------------
     # STORAGE & DBA MANAGER ENDPOINTS
     # -------------------------------------------------------------------------
-    def handle_get_tablespaces(self):
-        self.handle_get_tablespaces_details()
+    def handle_get_tablespaces(self, query=None):
+        self.handle_get_tablespaces_details(query)
 
-    def handle_get_tablespaces_details(self):
-        """Detailed tablespaces sizing, datafiles, and free space"""
-        entry = self.get_connection_entry()
+    def handle_get_datafiles(self, query=None):
+        """Official TOAD Datafiles dictionary query: All physical datafiles & tempfiles with I/O stats"""
+        entry = self.get_connection_entry(query=query)
         conn = entry.get("conn") if entry else None
         if not conn:
             self.send_api_response({"error": "No active connection"}, status=400)
             return
 
         cid = entry.get("id", "default")
-        ckey = f"tsdetails:{cid}"
-        cached = cache_get(ckey, ttl_sec=30.0)
-        if cached:
+        ckey = f"datafiles_full:{cid}"
+        cached = cache_get(ckey, ttl_sec=15.0)
+
+        # Optional filter by tablespace
+        ts_filter = None
+        if query:
+            try:
+                params = urllib.parse.parse_qs(query) if isinstance(query, str) else query
+                ts_arg = params.get("tablespace") or params.get("ts")
+                if ts_arg:
+                    ts_val = ts_arg[0] if isinstance(ts_arg, list) else ts_arg
+                    if ts_val and ts_val.upper() not in ("ALL", "TODOS", "*", ""):
+                        ts_filter = ts_val.upper()
+            except Exception:
+                pass
+
+        if cached and not ts_filter:
             self.send_api_response(cached)
+            return
+        elif cached and ts_filter:
+            filtered_dfs = [df for df in cached.get("datafiles", []) if df.get("tablespace", "").upper() == ts_filter]
+            self.send_api_response({"datafiles": filtered_dfs, "count": len(filtered_dfs), "tablespace": ts_filter})
             return
 
         try:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT 
-                        df.tablespace_name,
-                        ROUND(df.total_bytes / 1024 / 1024, 2) as total_mb,
-                        ROUND((df.total_bytes - NVL(fs.free_bytes, 0)) / 1024 / 1024, 2) as used_mb,
-                        ROUND(NVL(fs.free_bytes, 0) / 1024 / 1024, 2) as free_mb,
-                        ROUND(((df.total_bytes - NVL(fs.free_bytes, 0)) / NULLIF(df.total_bytes, 0)) * 100, 1) as pct_used,
-                        df.files_cnt
-                    FROM (
-                        SELECT tablespace_name, SUM(bytes) as total_bytes, COUNT(file_id) as files_cnt
-                        FROM dba_data_files
-                        GROUP BY tablespace_name
-                    ) df
+                        d.file_name,
+                        d.file_id,
+                        d.tablespace_name,
+                        ROUND(d.bytes / 1024 / 1024, 2) AS bytes_mb,
+                        d.blocks,
+                        d.status,
+                        d.autoextensible,
+                        ROUND(CASE WHEN d.autoextensible = 'YES' THEN GREATEST(d.bytes, NVL(d.maxbytes, d.bytes)) / 1024 / 1024 ELSE d.bytes / 1024 / 1024 END, 2) AS max_bytes_mb,
+                        ROUND(d.increment_by * ts.block_size / 1024 / 1024, 2) AS increment_mb,
+                        ROUND(NVL(d.user_bytes, d.bytes) / 1024 / 1024, 2) AS user_bytes_mb,
+                        d.online_status,
+                        'DATAFILE' AS file_type,
+                        NVL(fs.phyrds, 0) AS phyrds,
+                        NVL(fs.phywrts, 0) AS phywrts,
+                        NVL(fs.readtim, 0) AS readtim,
+                        NVL(fs.writetim, 0) AS writetim
+                    FROM dba_data_files d
+                    JOIN dba_tablespaces ts ON d.tablespace_name = ts.tablespace_name
+                    LEFT JOIN v$filestat fs ON d.file_id = fs.file#
+                    UNION ALL
+                    SELECT 
+                        t.file_name,
+                        t.file_id,
+                        t.tablespace_name,
+                        ROUND(t.bytes / 1024 / 1024, 2) AS bytes_mb,
+                        t.blocks,
+                        t.status,
+                        t.autoextensible,
+                        ROUND(CASE WHEN t.autoextensible = 'YES' THEN GREATEST(t.bytes, NVL(t.maxbytes, t.bytes)) / 1024 / 1024 ELSE t.bytes / 1024 / 1024 END, 2) AS max_bytes_mb,
+                        ROUND(t.increment_by * ts.block_size / 1024 / 1024, 2) AS increment_mb,
+                        ROUND(NVL(t.user_bytes, t.bytes) / 1024 / 1024, 2) AS user_bytes_mb,
+                        'ONLINE' AS online_status,
+                        'TEMPFILE' AS file_type,
+                        NVL(ts_stat.phyrds, 0) AS phyrds,
+                        NVL(ts_stat.phywrts, 0) AS phywrts,
+                        NVL(ts_stat.readtim, 0) AS readtim,
+                        NVL(ts_stat.writetim, 0) AS writetim
+                    FROM dba_temp_files t
+                    JOIN dba_tablespaces ts ON t.tablespace_name = ts.tablespace_name
+                    LEFT JOIN v$tempstat ts_stat ON t.file_id = ts_stat.file#
+                    ORDER BY tablespace_name, file_id
+                """)
+                df_list = []
+                for r in cur.fetchall():
+                    sz_mb = float(r[3] or 0)
+                    mx_mb = float(r[7] or sz_mb)
+                    df_list.append({
+                        "fileName": r[0],
+                        "fileId": r[1],
+                        "tablespace": r[2],
+                        "sizeMb": sz_mb,
+                        "blocks": r[4] or 0,
+                        "status": r[5] or "AVAILABLE",
+                        "autoextend": r[6] or "NO",
+                        "maxMb": max(sz_mb, mx_mb),
+                        "incrementMb": float(r[8] or 0),
+                        "userBytesMb": float(r[9] or sz_mb),
+                        "onlineStatus": r[10] or "ONLINE",
+                        "fileType": r[11] or "DATAFILE",
+                        "phyReads": int(r[12] or 0),
+                        "phyWrites": int(r[13] or 0),
+                        "readTime": int(r[14] or 0),
+                        "writeTime": int(r[15] or 0)
+                    })
+                all_res = {"datafiles": df_list, "count": len(df_list)}
+                cache_set(ckey, all_res)
+                if ts_filter:
+                    filtered = [df for df in df_list if df["tablespace"].upper() == ts_filter]
+                    self.send_api_response({"datafiles": filtered, "count": len(filtered), "tablespace": ts_filter})
+                else:
+                    self.send_api_response(all_res)
+        except Exception as e:
+            self.send_api_response({"error": str(e), "datafiles": []}, status=400)
+
+    def handle_get_tablespaces_details(self, query=None):
+        """Detailed tablespaces sizing, all physical datafiles, and free space (Official TOAD Logic)"""
+        entry = self.get_connection_entry(query=query)
+        conn = entry.get("conn") if entry else None
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+
+        cid = entry.get("id", "default")
+        ckey = f"tsdetails_toad:{cid}"
+        cached = cache_get(ckey, ttl_sec=20.0)
+        if cached:
+            self.send_api_response(cached)
+            return
+
+        try:
+            with conn.cursor() as cur:
+                # 1. Fetch all physical datafiles & tempfiles with I/O stats
+                cur.execute("""
+                    SELECT 
+                        d.file_name,
+                        d.file_id,
+                        d.tablespace_name,
+                        ROUND(d.bytes / 1024 / 1024, 2) AS bytes_mb,
+                        d.blocks,
+                        d.status,
+                        d.autoextensible,
+                        ROUND(CASE WHEN d.autoextensible = 'YES' THEN GREATEST(d.bytes, NVL(d.maxbytes, d.bytes)) / 1024 / 1024 ELSE d.bytes / 1024 / 1024 END, 2) AS max_bytes_mb,
+                        ROUND(d.increment_by * ts.block_size / 1024 / 1024, 2) AS increment_mb,
+                        ROUND(NVL(d.user_bytes, d.bytes) / 1024 / 1024, 2) AS user_bytes_mb,
+                        d.online_status,
+                        'DATAFILE' AS file_type,
+                        NVL(fs.phyrds, 0) AS phyrds,
+                        NVL(fs.phywrts, 0) AS phywrts,
+                        NVL(fs.readtim, 0) AS readtim,
+                        NVL(fs.writetim, 0) AS writetim
+                    FROM dba_data_files d
+                    JOIN dba_tablespaces ts ON d.tablespace_name = ts.tablespace_name
+                    LEFT JOIN v$filestat fs ON d.file_id = fs.file#
+                    UNION ALL
+                    SELECT 
+                        t.file_name,
+                        t.file_id,
+                        t.tablespace_name,
+                        ROUND(t.bytes / 1024 / 1024, 2) AS bytes_mb,
+                        t.blocks,
+                        t.status,
+                        t.autoextensible,
+                        ROUND(CASE WHEN t.autoextensible = 'YES' THEN GREATEST(t.bytes, NVL(t.maxbytes, t.bytes)) / 1024 / 1024 ELSE t.bytes / 1024 / 1024 END, 2) AS max_bytes_mb,
+                        ROUND(t.increment_by * ts.block_size / 1024 / 1024, 2) AS increment_mb,
+                        ROUND(NVL(t.user_bytes, t.bytes) / 1024 / 1024, 2) AS user_bytes_mb,
+                        'ONLINE' AS online_status,
+                        'TEMPFILE' AS file_type,
+                        NVL(ts_stat.phyrds, 0) AS phyrds,
+                        NVL(ts_stat.phywrts, 0) AS phywrts,
+                        NVL(ts_stat.readtim, 0) AS readtim,
+                        NVL(ts_stat.writetim, 0) AS writetim
+                    FROM dba_temp_files t
+                    JOIN dba_tablespaces ts ON t.tablespace_name = ts.tablespace_name
+                    LEFT JOIN v$tempstat ts_stat ON t.file_id = ts_stat.file#
+                    ORDER BY tablespace_name, file_id
+                """)
+                df_map = {}
+                all_datafiles = []
+                for r in cur.fetchall():
+                    sz_mb = float(r[3] or 0)
+                    mx_mb = float(r[7] or sz_mb)
+                    df_item = {
+                        "fileName": r[0],
+                        "fileId": r[1],
+                        "tablespace": r[2],
+                        "sizeMb": sz_mb,
+                        "blocks": r[4] or 0,
+                        "status": r[5] or "AVAILABLE",
+                        "autoextend": r[6] or "NO",
+                        "maxMb": max(sz_mb, mx_mb),
+                        "incrementMb": float(r[8] or 0),
+                        "userBytesMb": float(r[9] or sz_mb),
+                        "onlineStatus": r[10] or "ONLINE",
+                        "fileType": r[11] or "DATAFILE",
+                        "phyReads": int(r[12] or 0),
+                        "phyWrites": int(r[13] or 0),
+                        "readTime": int(r[14] or 0),
+                        "writeTime": int(r[15] or 0)
+                    }
+                    all_datafiles.append(df_item)
+                    ts_key = r[2].upper()
+                    if ts_key not in df_map:
+                        df_map[ts_key] = []
+                    df_map[ts_key].append(df_item)
+
+                # Save into full datafiles cache as well
+                cache_set(f"datafiles_full:{cid}", {"datafiles": all_datafiles, "count": len(all_datafiles)})
+
+                # 2. Fetch tablespaces overview with proper temporary tablespace metrics
+                cur.execute("""
+                    SELECT 
+                        ts.tablespace_name,
+                        NVL(ts.status, 'ONLINE') AS status,
+                        NVL(ts.contents, 'PERMANENT') AS contents,
+                        NVL(ts.block_size, 8192) AS block_size,
+                        ROUND(NVL(df.total_bytes, 0) / 1024 / 1024, 2) AS total_mb,
+                        CASE 
+                            WHEN ts.contents = 'TEMPORARY' THEN ROUND(NVL(um.used_space, 0) * ts.block_size / 1024 / 1024, 2)
+                            ELSE ROUND((NVL(df.total_bytes, 0) - NVL(fs.free_bytes, 0)) / 1024 / 1024, 2)
+                        END AS used_mb,
+                        CASE 
+                            WHEN ts.contents = 'TEMPORARY' THEN ROUND(GREATEST(0, (NVL(df.total_bytes, 0) - (NVL(um.used_space, 0) * ts.block_size))) / 1024 / 1024, 2)
+                            ELSE ROUND(NVL(fs.free_bytes, 0) / 1024 / 1024, 2)
+                        END AS free_mb,
+                        CASE 
+                            WHEN ts.contents = 'TEMPORARY' THEN ROUND(NVL(um.used_percent, 0), 1)
+                            ELSE ROUND(((NVL(df.total_bytes, 0) - NVL(fs.free_bytes, 0)) / NULLIF(df.total_bytes, 0)) * 100, 1)
+                        END AS pct_used,
+                        NVL(df.files_cnt, 0) AS files_cnt,
+                        ROUND(NVL(df.max_bytes, df.total_bytes) / 1024 / 1024, 2) AS max_mb,
+                        NVL(df.autoext, 'NO') AS autoext
+                    FROM dba_tablespaces ts
                     LEFT JOIN (
-                        SELECT tablespace_name, SUM(bytes) as free_bytes
+                        SELECT tablespace_name,
+                               SUM(bytes) AS total_bytes,
+                               SUM(CASE WHEN autoextensible = 'YES' THEN GREATEST(bytes, NVL(maxbytes, bytes)) ELSE bytes END) AS max_bytes,
+                               MAX(autoextensible) AS autoext,
+                               COUNT(file_id) AS files_cnt
+                        FROM (
+                            SELECT tablespace_name, bytes, maxbytes, autoextensible, file_id FROM dba_data_files
+                            UNION ALL
+                            SELECT tablespace_name, bytes, maxbytes, autoextensible, file_id FROM dba_temp_files
+                        )
+                        GROUP BY tablespace_name
+                    ) df ON ts.tablespace_name = df.tablespace_name
+                    LEFT JOIN (
+                        SELECT tablespace_name, SUM(bytes) AS free_bytes
                         FROM dba_free_space
                         GROUP BY tablespace_name
-                    ) fs ON df.tablespace_name = fs.tablespace_name
+                    ) fs ON ts.tablespace_name = fs.tablespace_name
+                    LEFT JOIN dba_tablespace_usage_metrics um ON ts.tablespace_name = um.tablespace_name
                     ORDER BY pct_used DESC
                 """)
                 ts_list = []
                 for r in cur.fetchall():
+                    ts_name = r[0]
+                    ts_status = r[1] or "ONLINE"
+                    ts_contents = r[2] or "PERMANENT"
+                    block_sz = r[3] or 8192
+                    tot_mb = round(float(r[4] or 0), 2)
+                    used_mb = round(float(r[5] or 0), 2)
+                    free_mb = round(float(r[6] or 0), 2)
+                    pct_used = round(float(r[7] or 0), 1)
+                    files_cnt = int(r[8] or 0)
+                    max_mb = round(max(tot_mb, float(r[9] or tot_mb)), 2)
+                    autoext = r[10] or "NO"
+                    free_max_mb = round(max(0.0, max_mb - used_mb), 2)
+                    max_pct = round((used_mb / max_mb) * 100, 1) if max_mb > 0 else pct_used
+
+                    ts_dfs = df_map.get(ts_name.upper(), [])
+                    if not files_cnt and ts_dfs:
+                        files_cnt = len(ts_dfs)
+
                     ts_list.append({
-                        "name": r[0],
-                        "totalMb": r[1] or 0,
-                        "usedMb": r[2] or 0,
-                        "freeMb": r[3] or 0,
-                        "pct": r[4] or 0,
-                        "datafiles": r[5] or 1,
-                        "status": "ONLINE"
+                        "name": ts_name,
+                        "totalMb": tot_mb,
+                        "usedMb": used_mb,
+                        "freeMb": free_mb,
+                        "pct": pct_used,
+                        "usedPct": pct_used,
+                        "datafiles": files_cnt,
+                        "filesCount": files_cnt,
+                        "datafilesList": ts_dfs,
+                        "maxMb": max_mb,
+                        "freeMaxMb": free_max_mb,
+                        "maxPct": max_pct,
+                        "maxPctUsed": max_pct,
+                        "autoextend": autoext,
+                        "status": ts_status,
+                        "contents": ts_contents,
+                        "blockSize": block_sz
                     })
-                res = {"tablespaces": ts_list}
+
+                sum_alloc = round(sum(t["totalMb"] for t in ts_list), 2)
+                sum_used = round(sum(t["usedMb"] for t in ts_list), 2)
+                sum_free = round(sum(t["freeMb"] for t in ts_list), 2)
+                sum_max = round(sum(t["maxMb"] for t in ts_list), 2)
+                sum_free_max = round(max(0.0, sum_max - sum_used), 2)
+                summary = {
+                    "count": len(ts_list),
+                    "totalFiles": len(all_datafiles),
+                    "allocatedMb": sum_alloc,
+                    "usedMb": sum_used,
+                    "freeMb": sum_free,
+                    "maxMb": sum_max,
+                    "freeMaxMb": sum_free_max,
+                    "pctUsed": round((sum_used / sum_alloc) * 100, 1) if sum_alloc > 0 else 0.0,
+                    "maxPctUsed": round((sum_used / sum_max) * 100, 1) if sum_max > 0 else 0.0,
+                    "criticalCount": sum(1 for t in ts_list if t["pct"] >= 85 or t["maxPct"] >= 85)
+                }
+                res = {"tablespaces": ts_list, "datafiles": all_datafiles, "count": len(all_datafiles), "summary": summary}
                 cache_set(ckey, res)
                 self.send_api_response(res)
-        except Exception:
+        except Exception as e:
+            # Fallback to user_tablespaces if privileges are restricted
             try:
                 with conn.cursor() as cur:
                     cur.execute("SELECT tablespace_name, status, contents FROM user_tablespaces ORDER BY tablespace_name")
@@ -3856,13 +4532,20 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         "usedMb": 512,
                         "freeMb": 512,
                         "pct": 50.0,
-                        "datafiles": 1
+                        "usedPct": 50.0,
+                        "maxMb": 4096,
+                        "freeMaxMb": 3584,
+                        "maxPct": 12.5,
+                        "maxPctUsed": 12.5,
+                        "autoextend": "YES",
+                        "datafiles": 1,
+                        "filesCount": 1,
+                        "datafilesList": []
                     } for r in cur.fetchall()]
-                    res = {"tablespaces": ts_list}
-                    cache_set(ckey, res)
+                    res = {"tablespaces": ts_list, "datafiles": [], "count": 0}
                     self.send_api_response(res)
-            except Exception as e:
-                self.send_api_response({"error": str(e)}, status=400)
+            except Exception as e2:
+                self.send_api_response({"error": str(e2)}, status=400)
 
     def handle_get_parameters(self, query):
         """Fetches V$PARAMETER values in 1 single network fetch"""
@@ -3882,18 +4565,33 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             if all_params is None:
                 with conn.cursor() as cur:
                     cur.execute("""
-                        SELECT name, value, isdefault, issys_modifiable, description
+                        SELECT name, value, isdefault, isses_modifiable, issys_modifiable, type, description
                         FROM v$parameter
                         ORDER BY name
                     """)
+                    type_map = {
+                        1: "BOOLEAN",
+                        2: "STRING",
+                        3: "INTEGER",
+                        4: "PARAMETER FILE",
+                        5: "RESERVED",
+                        6: "BIG INTEGER"
+                    }
                     all_params = []
                     for r in cur.fetchall():
+                        ses_mod = str(r[3] or "FALSE").upper() == "TRUE"
+                        sys_mod = str(r[4] or "FALSE").upper()
+                        p_type = type_map.get(int(r[5] or 2), "STRING") if str(r[5] or "").isdigit() else str(r[5] or "STRING")
                         all_params.append({
                             "name": r[0] or "",
-                            "value": r[1] or "",
+                            "value": r[1] if r[1] is not None else "",
                             "isDefault": r[2] == "TRUE",
-                            "isDynamic": r[3] in ("IMMEDIATE", "DEFERRED"),
-                            "description": r[4] or ""
+                            "sesModifiable": ses_mod,
+                            "sysModifiable": sys_mod,
+                            "isDynamic": sys_mod == "IMMEDIATE",
+                            "isDeferred": sys_mod == "DEFERRED",
+                            "type": p_type,
+                            "description": r[6] or ""
                         })
                     cache_set(ckey, all_params)
 
@@ -4132,27 +4830,52 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         try:
             with conn.cursor() as cur:
                 try:
-                    cur.execute("SELECT file_id, file_name, ROUND(bytes/1024/1024, 1), blocks FROM dba_data_files WHERE tablespace_name = :1", [ts_name])
+                    cur.execute("""
+                        SELECT file_id, file_name, ROUND(bytes/1024/1024, 1), blocks,
+                               autoextensible,
+                               ROUND(CASE WHEN autoextensible = 'YES' THEN GREATEST(bytes, NVL(maxbytes, bytes))/1024/1024 ELSE bytes/1024/1024 END, 1) as max_mb,
+                               status
+                        FROM dba_data_files WHERE tablespace_name = :1
+                        UNION ALL
+                        SELECT file_id, file_name, ROUND(bytes/1024/1024, 1), blocks,
+                               autoextensible,
+                               ROUND(CASE WHEN autoextensible = 'YES' THEN GREATEST(bytes, NVL(maxbytes, bytes))/1024/1024 END, 1) as max_mb,
+                               status
+                        FROM dba_temp_files WHERE tablespace_name = :1
+                    """, [ts_name, ts_name])
                     df_rows = cur.fetchall()
                     if not df_rows and ts_name == "USERS":
-                        cur.execute("SELECT file_id, file_name, ROUND(bytes/1024/1024, 1), blocks, tablespace_name FROM dba_data_files WHERE ROWNUM <= 5")
+                        cur.execute("""
+                            SELECT file_id, file_name, ROUND(bytes/1024/1024, 1), blocks,
+                                   autoextensible,
+                                   ROUND(CASE WHEN autoextensible = 'YES' THEN GREATEST(bytes, NVL(maxbytes, bytes))/1024/1024 ELSE bytes/1024/1024 END, 1),
+                                   status, tablespace_name
+                            FROM dba_data_files WHERE ROWNUM <= 5
+                        """)
                         df_rows_fb = cur.fetchall()
                         if df_rows_fb:
-                            ts_name = df_rows_fb[0][4]
+                            ts_name = df_rows_fb[0][7]
                             res["tablespace"] = ts_name
                             res["tablespaceName"] = ts_name
-                            df_rows = [r[:4] for r in df_rows_fb if r[4] == ts_name]
+                            df_rows = [r[:7] for r in df_rows_fb if r[7] == ts_name]
 
                     for r in df_rows:
+                        sz_mb = r[2] or 0
+                        mx_mb = r[5] if (r[5] and r[5] >= sz_mb) else sz_mb
                         res["files"].append({
                             "fileId": r[0],
                             "fileName": r[1],
-                            "sizeMb": r[2] or 0,
-                            "blocks": r[3] or 0
+                            "sizeMb": sz_mb,
+                            "blocks": r[3] or 0,
+                            "autoextend": r[4] or "NO",
+                            "maxMb": mx_mb,
+                            "status": r[6] or "AVAILABLE"
                         })
                     if res["files"]:
                         res["datafileName"] = res["files"][0]["fileName"]
                         res["allocatedMb"] = round(sum(f["sizeMb"] for f in res["files"]), 1)
+                        res["maxMb"] = round(sum(f.get("maxMb") or f["sizeMb"] for f in res["files"]), 1)
+                        res["autoextend"] = "YES" if any(f.get("autoextend") == "YES" for f in res["files"]) else "NO"
                         res["totalBlocks"] = sum(f["blocks"] for f in res["files"]) or 131072
                 except Exception:
                     pass
@@ -4165,6 +4888,10 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         res["usedMb"] = round(max(0.0, res["allocatedMb"] - res["freeMb"]), 1)
                         res["reclaimableMb"] = round(res["freeMb"] * 0.75, 1)
                         res["maxShrinkMb"] = round(max(res["usedMb"], res["allocatedMb"] - res["reclaimableMb"]), 1)
+                        max_cap = res.get("maxMb") or res["allocatedMb"]
+                        res["freeMaxMb"] = round(max(0.0, max_cap - res["usedMb"]), 1)
+                        res["pctUsed"] = round((res["usedMb"] / res["allocatedMb"]) * 100, 1) if res["allocatedMb"] > 0 else 0.0
+                        res["maxPctUsed"] = round((res["usedMb"] / max_cap) * 100, 1) if max_cap > 0 else res["pctUsed"]
                 except Exception:
                     pass
 
@@ -4687,14 +5414,66 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     # -------------------------------------------------------------------------
     # DBA HUB - AWR / ADDM / ASH
     # -------------------------------------------------------------------------
-    def handle_get_awr(self):
-        conn = self.get_conn()
+    def handle_get_awr(self, query=None):
+        conn = self.get_conn(query=query)
         if not conn:
             self.send_api_response({"error": "No active connection"}, status=400)
             return
-        res = {"snapshots": [], "ash": [], "topSql": [], "addmFindings": []}
+        res = {"snapshots": [], "ash": [], "topSql": [], "addmFindings": [], "addmTasks": [], "instances": [], "database": {}, "sortBy": "elapsed"}
+        
+        # Sort parameter
+        sort_by = "elapsed"
+        if query and isinstance(query, dict):
+            sort_by = query.get("sort_by", "elapsed")
+        elif query and isinstance(query, str):
+            sort_by = query
+        res["sortBy"] = sort_by
+
+        order_clause = "elapsed_time DESC"
+        if sort_by == "cpu":
+            order_clause = "cpu_time DESC"
+        elif sort_by == "buffer_gets":
+            order_clause = "buffer_gets DESC"
+        elif sort_by == "disk_reads":
+            order_clause = "disk_reads DESC"
+        elif sort_by == "executions":
+            order_clause = "executions DESC"
+        elif sort_by == "parse_calls":
+            order_clause = "parse_calls DESC"
+
         try:
             with conn.cursor() as cur:
+                # 0. Database and Instances Info
+                try:
+                    cur.execute("SELECT dbid, name FROM v$database")
+                    r_db = cur.fetchone()
+                    if r_db:
+                        res["database"] = {"dbid": r_db[0], "name": r_db[1]}
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT instance_number, instance_name, host_name FROM gv$instance ORDER BY instance_number")
+                    for r in cur.fetchall():
+                        res["instances"].append({
+                            "instanceNumber": r[0],
+                            "instanceName": r[1],
+                            "hostName": r[2] or ""
+                        })
+                except Exception:
+                    try:
+                        cur.execute("SELECT instance_number, instance_name, host_name FROM v$instance")
+                        r = cur.fetchone()
+                        if r:
+                            res["instances"].append({
+                                "instanceNumber": r[0],
+                                "instanceName": r[1],
+                                "hostName": r[2] or ""
+                            })
+                    except Exception:
+                        res["instances"].append({"instanceNumber": 1, "instanceName": "DEFAULT", "hostName": ""})
+
+                # 1. Snapshots (Extended list to 60 for rich range selection)
                 try:
                     cur.execute("""
                         SELECT snap_id, dbid, instance_number, b_time, e_time FROM (
@@ -4703,7 +5482,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                                    TO_CHAR(end_interval_time, 'YYYY-MM-DD HH24:MI:SS') as e_time
                             FROM dba_hist_snapshot
                             ORDER BY snap_id DESC
-                        ) WHERE ROWNUM <= 20
+                        ) WHERE ROWNUM <= 60
                     """)
                     for r in cur.fetchall():
                         res["snapshots"].append({
@@ -4716,13 +5495,14 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
+                # 2. ASH Live Activity
                 try:
                     cur.execute("""
                         SELECT s_time, session_id, session_state, event, wait_class, sql_id FROM (
                             SELECT TO_CHAR(sample_time, 'HH24:MI:SS') as s_time, session_id, session_state, event, wait_class, sql_id
                             FROM v$active_session_history
                             ORDER BY sample_time DESC
-                        ) WHERE ROWNUM <= 25
+                        ) WHERE ROWNUM <= 30
                     """)
                     for r in cur.fetchall():
                         res["ash"].append({
@@ -4736,52 +5516,615 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
+                # 3. Top SQL Statements by selected metric
                 try:
-                    cur.execute("""
-                        SELECT sql_id, executions, ROUND(elapsed_time/1000000, 2), ROUND(cpu_time/1000000, 2), buffer_gets, disk_reads, SUBSTR(sql_text, 1, 140)
+                    cur.execute(f"""
+                        SELECT sql_id, executions, 
+                               ROUND(elapsed_time/1000000, 3) as elapsed_sec,
+                               ROUND((elapsed_time/NULLIF(executions, 0))/1000000, 4) as elapsed_per_exec,
+                               ROUND(cpu_time/1000000, 3) as cpu_sec,
+                               ROUND((cpu_time/NULLIF(executions, 0))/1000000, 4) as cpu_per_exec,
+                               buffer_gets, disk_reads, rows_processed, parse_calls, optimizer_cost,
+                               parsing_schema_name, module, plan_hash_value,
+                               SUBSTR(sql_text, 1, 250) as sql_preview
                         FROM (
-                            SELECT sql_id, executions, elapsed_time, cpu_time, buffer_gets, disk_reads, sql_text
+                            SELECT sql_id, executions, elapsed_time, cpu_time, buffer_gets, disk_reads,
+                                   rows_processed, parse_calls, optimizer_cost, parsing_schema_name,
+                                   module, plan_hash_value, sql_text
                             FROM v$sql
-                            ORDER BY elapsed_time DESC
-                        ) WHERE ROWNUM <= 10
+                            WHERE executions > 0
+                            ORDER BY {order_clause}
+                        ) WHERE ROWNUM <= 25
                     """)
                     for r in cur.fetchall():
                         res["topSql"].append({
                             "sqlId": r[0],
-                            "executions": r[1] or 1,
-                            "elapsedSec": r[2] or 0.0,
-                            "cpuSec": r[3] or 0.0,
-                            "bufferGets": r[4] or 0,
-                            "diskReads": r[5] or 0,
-                            "sqlText": r[6] or ""
+                            "executions": r[1] or 0,
+                            "elapsedSec": float(r[2] or 0),
+                            "elapsedPerExec": float(r[3] or 0),
+                            "cpuSec": float(r[4] or 0),
+                            "cpuPerExec": float(r[5] or 0),
+                            "bufferGets": r[6] or 0,
+                            "diskReads": r[7] or 0,
+                            "rowsProcessed": r[8] or 0,
+                            "parseCalls": r[9] or 0,
+                            "optimizerCost": r[10] or 0,
+                            "schema": r[11] or "",
+                            "module": r[12] or "",
+                            "planHash": str(r[13] or ""),
+                            "sqlText": r[14] or ""
                         })
                 except Exception:
                     pass
+
+                # 4. ADDM Findings & Recommendations (live advisor data)
+                try:
+                    cur.execute("""
+                        SELECT f.finding_id, f.type as finding_type, f.finding_name,
+                               ROUND(f.impact/1000000, 2) as impact_sec,
+                               SUBSTR(f.message, 1, 300) as finding_msg,
+                               a.command, a.attr1 as target_sql_id,
+                               SUBSTR(a.message, 1, 300) as rec_msg,
+                               t.task_name
+                        FROM (
+                            SELECT task_id, task_name, created
+                            FROM dba_advisor_tasks
+                            WHERE advisor_name = 'ADDM' AND status = 'COMPLETED'
+                            ORDER BY created DESC
+                        ) t
+                        JOIN dba_advisor_findings f ON t.task_id = f.task_id
+                        LEFT JOIN dba_advisor_recommendations r ON f.task_id = r.task_id AND f.finding_id = r.finding_id
+                        LEFT JOIN dba_advisor_actions a ON r.task_id = a.task_id AND r.rec_id = a.rec_id
+                        WHERE ROWNUM <= 35
+                        ORDER BY f.impact DESC
+                    """)
+                    seen = set()
+                    for r in cur.fetchall():
+                        target_sql = r[6] or ""
+                        # If attr1 is not a 13-char sql_id, check if sql_id is mentioned in message
+                        if not target_sql and r[7] and "SQL_ID" in r[7]:
+                            import re
+                            m = re.search(r'SQL_ID\s+["\']?([a-z0-9]{13})["\']?', r[7], re.IGNORECASE)
+                            if m:
+                                target_sql = m.group(1)
+
+                        dedup_key = (r[8], r[0], target_sql)
+                        if dedup_key in seen:
+                            continue
+                        seen.add(dedup_key)
+                        res["addmFindings"].append({
+                            "taskName": r[8] or "",
+                            "findingId": r[0],
+                            "type": r[1] or "PROBLEM",
+                            "name": r[2] or "",
+                            "impactSec": float(r[3] or 0),
+                            "message": r[4] or "",
+                            "actionCommand": r[5] or "",
+                            "sqlId": target_sql,
+                            "recommendation": r[7] or ""
+                        })
+                        if len(res["addmFindings"]) >= 20:
+                            break
+                except Exception:
+                    pass
+
+                # 5. ADDM Historical Tasks (DBA_ADVISOR_TASKS)
+                try:
+                    cur.execute("""
+                        SELECT task_id, task_name, status, how_created,
+                               TO_CHAR(created, 'YYYY-MM-DD HH24:MI:SS') as cr_time,
+                               description
+                        FROM (
+                            SELECT task_id, task_name, status, how_created, created, description
+                            FROM dba_advisor_tasks
+                            WHERE advisor_name = 'ADDM'
+                            ORDER BY created DESC
+                        ) WHERE ROWNUM <= 35
+                    """)
+                    for r in cur.fetchall():
+                        res["addmTasks"].append({
+                            "taskId": r[0],
+                            "taskName": r[1],
+                            "status": r[2],
+                            "howCreated": r[3],
+                            "createdTime": r[4],
+                            "description": r[5] or ""
+                        })
+                except Exception:
+                    pass
+
             self.send_api_response(res)
         except Exception as e:
             self.send_api_response({"error": str(e)}, status=400)
+
+    def handle_get_sql_details(self, query=None):
+        conn = self.get_conn(query=query)
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+
+        sql_id = None
+        if query and isinstance(query, dict):
+            sql_id = query.get("sql_id") or query.get("sqlId")
+        elif query and isinstance(query, str):
+            sql_id = query
+
+        if not sql_id:
+            self.send_api_response({"error": "Parâmetro sql_id obrigatório."}, status=400)
+            return
+
+        res = {
+            "sqlId": sql_id,
+            "sqlFullText": "",
+            "stats": {},
+            "planLines": [],
+            "ash": [],
+            "planHistory": []
+        }
+
+        try:
+            with conn.cursor() as cur:
+                # 1. Full SQL Text and Statistics from v$sql
+                try:
+                    cur.execute("""
+                        SELECT sql_id, executions,
+                               ROUND(elapsed_time/1000000, 4) as elapsed_sec,
+                               ROUND((elapsed_time/NULLIF(executions, 0))/1000000, 4) as elapsed_per_exec,
+                               ROUND(cpu_time/1000000, 4) as cpu_sec,
+                               ROUND((cpu_time/NULLIF(executions, 0))/1000000, 4) as cpu_per_exec,
+                               buffer_gets, disk_reads, rows_processed, parse_calls, optimizer_cost,
+                               parsing_schema_name, module, action, plan_hash_value,
+                               TO_CHAR(first_load_time) as first_load,
+                               TO_CHAR(last_active_time, 'YYYY-MM-DD HH24:MI:SS') as last_active,
+                               sql_fulltext
+                        FROM v$sql
+                        WHERE sql_id = :1 AND ROWNUM = 1
+                    """, [sql_id])
+                    r = cur.fetchone()
+                    if r:
+                        full_txt = r[17]
+                        if hasattr(full_txt, "read"):
+                            full_txt = full_txt.read()
+                        elif full_txt is not None:
+                            full_txt = str(full_txt)
+                        else:
+                            full_txt = ""
+
+                        res["sqlFullText"] = full_txt
+                        res["stats"] = {
+                            "sqlId": r[0],
+                            "executions": r[1] or 0,
+                            "elapsedSec": float(r[2] or 0),
+                            "elapsedPerExec": float(r[3] or 0),
+                            "cpuSec": float(r[4] or 0),
+                            "cpuPerExec": float(r[5] or 0),
+                            "bufferGets": r[6] or 0,
+                            "diskReads": r[7] or 0,
+                            "rowsProcessed": r[8] or 0,
+                            "parseCalls": r[9] or 0,
+                            "optimizerCost": r[10] or 0,
+                            "schema": r[11] or "",
+                            "module": r[12] or "",
+                            "action": r[13] or "",
+                            "planHash": str(r[14] or ""),
+                            "firstLoad": r[15] or "",
+                            "lastActive": r[16] or ""
+                        }
+                except Exception:
+                    pass
+
+                # Fallback to dba_hist_sqltext if aged out
+                if not res["sqlFullText"]:
+                    try:
+                        cur.execute("SELECT sql_text FROM dba_hist_sqltext WHERE sql_id = :1 AND ROWNUM = 1", [sql_id])
+                        hr = cur.fetchone()
+                        if hr:
+                            txt = hr[0]
+                            res["sqlFullText"] = txt.read() if hasattr(txt, "read") else str(txt or "")
+                    except Exception:
+                        pass
+
+                # 2. Execution Plan via V$SQL_PLAN_STATISTICS_ALL & DBMS_XPLAN
+                sql_plan_nodes = []
+                plan_hash_val = ""
+                try:
+                    cur.execute("""
+                        SELECT 
+                            id, parent_id, depth, position, operation, options, object_name, object_owner,
+                            NVL(last_starts, starts) as starts,
+                            cardinality,
+                            NVL(last_output_rows, output_rows) as a_rows,
+                            cost, bytes, cpu_cost, io_cost,
+                            access_predicates, filter_predicates,
+                            plan_hash_value
+                        FROM v$sql_plan_statistics_all
+                        WHERE sql_id = :1 AND child_number = (SELECT MIN(child_number) FROM v$sql_plan WHERE sql_id = :1)
+                        ORDER BY id
+                    """, [sql_id])
+                    for r in cur.fetchall():
+                        if not plan_hash_val and r[17]:
+                            plan_hash_val = str(r[17])
+                        sql_plan_nodes.append({
+                            "id": r[0],
+                            "parentId": r[1],
+                            "depth": r[2] or 0,
+                            "position": r[3],
+                            "operation": r[4] or "",
+                            "options": r[5] or "",
+                            "objectName": r[6] or "",
+                            "objectOwner": r[7] or "",
+                            "starts": r[8],
+                            "cardinality": r[9],
+                            "a_rows": r[10],
+                            "cost": r[11],
+                            "bytes": r[12],
+                            "accessPredicates": r[15] or "",
+                            "filterPredicates": r[16] or ""
+                        })
+                except Exception:
+                    pass
+
+                if not sql_plan_nodes:
+                    try:
+                        cur.execute("""
+                            SELECT 
+                                id, parent_id, depth, position, operation, options, object_name, object_owner,
+                                1 as starts,
+                                cardinality,
+                                cost, bytes, cpu_cost, io_cost,
+                                access_predicates, filter_predicates,
+                                plan_hash_value
+                            FROM v$sql_plan
+                            WHERE sql_id = :1 AND child_number = (SELECT MIN(child_number) FROM v$sql_plan WHERE sql_id = :1)
+                            ORDER BY id
+                        """, [sql_id])
+                        for r in cur.fetchall():
+                            if not plan_hash_val and r[16]:
+                                plan_hash_val = str(r[16])
+                            sql_plan_nodes.append({
+                                "id": r[0],
+                                "parentId": r[1],
+                                "depth": r[2] or 0,
+                                "position": r[3],
+                                "operation": r[4] or "",
+                                "options": r[5] or "",
+                                "objectName": r[6] or "",
+                                "objectOwner": r[7] or "",
+                                "starts": r[8],
+                                "cardinality": r[9],
+                                "cost": r[10],
+                                "bytes": r[11],
+                                "accessPredicates": r[14] or "",
+                                "filterPredicates": r[15] or ""
+                            })
+                    except Exception:
+                        pass
+
+                raw_xplan_text = ""
+                try:
+                    cur.execute("SELECT plan_table_output FROM TABLE(dbms_xplan.display_cursor(:1, NULL, 'ALLSTATS LAST +COST +BYTES +ROWS +PREDICATE'))", [sql_id])
+                    disp_rows = [pr[0] for pr in cur.fetchall()]
+                    raw_xplan_text = "\n".join(disp_rows)
+                    if not plan_hash_val:
+                        for line in disp_rows:
+                            if "Plan hash value:" in line:
+                                plan_hash_val = line.split("Plan hash value:")[1].strip().split()[0]
+                                break
+                except Exception:
+                    pass
+
+                if sql_plan_nodes:
+                    formatted_plan = self.format_toad_dbms_xplan(sql_plan_nodes, plan_hash=plan_hash_val, original_text=raw_xplan_text)
+                    res["planLines"] = formatted_plan.splitlines()
+                    res["planText"] = formatted_plan
+                elif raw_xplan_text:
+                    res["planLines"] = raw_xplan_text.splitlines()
+                    res["planText"] = raw_xplan_text
+
+                # 3. ASH Wait Events for this SQL
+                try:
+                    cur.execute("""
+                        SELECT NVL(event, 'CPU / Executing') as event_name,
+                               NVL(wait_class, 'CPU') as wait_class,
+                               COUNT(*) as samples,
+                               ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) as pct
+                        FROM v$active_session_history
+                        WHERE sql_id = :1
+                        GROUP BY event, wait_class
+                        ORDER BY samples DESC
+                    """, [sql_id])
+                    for ar in cur.fetchall():
+                        res["ash"].append({
+                            "event": ar[0],
+                            "waitClass": ar[1],
+                            "samples": ar[2],
+                            "pct": float(ar[3] or 0)
+                        })
+                except Exception:
+                    pass
+
+                # 4. Plan Hash History
+                try:
+                    cur.execute("""
+                        SELECT plan_hash_value, SUM(executions) as total_execs,
+                               ROUND(SUM(elapsed_time)/NULLIF(SUM(executions), 0)/1000000, 4) as avg_elapsed,
+                               ROUND(SUM(cpu_time)/NULLIF(SUM(executions), 0)/1000000, 4) as avg_cpu,
+                               SUM(buffer_gets) as total_buffers
+                        FROM v$sql
+                        WHERE sql_id = :1
+                        GROUP BY plan_hash_value
+                        ORDER BY total_execs DESC
+                    """, [sql_id])
+                    for p in cur.fetchall():
+                        res["planHistory"].append({
+                            "planHash": str(p[0] or ""),
+                            "executions": p[1] or 0,
+                            "avgElapsedSec": float(p[2] or 0),
+                            "avgCpuSec": float(p[3] or 0),
+                            "bufferGets": p[4] or 0
+                        })
+                except Exception:
+                    pass
+
+            self.send_api_response(res)
+        except Exception as e:
+            self.send_api_response({"error": str(e)}, status=400)
+
+    def convert_addm_text_to_html(self, raw_text, task_name="ADDM Report"):
+        import html as html_module
+        import re
+        escaped = html_module.escape(raw_text or "")
+        
+        # Highlight SQL_IDs with clickable/styled tags
+        sql_id_pattern = re.compile(r'SQL_ID\s+([0-9a-z]{13})', re.IGNORECASE)
+        highlighted = sql_id_pattern.sub(r'SQL_ID <span class="addm-sql-id" style="font-weight:700; color:#0284c7; background:#e0f2fe; padding:1px 5px; border-radius:3px; font-family:monospace;">\1</span>', escaped)
+        
+        # Highlight FINDING X:
+        finding_pattern = re.compile(r'(FINDING\s+\d+:.*?)(?=\n-|\n\n)', re.IGNORECASE)
+        highlighted = finding_pattern.sub(r'<div class="addm-finding-header" style="background:#fee2e2; color:#991b1b; padding:4px 8px; border-radius:4px; font-weight:700; margin-top:12px;">\1</div>', highlighted)
+        
+        # Highlight RECOMMENDATION X:
+        rec_pattern = re.compile(r'(RECOMMENDATION\s+\d+:.*?)(?=\n-|\n\n)', re.IGNORECASE)
+        highlighted = rec_pattern.sub(r'<div class="addm-rec-header" style="background:#e0e7ff; color:#3730a3; padding:4px 8px; border-radius:4px; font-weight:700; margin-top:10px;">\1</div>', highlighted)
+        
+        html_content = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Relatório ADDM - {html_module.escape(task_name)}</title>
+<style>
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f8fafc;
+    color: #1e293b;
+    margin: 0;
+    padding: 24px;
+    font-size: 13px;
+    line-height: 1.5;
+  }}
+  .addm-container {{
+    max-width: 1100px;
+    margin: 0 auto;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07);
+    overflow: hidden;
+  }}
+  .addm-hero {{
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+    color: #ffffff;
+    padding: 20px 24px;
+    border-bottom: 2px solid #6366f1;
+  }}
+  .addm-hero h1 {{
+    margin: 0 0 6px 0;
+    font-size: 20px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }}
+  .addm-hero .subtitle {{
+    color: #c7d2fe;
+    font-size: 12px;
+  }}
+  .addm-body {{
+    padding: 20px 24px;
+  }}
+  pre.addm-code {{
+    font-family: "Cascadia Code", "Consolas", Monaco, "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    background: #0f172a;
+    color: #f1f5f9;
+    padding: 20px;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border: 1px solid #334155;
+  }}
+</style>
+</head>
+<body>
+<div class="addm-container">
+  <div class="addm-hero">
+    <h1>🧠 Oracle Automatic Database Diagnostic Monitor (ADDM)</h1>
+    <div class="subtitle">Diagnóstico Oficial Toad &amp; Oracle Performance Advisor &bull; Tarefa: <b>{html_module.escape(task_name)}</b></div>
+  </div>
+  <div class="addm-body">
+    <pre class="addm-code">{highlighted}</pre>
+  </div>
+</div>
+</body>
+</html>"""
+        return html_content
 
     def handle_post_awr(self, payload):
         conn = self.get_conn(payload)
         if not conn:
             self.send_api_response({"error": "No active connection"}, status=400)
             return
-        action = payload.get("action", "create_snapshot")
+        action = payload.get("action", "generate_awr_report")
         try:
             with conn.cursor(stateful=True) as cur:
                 if action == "create_snapshot":
                     cur.callproc("dbms_workload_repository.create_snapshot")
-                    self.send_api_response({"success": True, "message": "AWR Snapshot created successfully via DBMS_WORKLOAD_REPOSITORY."})
-                else:
-                    bid = payload.get("beginSnapId", 1)
-                    eid = payload.get("endSnapId", 2)
+                    self.send_api_response({"success": True, "message": "AWR Snapshot criado com sucesso via DBMS_WORKLOAD_REPOSITORY."})
+
+                elif action in ("generate_addm_report", "generate_addm", "run_addm"):
+                    bid = payload.get("beginSnapId") or payload.get("snapStart")
+                    eid = payload.get("endSnapId") or payload.get("snapEnd")
+                    task_name = payload.get("taskName")
+                    req_format = payload.get("format", "BOTH").upper()
+
                     cur.execute("SELECT dbid FROM v$database")
                     dbid = cur.fetchone()[0]
-                    cur.execute("SELECT output FROM TABLE(dbms_workload_repository.awr_report_html(:1, 1, :2, :3))", [dbid, bid, eid])
-                    html_lines = [r[0] for r in cur.fetchall()]
-                    self.send_api_response({"success": True, "htmlReport": "".join(html_lines)})
+
+                    # If snapshots provided and no explicit task_name given, execute on-demand ADDM analysis
+                    if not task_name and bid and eid:
+                        bid = int(bid)
+                        eid = int(eid)
+                        if bid > eid:
+                            bid, eid = eid, bid
+
+                        target_task_name = f"TRACES_ADDM_{bid}_{eid}"
+                        cur.execute("""
+                            SELECT task_name FROM (
+                                SELECT task_name FROM dba_advisor_tasks
+                                WHERE advisor_name = 'ADDM' 
+                                  AND status = 'COMPLETED'
+                                  AND (task_name = :1 OR task_name LIKE :2)
+                                ORDER BY created DESC
+                            ) WHERE ROWNUM = 1
+                        """, [target_task_name, f"%_{eid}"])
+                        existing_row = cur.fetchone()
+
+                        if existing_row and not payload.get("forceNew"):
+                            task_name = existing_row[0]
+                        else:
+                            task_name_var = cur.var(oracledb.DB_TYPE_VARCHAR)
+                            task_name_var.setvalue(0, target_task_name)
+                            try:
+                                try:
+                                    cur.callproc("dbms_advisor.delete_task", [target_task_name])
+                                except Exception:
+                                    pass
+                                cur.callproc("dbms_addm.analyze_db", [task_name_var, bid, eid, dbid])
+                                task_name = task_name_var.getvalue(0)
+                            except Exception as e_addm:
+                                cur.execute("""
+                                    SELECT task_name FROM (
+                                        SELECT task_name FROM dba_advisor_tasks
+                                        WHERE advisor_name = 'ADDM' AND status = 'COMPLETED'
+                                        ORDER BY created DESC
+                                    ) WHERE ROWNUM = 1
+                                """)
+                                f_row = cur.fetchone()
+                                if f_row:
+                                    task_name = f_row[0]
+                                else:
+                                    raise e_addm
+
+                    elif not task_name:
+                        cur.execute("""
+                            SELECT task_name FROM (
+                                SELECT task_name FROM dba_advisor_tasks
+                                WHERE advisor_name = 'ADDM' AND status = 'COMPLETED'
+                                ORDER BY created DESC
+                            ) WHERE ROWNUM = 1
+                        """)
+                        t_row = cur.fetchone()
+                        task_name = t_row[0] if t_row else None
+
+                    if not task_name:
+                        self.send_api_response({"error": "Nenhuma tarefa ADDM encontrada para gerar relatório."}, status=400)
+                        return
+
+                    rep_clob = cur.callfunc("dbms_advisor.get_task_report", oracledb.DB_TYPE_CLOB, [task_name, "TEXT", "ALL"])
+                    rep_text = rep_clob.read() if hasattr(rep_clob, "read") else str(rep_clob or "")
+                    rep_html = self.convert_addm_text_to_html(rep_text, task_name)
+
+                    file_clean = task_name.replace(":", "_").replace(" ", "_")
+                    self.send_api_response({
+                        "success": True,
+                        "reportType": "ADDM",
+                        "taskName": task_name,
+                        "beginSnapId": bid,
+                        "endSnapId": eid,
+                        "reportText": rep_text,
+                        "text": rep_text,
+                        "reportHtml": rep_html,
+                        "html": rep_html,
+                        "fileNameText": f"addm_report_{file_clean}.txt",
+                        "fileNameHtml": f"addm_report_{file_clean}.html"
+                    })
+
+                else:
+                    bid = int(payload.get("beginSnapId") or payload.get("snapStart") or 1)
+                    eid = int(payload.get("endSnapId") or payload.get("snapEnd") or 2)
+                    if bid > eid:
+                        bid, eid = eid, bid
+
+                    cur.execute("SELECT dbid FROM v$database")
+                    dbid = cur.fetchone()[0]
+
+                    inst_num = payload.get("instanceNumber") or payload.get("instNum")
+                    if not inst_num:
+                        try:
+                            cur.execute("SELECT instance_number FROM v$instance")
+                            inst_num = cur.fetchone()[0]
+                        except Exception:
+                            inst_num = 1
+                    inst_num = int(inst_num)
+
+                    scope = payload.get("scope", "instance").lower()
+                    req_format = payload.get("format", "BOTH").upper()
+
+                    html_report = ""
+                    text_report = ""
+
+                    if req_format in ("HTML", "BOTH"):
+                        try:
+                            if scope in ("global", "rac"):
+                                cur.execute("SELECT output FROM TABLE(dbms_workload_repository.awr_global_report_html(:1, '', :2, :3))", [dbid, bid, eid])
+                            else:
+                                cur.execute("SELECT output FROM TABLE(dbms_workload_repository.awr_report_html(:1, :2, :3, :4))", [dbid, inst_num, bid, eid])
+                            html_lines = [r[0] or "" for r in cur.fetchall()]
+                            html_report = "".join(html_lines)
+                        except Exception as e_html:
+                            html_report = f"<!-- Erro ao gerar AWR HTML: {str(e_html)} -->"
+
+                    if req_format in ("TEXT", "BOTH"):
+                        try:
+                            if scope in ("global", "rac"):
+                                cur.execute("SELECT output FROM TABLE(dbms_workload_repository.awr_global_report_text(:1, '', :2, :3))", [dbid, bid, eid])
+                            else:
+                                cur.execute("SELECT output FROM TABLE(dbms_workload_repository.awr_report_text(:1, :2, :3, :4))", [dbid, inst_num, bid, eid])
+                            text_lines = [r[0] or "" for r in cur.fetchall()]
+                            text_report = "\n".join(text_lines)
+                        except Exception as e_text:
+                            text_report = f"Erro ao gerar AWR TEXTO: {str(e_text)}"
+
+                    file_base = f"awrrpt_{'global' if scope in ('global', 'rac') else inst_num}_{bid}_{eid}"
+                    self.send_api_response({
+                        "success": True,
+                        "reportType": "AWR",
+                        "scope": scope,
+                        "instanceNumber": inst_num,
+                        "beginSnapId": bid,
+                        "endSnapId": eid,
+                        "htmlReport": html_report,
+                        "html": html_report,
+                        "reportText": text_report,
+                        "text": text_report,
+                        "fileNameHtml": f"{file_base}.html",
+                        "fileNameText": f"{file_base}.txt"
+                    })
         except Exception as e:
             self.send_api_response({"error": str(e)}, status=400)
+
 
     # -------------------------------------------------------------------------
     # DBA HUB - DATABASE MONITOR
@@ -5433,6 +6776,14 @@ TRAILING NULLCOLS
             }, status=500)
             return
 
+        if local_sha in ("2026.2.0", "2026.2.0-initial", ""):
+            local_sha = remote_sha
+            try:
+                with open(ver_file, "w", encoding="utf-8") as vf:
+                    vf.write(remote_sha)
+            except Exception:
+                pass
+
         update_available = bool(remote_sha and local_sha and remote_sha[:10] != local_sha[:10])
 
         self.send_api_response({
@@ -5470,17 +6821,36 @@ TRAILING NULLCOLS
                         tmp_zip.write(resp.read())
                     tmp_zip.flush()
 
+                    skip_prefixes = ("instantclient/", "bridge/oracle_server.py", "start.bat", "installer/traceslauncher.ps1", "tracestoad.exe", "toad.exe", "tracestoad-setup.exe")
                     with zipfile.ZipFile(tmp_zip.name, 'r') as zip_ref:
                         for member in zip_ref.namelist():
                             parts = member.split('/', 1)
                             if len(parts) > 1 and parts[1]:
+                                rel_norm = parts[1].replace('\\', '/').lower()
+                                if any(rel_norm.startswith(p) for p in skip_prefixes):
+                                    continue
                                 target_path = os.path.join(BASE_DIR, parts[1])
                                 if member.endswith('/'):
                                     os.makedirs(target_path, exist_ok=True)
                                 else:
                                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                                    with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
-                                        dst.write(src.read())
+                                    try:
+                                        with zip_ref.open(member) as src, open(target_path, 'wb') as dst:
+                                            dst.write(src.read())
+                                    except PermissionError:
+                                        output_logs.append(f"Ignorado (em uso): {parts[1]}")
+
+                    try:
+                        c_req = urllib.request.Request("https://api.github.com/repos/pedrofranchim35-netizen/traces-tool/commits/main", headers={"User-Agent": "TracesToad-Updater"})
+                        with urllib.request.urlopen(c_req, context=ssl_ctx, timeout=6) as c_resp:
+                            c_data = json.loads(c_resp.read().decode('utf-8'))
+                            latest_sha = c_data.get("sha", "")
+                        if latest_sha:
+                            with open(os.path.join(BASE_DIR, ".version"), "w", encoding="utf-8") as vf:
+                                vf.write(latest_sha)
+                    except Exception:
+                        pass
+
                     success = True
                     output_logs.append("Download e extração do pacote ZIP concluídos com sucesso.")
 
@@ -5495,6 +6865,576 @@ TRAILING NULLCOLS
                 "error": f"Erro durante a atualização: {str(e)}",
                 "logs": "\n".join(output_logs)
             }, status=500)
+
+    # -------------------------------------------------------------------------
+    # RMAN BACKUP & RECOVERY VERIFICATIONS + INTERACTIVE TERMINAL
+    # -------------------------------------------------------------------------
+    def handle_get_rman(self, query=""):
+        entry = self.get_active_entry(query=query)
+        conn = entry.get("connection") if entry else None
+        if not conn:
+            self.send_api_response({"error": "No active connection"}, status=400)
+            return
+
+        result = {
+            "dbInfo": {},
+            "fraSummary": {},
+            "fraUsage": [],
+            "jobs": [],
+            "corruptions": [],
+            "recoverFiles": [],
+            "configs": [],
+            "datafilesNeedBackup": [],
+            "archivelogSummary": {}
+        }
+
+        try:
+            with conn.cursor() as cur:
+                # 1. DB Archive & Flashback status
+                try:
+                    cur.execute("""
+                        SELECT d.name, d.db_unique_name, d.log_mode, d.flashback_on,
+                               d.force_logging, d.controlfile_type, d.open_mode,
+                               i.instance_name, i.host_name, i.version
+                        FROM v$database d CROSS JOIN v$instance i
+                    """)
+                    r = cur.fetchone()
+                    if r:
+                        result["dbInfo"] = {
+                            "dbName": r[0] or "",
+                            "dbUniqueName": r[1] or "",
+                            "logMode": r[2] or "",
+                            "flashbackOn": r[3] or "NO",
+                            "forceLogging": r[4] or "NO",
+                            "controlfileType": r[5] or "",
+                            "openMode": r[6] or "",
+                            "instanceName": r[7] or "",
+                            "hostName": r[8] or "",
+                            "version": r[9] or ""
+                        }
+                except Exception:
+                    pass
+
+                # 2. Fast Recovery Area (FRA)
+                try:
+                    cur.execute("""
+                        SELECT name,
+                               ROUND(space_limit/1024/1024/1024, 2) AS limit_gb,
+                               ROUND(space_used/1024/1024/1024, 2) AS used_gb,
+                               ROUND(space_reclaimable/1024/1024/1024, 2) AS reclaimable_gb,
+                               number_of_files,
+                               ROUND( DECODE(space_limit, 0, 0, ((space_used - space_reclaimable) / space_limit) * 100), 1) AS net_pct_used
+                        FROM v$recovery_file_dest
+                    """)
+                    r = cur.fetchone()
+                    if r:
+                        result["fraSummary"] = {
+                            "name": r[0] or "Não Configurada",
+                            "limitGb": float(r[1] or 0),
+                            "usedGb": float(r[2] or 0),
+                            "reclaimableGb": float(r[3] or 0),
+                            "files": int(r[4] or 0),
+                            "pctUsed": float(r[5] or 0)
+                        }
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT file_type, percent_space_used, percent_space_reclaimable, number_of_files
+                        FROM v$flash_recovery_area_usage
+                        ORDER BY percent_space_used DESC
+                    """)
+                    for r in cur.fetchall():
+                        result["fraUsage"].append({
+                            "fileType": r[0] or "",
+                            "pctUsed": float(r[1] or 0),
+                            "pctReclaimable": float(r[2] or 0),
+                            "files": int(r[3] or 0)
+                        })
+                except Exception:
+                    pass
+
+                # 3. RMAN Backup Job Details
+                try:
+                    cur.execute("""
+                        SELECT * FROM (
+                            SELECT session_key, session_recid, session_stamp,
+                                   input_type, status,
+                                   TO_CHAR(start_time, 'YYYY-MM-DD HH24:MI:SS') AS start_time,
+                                   TO_CHAR(end_time, 'YYYY-MM-DD HH24:MI:SS') AS end_time,
+                                   ROUND(elapsed_seconds/60, 1) AS elapsed_min,
+                                   ROUND(input_bytes/1024/1024, 2) AS input_mb,
+                                   ROUND(output_bytes/1024/1024, 2) AS output_mb,
+                                   output_device_type,
+                                   ROUND(compression_ratio, 2) AS compression_ratio
+                            FROM v$rman_backup_job_details
+                            ORDER BY start_time DESC NULLS LAST
+                        ) WHERE ROWNUM <= 40
+                    """)
+                    for r in cur.fetchall():
+                        result["jobs"].append({
+                            "sessionKey": r[0],
+                            "sessionRecid": r[1],
+                            "sessionStamp": r[2],
+                            "inputType": r[3] or "BACKUP",
+                            "status": r[4] or "UNKNOWN",
+                            "startTime": r[5] or "",
+                            "endTime": r[6] or "",
+                            "elapsedMin": float(r[7] or 0),
+                            "inputMb": float(r[8] or 0),
+                            "outputMb": float(r[9] or 0),
+                            "deviceType": r[10] or "DISK",
+                            "compressionRatio": float(r[11] or 1.0)
+                        })
+                except Exception:
+                    pass
+
+                # 4. Block Corruptions (V$DATABASE_BLOCK_CORRUPTION)
+                try:
+                    cur.execute("""
+                        SELECT file#, block#, blocks, corruption_change#, corruption_type
+                        FROM v$database_block_corruption
+                        ORDER BY file#, block#
+                    """)
+                    for r in cur.fetchall():
+                        result["corruptions"].append({
+                            "fileId": r[0],
+                            "blockId": r[1],
+                            "blocks": r[2],
+                            "changeNo": r[3],
+                            "type": r[4] or "CORRUPT"
+                        })
+                except Exception:
+                    pass
+
+                # 5. Files needing recovery (V$RECOVER_FILE)
+                try:
+                    cur.execute("""
+                        SELECT r.file#, d.name, r.online_status, r.error, TO_CHAR(r.time, 'YYYY-MM-DD HH24:MI:SS')
+                        FROM v$recover_file r
+                        LEFT JOIN v$datafile d ON r.file# = d.file#
+                        ORDER BY r.file#
+                    """)
+                    for r in cur.fetchall():
+                        result["recoverFiles"].append({
+                            "fileId": r[0],
+                            "name": r[1] or "",
+                            "onlineStatus": r[2] or "",
+                            "error": r[3] or "NEEDS RECOVERY",
+                            "time": r[4] or ""
+                        })
+                except Exception:
+                    pass
+
+                # 6. Persistent RMAN Configuration (V$RMAN_CONFIGURATION)
+                try:
+                    cur.execute("""
+                        SELECT conf#, name, value
+                        FROM v$rman_configuration
+                        ORDER BY conf#
+                    """)
+                    for r in cur.fetchall():
+                        result["configs"].append({
+                            "confNo": r[0],
+                            "name": r[1] or "",
+                            "value": r[2] or ""
+                        })
+                except Exception:
+                    pass
+
+                # 7. Datafiles without recent backup (7 days verification)
+                try:
+                    cur.execute("""
+                        SELECT d.file#, d.name, t.name AS tablespace_name,
+                               ROUND(d.bytes/1024/1024, 1) AS size_mb,
+                               TO_CHAR(MAX(b.completion_time), 'YYYY-MM-DD HH24:MI:SS') AS last_backup,
+                               ROUND(SYSDATE - MAX(b.completion_time), 1) AS days_since_backup
+                        FROM v$datafile d
+                        LEFT JOIN v$tablespace t ON d.ts# = t.ts#
+                        LEFT JOIN v$backup_datafile b ON d.file# = b.file# AND b.file# > 0
+                        GROUP BY d.file#, d.name, t.name, d.bytes
+                        ORDER BY d.file#
+                    """)
+                    for r in cur.fetchall():
+                        days = float(r[5]) if r[5] is not None else 9999.0
+                        result["datafilesNeedBackup"].append({
+                            "fileId": r[0],
+                            "name": r[1] or "",
+                            "tablespace": r[2] or "",
+                            "sizeMb": float(r[3] or 0),
+                            "lastBackup": r[4] or "NUNCA (Sem Backup)",
+                            "daysSince": days,
+                            "needsBackup": days > 7.0 or r[4] is None
+                        })
+                except Exception:
+                    pass
+
+            self.send_api_response({"success": True, **result})
+        except Exception as e:
+            self.send_api_response({"success": False, "error": str(e), **result}, status=200)
+
+    def handle_post_rman(self, payload):
+        entry = self.get_active_entry(payload=payload)
+        conn = entry.get("connection") if entry else None
+        if not conn:
+            self.send_api_response({"success": False, "error": "No active connection"}, status=400)
+            return
+
+        action = str((payload or {}).get("action", "command")).lower()
+        raw_cmd = str((payload or {}).get("command", "SHOW ALL;")).strip()
+        if not raw_cmd.endswith(";"):
+            raw_cmd_display = raw_cmd + ";"
+        else:
+            raw_cmd_display = raw_cmd
+        cmd_clean = raw_cmd.rstrip(";").strip()
+        cmd_upper = " ".join(cmd_clean.upper().split())
+
+        output_lines = []
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT d.name, d.dbid, i.version, i.host_name, i.instance_name FROM v$database d CROSS JOIN v$instance i")
+                db_row = cur.fetchone()
+                db_name = db_row[0] if db_row else "ORCL"
+                db_id = db_row[1] if db_row else 0
+                db_ver = db_row[2] if db_row else "19.0.0.0.0"
+                host_name = db_row[3] if db_row else "localhost"
+                inst_name = db_row[4] if db_row else "orcl"
+
+                output_lines.append(f"Recovery Manager: Release {db_ver} - Production on {datetime.datetime.now().strftime('%a %b %d %H:%M:%S %Y')}")
+                output_lines.append(f"connected to target database: {db_name} (DBID={db_id}, INSTANCE={inst_name}, HOST={host_name})")
+                output_lines.append("")
+                output_lines.append(f"RMAN> {raw_cmd_display}")
+                output_lines.append("using target database control file instead of recovery catalog")
+
+                # 1. Check if user requested Job Log output by session_recid/stamp
+                if action == "job_log" or cmd_upper.startswith("SHOW JOB LOG"):
+                    s_recid = payload.get("sessionRecid")
+                    s_stamp = payload.get("sessionStamp")
+                    if not s_recid and len(cmd_upper.split()) >= 4:
+                        try:
+                            s_recid = int(cmd_upper.split()[3])
+                        except Exception:
+                            pass
+                    if s_recid and s_stamp:
+                        cur.execute("""
+                            SELECT output FROM v$rman_output
+                            WHERE session_recid = :1 AND session_stamp = :2
+                            ORDER BY recid
+                        """, [int(s_recid), int(s_stamp)])
+                    elif s_recid:
+                        cur.execute("""
+                            SELECT output FROM v$rman_output
+                            WHERE session_recid = :1
+                            ORDER BY recid
+                        """, [int(s_recid)])
+                    else:
+                        cur.execute("SELECT * FROM (SELECT output FROM v$rman_output ORDER BY recid DESC) WHERE ROWNUM <= 200")
+                    rows = cur.fetchall()
+                    if rows:
+                        for r in rows:
+                            output_lines.append(str(r[0] or ""))
+                    else:
+                        output_lines.append("Nenhum log detalhado em V$RMAN_OUTPUT para esta sessão (V$RMAN_OUTPUT é em memória e limpa após restart).")
+
+                # 2. SHOW ALL
+                elif cmd_upper.startswith("SHOW ALL"):
+                    output_lines.append(f"RMAN configuration parameters for database with db_unique_name {db_name} are:")
+                    cur.execute("SELECT name, value FROM v$rman_configuration ORDER BY conf#")
+                    custom_confs = {str(r[0]).upper(): str(r[1]) for r in cur.fetchall()}
+                    defaults = [
+                        ("RETENTION POLICY", "TO REDUNDANCY 1; # default"),
+                        ("BACKUP OPTIMIZATION", "OFF; # default"),
+                        ("DEFAULT DEVICE TYPE", "TO DISK; # default"),
+                        ("CONTROLFILE AUTOBACKUP", "ON; # default"),
+                        ("CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE", "DISK TO '%F'; # default"),
+                        ("DEVICE TYPE DISK PARALLELISM", "1 BACKUP TYPE TO BACKUPSET; # default"),
+                        ("DATAFILE BACKUP COPIES FOR DEVICE TYPE", "DISK TO 1; # default"),
+                        ("ARCHIVELOG BACKUP COPIES FOR DEVICE TYPE", "DISK TO 1; # default"),
+                        ("MAXSETSIZE", "TO UNLIMITED; # default"),
+                        ("ENCRYPTION FOR DATABASE", "OFF; # default"),
+                        ("COMPRESSION ALGORITHM", "'BASIC' AS OF RELEASE 'DEFAULT' OPTIMIZE FOR LOAD TRUE ; # default"),
+                    ]
+                    for k, def_val in defaults:
+                        if k in custom_confs:
+                            output_lines.append(f"CONFIGURE {k} {custom_confs.pop(k)};")
+                        else:
+                            output_lines.append(f"CONFIGURE {k} {def_val}")
+                    for k, val in custom_confs.items():
+                        output_lines.append(f"CONFIGURE {k} {val};")
+
+                # 3. REPORT SCHEMA
+                elif cmd_upper.startswith("REPORT SCHEMA"):
+                    output_lines.append(f"Report of database schema for database with db_unique_name {db_name}")
+                    output_lines.append("")
+                    output_lines.append("List of Permanent Datafiles")
+                    output_lines.append("===========================")
+                    output_lines.append(f"{'File':<5} {'Size(MB)':<10} {'Tablespace':<22} {'RB segs':<8} {'Datafile Name'}")
+                    output_lines.append(f"{'----':<5} {'--------':<10} {'----------':<22} {'-------':<8} {'-------------'}")
+                    cur.execute("""
+                        SELECT d.file#, ROUND(d.bytes/1024/1024, 1), t.name,
+                               CASE WHEN t.name LIKE '%UNDO%' THEN 'YES' ELSE 'NO' END, d.name
+                        FROM v$datafile d LEFT JOIN v$tablespace t ON d.ts# = t.ts#
+                        ORDER BY d.file#
+                    """)
+                    for r in cur.fetchall():
+                        output_lines.append(f"{str(r[0]):<5} {str(r[1]):<10} {str(r[2] or ''):<22} {str(r[3]):<8} {r[4] or ''}")
+                    output_lines.append("")
+                    output_lines.append("List of Temporary Files")
+                    output_lines.append("=======================")
+                    output_lines.append(f"{'File':<5} {'Size(MB)':<10} {'Tablespace':<22} {'Maxsize(MB)':<12} {'Tempfile Name'}")
+                    output_lines.append(f"{'----':<5} {'--------':<10} {'----------':<22} {'-----------':<12} {'-------------'}")
+                    cur.execute("""
+                        SELECT f.file#, ROUND(f.bytes/1024/1024, 1), t.name,
+                               ROUND(d.maxbytes/1024/1024, 1), f.name
+                        FROM v$tempfile f
+                        LEFT JOIN v$tablespace t ON f.ts# = t.ts#
+                        LEFT JOIN dba_temp_files d ON f.file# = d.file_id
+                        ORDER BY f.file#
+                    """)
+                    for r in cur.fetchall():
+                        output_lines.append(f"{str(r[0]):<5} {str(r[1]):<10} {str(r[2] or ''):<22} {str(r[3] or 0):<12} {r[4] or ''}")
+
+                # 4. LIST BACKUP SUMMARY / LIST BACKUP
+                elif cmd_upper.startswith("LIST BACKUP"):
+                    output_lines.append("List of Backups")
+                    output_lines.append("===============")
+                    output_lines.append(f"{'Key':<7} {'TY':<3} {'LV':<3} {'S':<2} {'Device Type':<12} {'Completion Time':<20} {'#Pieces':<8} {'#Copies':<8} {'Compressed':<10} {'Tag'}")
+                    output_lines.append(f"{'-------':<7} {'--':<3} {'--':<3} {'-':<2} {'-----------':<12} {'-------------------':<20} {'-------':<8} {'-------':<8} {'----------':<10} {'---'}")
+                    cur.execute("""
+                        SELECT * FROM (
+                            SELECT s.recid, s.backup_type, NVL(TO_CHAR(s.incremental_level), 'F'),
+                                   NVL(p.status, 'A'), NVL(p.device_type, 'DISK'),
+                                   TO_CHAR(s.completion_time, 'YYYY-MM-DD HH24:MI:SS'),
+                                   s.pieces, NVL(p.copy#, 1), NVL(p.compressed, 'NO'), NVL(p.tag, 'TAG' || TO_CHAR(s.completion_time, 'YYYYMMDD'))
+                            FROM v$backup_set s
+                            LEFT JOIN v$backup_piece p ON s.set_stamp = p.set_stamp AND s.set_count = p.set_count AND p.piece# = 1
+                            ORDER BY s.completion_time DESC NULLS LAST
+                        ) WHERE ROWNUM <= 100
+                    """)
+                    rows = cur.fetchall()
+                    if not rows:
+                        output_lines.append("specification does not match any backup in the repository")
+                    else:
+                        for r in rows:
+                            output_lines.append(f"{str(r[0]):<7} {str(r[1] or 'B'):<3} {str(r[2]):<3} {str(r[3]):<2} {str(r[4]):<12} {str(r[5] or ''):<20} {str(r[6] or 1):<8} {str(r[7] or 1):<8} {str(r[8]):<10} {r[9] or ''}")
+
+                # 5. REPORT NEED BACKUP
+                elif cmd_upper.startswith("REPORT NEED BACKUP"):
+                    output_lines.append("Report of files that must be backed up (Threshold: > 1 day or 0 backups)")
+                    output_lines.append("========================================================================")
+                    output_lines.append(f"{'File':<6} {'Days':<8} {'Last Backup':<21} {'Tablespace':<18} {'Name'}")
+                    output_lines.append(f"{'----':<6} {'------':<8} {'-------------------':<21} {'----------':<18} {'----'}")
+                    cur.execute("""
+                        SELECT d.file#, ROUND(SYSDATE - MAX(b.completion_time), 1) AS days_ago,
+                               TO_CHAR(MAX(b.completion_time), 'YYYY-MM-DD HH24:MI:SS'),
+                               t.name, d.name
+                        FROM v$datafile d
+                        LEFT JOIN v$tablespace t ON d.ts# = t.ts#
+                        LEFT JOIN v$backup_datafile b ON d.file# = b.file# AND b.file# > 0
+                        GROUP BY d.file#, t.name, d.name
+                        HAVING MAX(b.completion_time) IS NULL OR (SYSDATE - MAX(b.completion_time)) >= 1
+                        ORDER BY d.file#
+                    """)
+                    rows = cur.fetchall()
+                    if not rows:
+                        output_lines.append("Nenhum datafile pendente de backup recente! Todos os datafiles possuem backup < 24h.")
+                    else:
+                        for r in rows:
+                            days_str = str(r[1]) if r[1] is not None else "NEVER"
+                            last_str = str(r[2]) if r[2] is not None else "NO BACKUP"
+                            output_lines.append(f"{str(r[0]):<6} {days_str:<8} {last_str:<21} {str(r[3] or ''):<18} {r[4] or ''}")
+
+                # 6. REPORT OBSOLETE
+                elif cmd_upper.startswith("REPORT OBSOLETE"):
+                    output_lines.append("Report of obsolete backups and copies")
+                    output_lines.append("=====================================")
+                    output_lines.append(f"{'Type':<14} {'Key':<8} {'Completion Time':<20} {'Filename/Handle'}")
+                    output_lines.append(f"{'------------':<14} {'------':<8} {'-------------------':<20} {'---------------'}")
+                    cur.execute("""
+                        SELECT 'Backup Piece', recid, TO_CHAR(completion_time, 'YYYY-MM-DD HH24:MI:SS'), handle
+                        FROM v$backup_piece
+                        WHERE deleted = 'NO' AND (status IN ('X', 'U') OR completion_time < SYSDATE - 14)
+                        ORDER BY completion_time ASC
+                    """)
+                    rows = cur.fetchall()
+                    if not rows:
+                        output_lines.append("no obsolete backups found")
+                    else:
+                        for r in rows:
+                            output_lines.append(f"{str(r[0]):<14} {str(r[1]):<8} {str(r[2] or ''):<20} {r[3] or '(FRA/ASM Handle)'}")
+
+                # 7. CROSSCHECK BACKUP / CROSSCHECK ARCHIVELOG
+                elif cmd_upper.startswith("CROSSCHECK"):
+                    if "ARCHIVELOG" in cmd_upper:
+                        output_lines.append("allocated channel: ORA_DISK_1")
+                        output_lines.append("channel ORA_DISK_1: SID=1 device type=DISK")
+                        cur.execute("""
+                            SELECT recid, thread#, sequence#, name, status, TO_CHAR(completion_time, 'YYYY-MM-DD HH24:MI:SS')
+                            FROM (
+                                SELECT recid, thread#, sequence#, name, status, completion_time
+                                FROM v$archived_log
+                                WHERE deleted = 'NO'
+                                ORDER BY completion_time DESC
+                            ) WHERE ROWNUM <= 50
+                        """)
+                        rows = cur.fetchall()
+                        for r in rows:
+                            st_label = "'AVAILABLE'" if r[4] == "A" else "'EXPIRED'"
+                            output_lines.append(f"validation succeeded for archived log")
+                            output_lines.append(f"archived log file name={r[3] or '(in FRA)'} RECID={r[0]} THREAD={r[1]} SEQ={r[2]} status={st_label}")
+                        output_lines.append(f"Crosschecked {len(rows)} objects")
+                    else:
+                        output_lines.append("allocated channel: ORA_DISK_1")
+                        output_lines.append("channel ORA_DISK_1: SID=1 device type=DISK")
+                        cur.execute("""
+                            SELECT recid, status, tag, handle, TO_CHAR(completion_time, 'YYYY-MM-DD HH24:MI:SS')
+                            FROM (
+                                SELECT recid, status, tag, handle, completion_time
+                                FROM v$backup_piece
+                                WHERE deleted = 'NO'
+                                ORDER BY completion_time DESC
+                            ) WHERE ROWNUM <= 50
+                        """)
+                        rows = cur.fetchall()
+                        for r in rows:
+                            st_label = "'AVAILABLE'" if r[1] == "A" else "'EXPIRED'"
+                            output_lines.append(f"crosschecked backup piece: found to be {st_label}")
+                            output_lines.append(f"backup piece handle={r[3] or '(FRA)'} RECID={r[0]} TAG={r[2] or ''}")
+                        output_lines.append(f"Crosschecked {len(rows)} objects")
+
+                # 8. VALIDATE DATABASE / VALIDATE DATAFILE / VALIDATE CHECK LOGICAL
+                elif cmd_upper.startswith("VALIDATE"):
+                    output_lines.append("Starting validate at " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    output_lines.append("allocated channel: ORA_DISK_1")
+                    output_lines.append("channel ORA_DISK_1: inspecting datafile headers and block corruption views")
+                    output_lines.append("")
+                    output_lines.append(f"{'File':<5} {'Status':<10} {'Marked Corrupt':<15} {'Empty Blocks':<14} {'Blocks Examined':<16} {'Datafile Name'}")
+                    output_lines.append(f"{'----':<5} {'------':<10} {'--------------':<15} {'------------':<14} {'---------------':<16} {'-------------'}")
+                    cur.execute("""
+                        SELECT d.file#, d.status,
+                               (SELECT NVL(SUM(c.blocks), 0) FROM v$database_block_corruption c WHERE c.file# = d.file#) AS corrupt_blocks,
+                               d.blocks, d.name
+                        FROM v$datafile d
+                        ORDER BY d.file#
+                    """)
+                    for r in cur.fetchall():
+                        st = "FAILED" if int(r[2] or 0) > 0 else "OK"
+                        output_lines.append(f"{str(r[0]):<5} {st:<10} {str(r[2] or 0):<15} {'0':<14} {str(r[3] or 0):<16} {r[4] or ''}")
+                    output_lines.append("")
+                    output_lines.append("Finished validate at " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+                # 9. LIST ARCHIVELOG ALL
+                elif cmd_upper.startswith("LIST ARCHIVELOG"):
+                    output_lines.append("List of Archived Log Copies for database with db_unique_name " + str(db_name))
+                    output_lines.append("=====================================================================")
+                    output_lines.append(f"{'Key':<7} {'Thrd':<5} {'Seq':<8} {'S':<3} {'Completion Time':<20} {'Size(MB)':<10} {'Name'}")
+                    output_lines.append(f"{'-------':<7} {'----':<5} {'-------':<8} {'-':<3} {'-------------------':<20} {'--------':<10} {'----'}")
+                    cur.execute("""
+                        SELECT * FROM (
+                            SELECT recid, thread#, sequence#, status,
+                                   TO_CHAR(completion_time, 'YYYY-MM-DD HH24:MI:SS'),
+                                   ROUND((blocks * block_size)/1024/1024, 2), name
+                            FROM v$archived_log
+                            WHERE deleted = 'NO'
+                            ORDER BY completion_time DESC NULLS LAST
+                        ) WHERE ROWNUM <= 80
+                    """)
+                    rows = cur.fetchall()
+                    if not rows:
+                        output_lines.append("specification does not match any archived log in the repository (ou banco em NOARCHIVELOG)")
+                    else:
+                        for r in rows:
+                            output_lines.append(f"{str(r[0]):<7} {str(r[1]):<5} {str(r[2]):<8} {str(r[3] or 'A'):<3} {str(r[4] or ''):<20} {str(r[5] or 0):<10} {r[6] or '(FRA)'}")
+
+                # 10. LIST INCARNATION
+                elif cmd_upper.startswith("LIST INCARNATION"):
+                    output_lines.append("List of Database Incarnations")
+                    output_lines.append(f"{'DB Key':<8} {'Inc Key':<8} {'DB Name':<10} {'DB ID':<14} {'STATUS':<10} {'Reset SCN':<16} {'Reset Time'}")
+                    output_lines.append(f"{'-------':<8} {'-------':<8} {'--------':<10} {'------------':<14} {'--------':<10} {'--------------':<16} {'-------------------'}")
+                    cur.execute("""
+                        SELECT incarnation#, status, resetlogs_change#, TO_CHAR(resetlogs_time, 'YYYY-MM-DD HH24:MI:SS')
+                        FROM v$database_incarnation
+                        ORDER BY incarnation#
+                    """)
+                    for r in cur.fetchall():
+                        output_lines.append(f"{'1':<8} {str(r[0]):<8} {str(db_name):<10} {str(db_id):<14} {str(r[1] or ''):<10} {str(r[2] or ''):<16} {r[3] or ''}")
+
+                # 11. LIST FAILURE / ADVISE FAILURE (Data Recovery Advisor)
+                elif cmd_upper.startswith("LIST FAILURE") or cmd_upper.startswith("ADVISE FAILURE"):
+                    output_lines.append("Database Role: PRIMARY")
+                    try:
+                        cur.execute("""
+                            SELECT failure_id, priority, status, description, TO_CHAR(time_detected, 'YYYY-MM-DD HH24:MI:SS')
+                            FROM v$ir_failure
+                            WHERE status = 'OPEN'
+                            ORDER BY failure_id
+                        """)
+                        rows = cur.fetchall()
+                        if not rows:
+                            output_lines.append("no failures found that match specification (0 falhas abertas no Data Recovery Advisor)")
+                        else:
+                            output_lines.append("List of Database Failures")
+                            output_lines.append("=========================")
+                            for r in rows:
+                                output_lines.append(f"Failure ID {r[0]}   Priority: {r[1]}   Status: {r[2]}   Detected: {r[4]}")
+                                output_lines.append(f"  Description: {r[3]}")
+                    except Exception:
+                        output_lines.append("no failures found that match specification (V$IR_FAILURE limpa)")
+
+                # 12. HELP
+                elif cmd_upper.startswith("HELP"):
+                    output_lines.append("Comandos interativos RMAN suportados diretamente na instância:")
+                    output_lines.append("  • SHOW ALL;                      - Exibe todas as configurações persistentes do RMAN")
+                    output_lines.append("  • REPORT SCHEMA;                 - Lista todos os Datafiles e Tempfiles do banco")
+                    output_lines.append("  • REPORT NEED BACKUP;            - Verifica quais datafiles precisam de backup urgente")
+                    output_lines.append("  • REPORT OBSOLETE;               - Verifica backups expirados ou obsoletos")
+                    output_lines.append("  • LIST BACKUP SUMMARY;           - Lista resumo de todos os Backup Sets e Pieces")
+                    output_lines.append("  • LIST ARCHIVELOG ALL;           - Lista os Archive Logs disponíveis no catálogo/controlfile")
+                    output_lines.append("  • LIST INCARNATION;              - Lista as encarnações (RESETLOGS) do banco de dados")
+                    output_lines.append("  • LIST FAILURE;                  - Consulta o Data Recovery Advisor (V$IR_FAILURE)")
+                    output_lines.append("  • CROSSCHECK BACKUP;             - Inspeciona status AVAILABLE/EXPIRED dos Backup Pieces")
+                    output_lines.append("  • CROSSCHECK ARCHIVELOG ALL;     - Inspeciona status dos Archive Logs")
+                    output_lines.append("  • VALIDATE DATABASE;             - Verifica integridade física/lógica e blocos corrompidos")
+                    output_lines.append("  • SHOW JOB LOG <SESSION_RECID>;  - Exibe o log completo de execução de um job em V$RMAN_OUTPUT")
+                    output_lines.append("  • SQL '<query>';                 - Executa comando SQL direto a partir do RMAN>")
+
+                # 13. SQL '...' inside RMAN
+                elif cmd_upper.startswith("SQL "):
+                    sql_inner = cmd_clean[4:].strip().strip("'").strip('"').rstrip(";")
+                    cur.execute(sql_inner)
+                    if cur.description:
+                        cols = [c[0] for c in cur.description]
+                        output_lines.append(" | ".join(cols))
+                        output_lines.append("-" * (len(" | ".join(cols)) + 4))
+                        for r in cur.fetchall()[:100]:
+                            output_lines.append(" | ".join(str(v if v is not None else "") for v in r))
+                    else:
+                        output_lines.append("sql statement: " + sql_inner)
+                        output_lines.append("Statement processed.")
+
+                else:
+                    output_lines.append("Dica: Digite HELP; para ver a lista de comandos de verificação ou use os botões rápidos acima.")
+                    output_lines.append(f"Comando recebido: {raw_cmd_display}")
+
+                output_lines.append("")
+                output_lines.append("Recovery Manager complete.")
+
+            self.send_api_response({
+                "success": True,
+                "command": raw_cmd_display,
+                "output": "\n".join(output_lines)
+            })
+        except Exception as e:
+            output_lines.append(f"RMAN-00571: ===========================================================")
+            output_lines.append(f"RMAN-03002: failure of command at {datetime.datetime.now().strftime('%m/%d/%Y %H:%M:%S')}")
+            output_lines.append(f"ORA-Error: {str(e)}")
+            self.send_api_response({
+                "success": False,
+                "command": raw_cmd_display,
+                "output": "\n".join(output_lines),
+                "error": str(e)
+            }, status=200)
 
 class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True

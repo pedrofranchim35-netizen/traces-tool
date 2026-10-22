@@ -38,15 +38,16 @@
   </script>
 
   <!-- Core Stylesheets -->
-  <link rel="stylesheet" href="css/tokens.css?v=20261021v2">
-  <link rel="stylesheet" href="css/main.css?v=20261021v2">
-  <link rel="stylesheet" href="css/toad-menus.css?v=20261021v2">
-  <link rel="stylesheet" href="css/suite-tools.css?v=20261021v2">
-  <link rel="stylesheet" href="css/editor.css?v=20261021v2">
-  <link rel="stylesheet" href="css/browser.css?v=20261021v4">
-  <link rel="stylesheet" href="css/grid.css?v=20261021v4">
-  <link rel="stylesheet" href="css/explain.css?v=20261021v4">
-  <link rel="stylesheet" href="css/toad-pro.css?v=20261021v2">
+  <link rel="stylesheet" href="css/tokens.css?v=20261022v7">
+  <link rel="stylesheet" href="css/main.css?v=20261022v7">
+  <link rel="stylesheet" href="css/toad-menus.css?v=20261022v7">
+  <link rel="stylesheet" href="css/suite-tools.css?v=20261022v7">
+  <link rel="stylesheet" href="css/editor.css?v=20261022v7">
+  <link rel="stylesheet" href="css/browser.css?v=20261022v7">
+  <link rel="stylesheet" href="css/grid.css?v=20261022v7">
+  <link rel="stylesheet" href="css/explain.css?v=20261022v7">
+  <link rel="stylesheet" href="css/session.css?v=20261022v7">
+  <link rel="stylesheet" href="css/toad-pro.css?v=20261022v7">
 </head>
 <body>
   <div id="app-container">
@@ -119,6 +120,10 @@
         <button class="toad-btn" onclick="window.TracesApp.openWindow('dba', 'browser')" title="DBA Administration Hub">
           <span class="toad-btn-icon" style="color: #8b5cf6;">🏛</span>
           <span>DBA Hub</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.openWindow('dba', 'rman')" title="RMAN Backup &amp; Recovery (Verificações e Terminal Interativo)">
+          <span class="toad-btn-icon" style="color: #0284c7;">🛡️</span>
+          <span>RMAN</span>
         </button>
         <button class="toad-btn" onclick="window.TracesApp.openWindow('spotlight')" title="Spotlight on Oracle">
           <span class="toad-btn-icon" style="color: #f59e0b;">💡</span>
@@ -251,6 +256,13 @@
           <label for="toad-chk-autocommit" style="color: #555; cursor: pointer; user-select: none;">AutoCommit</label>
         </div>
       </div>
+    </div>
+
+    <!-- ====================================================================
+         TOAD MULTI-CONNECTION BAR (CONNECTION TABS FOR MULTIPLE DATABASES & HOSTS)
+         ==================================================================== -->
+    <div class="toad-connection-bar" id="toad-connection-bar">
+      <!-- Injected dynamically by ConnectionManager -->
     </div>
 
     <!-- ====================================================================
@@ -420,20 +432,33 @@
 
             <!-- Lower Tabbed Notebook -->
             <div class="editor-lower-pane" id="editor-lower-pane">
-              <div class="output-tabs-bar">
-                <button class="output-tab active" data-tab="grid">
-                  <span>Data Grid</span>
-                  <span class="output-tab-count" id="grid-rows-count">Record 1 of 14</span>
-                </button>
-                <button class="output-tab" data-tab="script">
-                  <span>Script Output</span>
-                </button>
-                <button class="output-tab" data-tab="dbms">
-                  <span>DBMS Output</span>
-                </button>
-                <button class="output-tab" data-tab="autotrace">
-                  <span>AutoTrace</span>
-                </button>
+              <div class="output-tabs-bar" style="display: flex; align-items: center; justify-content: space-between; padding-right: 8px;">
+                <div style="display: flex; align-items: center; height: 100%;">
+                  <button class="output-tab active" data-tab="grid">
+                    <span>Data Grid</span>
+                    <span class="output-tab-count" id="grid-rows-count">Record 1 of 14</span>
+                  </button>
+                  <button class="output-tab" data-tab="script">
+                    <span>Script Output</span>
+                  </button>
+                  <button class="output-tab" data-tab="dbms">
+                    <span>DBMS Output</span>
+                  </button>
+                  <button class="output-tab" data-tab="autotrace">
+                    <span>AutoTrace</span>
+                  </button>
+                </div>
+                <div class="output-tabs-actions" style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="btn" id="btn-clear-output-logs" onclick="window.TracesApp.sqlEditor.clearOutputLogs()" title="Limpar Logs de Execução (Script Output / DBMS Output)" style="height: 21px; padding: 0 8px; font-size: 10.5px; font-weight: 700; color: #b91c1c; border-color: #fca5a5; background: #fef2f2;">
+                    🗑 Limpar Logs (Clear)
+                  </button>
+                  <button type="button" class="btn" id="btn-copy-output-logs" onclick="window.TracesApp.sqlEditor.copyOutputLogs()" title="Copiar Logs de Execução para a Área de Transferência" style="height: 21px; padding: 0 7px; font-size: 10.5px;">
+                    📋 Copiar Log
+                  </button>
+                  <button type="button" class="btn" id="btn-toggle-editor-split-orient" onclick="window.TracesApp.toggleEditorSplitOrientation()" title="Alternar divisão do Editor: Superior/Inferior (Horizontal) ou Esquerda/Direita (Vertical) igual ao Toad" style="height: 21px; padding: 0 7px; font-size: 10.5px;">
+                    ⬌ Dividir Lado a Lado
+                  </button>
+                </div>
               </div>
 
               <!-- Output 1: Toad Data Grid -->
@@ -517,6 +542,13 @@
 
               <!-- Output 2: Script Output -->
               <div class="output-tab-content" id="output-pane-script">
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 3px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+                  <span style="font-weight: 700; color: #334155;">📜 Log de Execução de Scripts (Script Output)</span>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn" onclick="window.TracesApp.sqlEditor.copyOutputLogs()" style="height: 20px; padding: 0 8px; font-size: 10px;">📋 Copiar</button>
+                    <button type="button" class="btn" onclick="window.TracesApp.sqlEditor.clearOutputLogs()" style="height: 20px; padding: 0 8px; font-size: 10px; font-weight: 700; color: #b91c1c; border-color: #fca5a5; background: #fef2f2;">🗑 Clear (Limpar Logs)</button>
+                  </div>
+                </div>
                 <div class="console-output-view" id="console-script-output">
                   <div class="console-line info">Session script environment initialized. Ready.</div>
                 </div>
@@ -524,6 +556,13 @@
 
               <!-- Output 3: DBMS Output -->
               <div class="output-tab-content" id="output-pane-dbms">
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 3px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+                  <span style="font-weight: 700; color: #334155;">💬 Buffer DBMS_OUTPUT</span>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn" onclick="window.TracesApp.sqlEditor.copyOutputLogs()" style="height: 20px; padding: 0 8px; font-size: 10px;">📋 Copiar</button>
+                    <button type="button" class="btn" onclick="window.TracesApp.sqlEditor.clearOutputLogs()" style="height: 20px; padding: 0 8px; font-size: 10px; font-weight: 700; color: #b91c1c; border-color: #fca5a5; background: #fef2f2;">🗑 Clear (Limpar DBMS)</button>
+                  </div>
+                </div>
                 <div class="console-output-view" id="console-dbms-output">
                   <div class="console-line info">SET SERVEROUTPUT ON. Output buffer active.</div>
                 </div>
@@ -556,28 +595,31 @@
           <!-- Left Object Hierarchy -->
           <div class="browser-nav-pane" id="browser-nav-pane">
             <div class="browser-schema-selector-bar">
-              <div class="schema-select-row">
+              <div class="schema-select-row" style="gap: 4px;">
                 <span class="schema-badge">Schema:</span>
                 <select class="toad-conn-combobox" id="browser-schema-select" style="flex: 1; height: 22px; margin: 0;">
                   <option value="HR" selected>HR</option>
                   <option value="SALES_ADMIN">SALES_ADMIN</option>
                   <option value="SYSTEM">SYSTEM</option>
                 </select>
-                <button class="btn" style="height: 22px; padding: 0 6px;" title="Refresh Schema Objects" onclick="if(window.TracesApp.isRealDatabase) { window.TracesApp.schemaBrowser.loadRealObjects(document.getElementById('browser-schema-select').value); } else { window.TracesApp.schemaBrowser.render(); }">
+                <button class="btn" style="height: 22px; padding: 0 6px;" title="Atualizar Objetos do Schema (Refresh)" onclick="if(window.TracesApp.isRealDatabase) { window.TracesApp.schemaBrowser.loadRealObjects(document.getElementById('browser-schema-select').value, true); } else { window.TracesApp.schemaBrowser.render(); }">
                   🔄
+                </button>
+                <button class="btn btn-primary" style="height: 22px; padding: 0 7px; font-size: 10.5px; font-weight: 700;" title="Criar Novo Objeto no Schema Atual" onclick="window.TracesApp.schemaBrowser.openCreateObjectWizard()">
+                  ➕ Criar
                 </button>
               </div>
             </div>
 
             <!-- Toad View Style Bar (Tree / Dropdown / Tabs) -->
             <div class="toad-browser-style-bar" id="browser-style-bar">
-              <button class="browser-style-btn active" id="btn-browser-style-tree" onclick="window.TracesApp.schemaBrowser.switchViewMode('tree')" title="Menu Expandido (Toad Tree View)">
+              <button class="browser-style-btn active" id="btn-browser-style-tree" data-style="tree" onclick="window.TracesApp.schemaBrowser.switchViewMode('tree')" title="Menu Expandido (Toad Tree View)">
                 <span>🌲</span><span>Menu Expandido</span>
               </button>
-              <button class="browser-style-btn" id="btn-browser-style-dropdown" onclick="window.TracesApp.schemaBrowser.switchViewMode('dropdown')" title="Seleção por Dropdown (Toad Combobox)">
+              <button class="browser-style-btn" id="btn-browser-style-dropdown" data-style="dropdown" onclick="window.TracesApp.schemaBrowser.switchViewMode('dropdown')" title="Seleção por Dropdown (Toad Combobox)">
                 <span>📋</span><span>Dropdown</span>
               </button>
-              <button class="browser-style-btn" id="btn-browser-style-tabs" onclick="window.TracesApp.schemaBrowser.switchViewMode('tabs')" title="Abas Tradicionais">
+              <button class="browser-style-btn" id="btn-browser-style-tabs" data-style="tabs" onclick="window.TracesApp.schemaBrowser.switchViewMode('tabs')" title="Abas Tradicionais">
                 <span>📑</span><span>Abas</span>
               </button>
             </div>
@@ -588,14 +630,34 @@
             <!-- Categories Scroller (Tabs Mode) -->
             <div class="category-tabs-scroller" id="browser-category-pills" style="display: none;"></div>
 
-            <!-- Filter Box -->
-            <div class="object-search-bar" style="display: flex; gap: 4px; padding: 4px 6px; background: #f0f0f0; border-bottom: 1px solid #adadad;">
-              <input type="text" class="object-search-input" id="browser-object-search" placeholder="Filter objects (e.g. EMP*)..." style="flex: 1; height: 22px; padding: 0 6px;">
-              <select id="browser-status-filter" style="height: 22px; font-size: 10.5px; border: 1px solid #adadad; border-radius: 2px; background: #fff;" title="Filtrar por Status do Objeto" onchange="window.TracesApp.schemaBrowser.setStatusFilter(this.value)">
-                <option value="ALL" selected>Status: Todos</option>
-                <option value="VALID">Válidos</option>
-                <option value="INVALID">Inválidos</option>
-              </select>
+            <!-- Enhanced Filter Box (Toad Multi-Mode Filter) -->
+            <div class="object-search-bar" style="display: flex; flex-direction: column; gap: 4px; padding: 5px 6px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                  <input type="text" class="object-search-input" id="browser-object-search" placeholder="🔍 Filtrar objetos (ex: EMP*, %HIST, PKG_*)..." style="width: 100%; height: 23px; padding: 0 22px 0 6px; font-size: 11px;">
+                  <button type="button" id="browser-search-clear-btn" title="Limpar filtro" style="display: none; position: absolute; right: 4px; background: none; border: none; cursor: pointer; font-size: 11px; color: #64748b;" onclick="window.TracesApp.schemaBrowser.clearObjectSearch()">✕</button>
+                </div>
+                <span id="browser-filter-count-badge" style="font-size: 10px; font-weight: 700; color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 10px; padding: 1px 6px; white-space: nowrap;" title="Objetos correspondentes ao filtro">0 obj</span>
+              </div>
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <select id="browser-filter-mode" style="flex: 1; height: 21px; font-size: 10px; border: 1px solid #cbd5e1; border-radius: 2px; background: #fff;" title="Modo de correspondência do filtro" onchange="window.TracesApp.schemaBrowser.setFilterMatchMode(this.value)">
+                  <option value="contains" selected>Contém (A*B)</option>
+                  <option value="starts">Começa com (ABC*)</option>
+                  <option value="ends">Termina com (*XYZ)</option>
+                  <option value="exact">Exato (=)</option>
+                  <option value="negate">Não contém (!)</option>
+                </select>
+                <select id="browser-status-filter" style="height: 21px; font-size: 10px; border: 1px solid #cbd5e1; border-radius: 2px; background: #fff;" title="Filtrar por Status do Objeto" onchange="window.TracesApp.schemaBrowser.setStatusFilter(this.value)">
+                  <option value="ALL" selected>Status: Todos</option>
+                  <option value="VALID">✅ VALID</option>
+                  <option value="INVALID">❌ INVALID</option>
+                </select>
+                <select id="browser-sort-order" style="height: 21px; font-size: 10px; border: 1px solid #cbd5e1; border-radius: 2px; background: #fff;" title="Ordenação da lista de objetos" onchange="window.TracesApp.schemaBrowser.setSortOrder(this.value)">
+                  <option value="asc" selected>A → Z</option>
+                  <option value="desc">Z → A</option>
+                  <option value="invalid_first">Inválidos 1º</option>
+                </select>
+              </div>
             </div>
 
             <!-- Object List / Tree View -->
@@ -603,26 +665,27 @@
           </div>
 
           <!-- Vertical Toad Splitter for Schema Browser -->
-          <div class="toad-v-splitter" id="browser-pane-splitter" title="Arraste para ajustar a largura da árvore de objetos ou clique para ocultar/mostrar">
+          <div class="toad-v-splitter" id="browser-pane-splitter" title="Arraste para ajustar a largura da árvore de objetos ou clique duplo para restaurar">
             <button type="button" class="v-splitter-toggle-btn" id="browser-splitter-btn" onmousedown="event.stopPropagation()" onclick="window.TracesApp.toggleSplitPane('browser', 'left')" title="Ocultar / Mostrar Árvore de Objetos">◀</button>
           </div>
 
           <!-- Right Multitab Inspector -->
           <div class="browser-detail-pane" id="browser-detail-pane">
-            <div class="detail-header-bar">
+            <div class="detail-header-bar" style="flex-wrap: wrap; gap: 6px; height: auto; min-height: 36px; padding: 4px 10px;">
               <div class="detail-object-meta">
                 <span class="detail-object-title" id="browser-detail-title">HR.EMPLOYEES</span>
                 <span class="detail-object-type-pill" id="browser-detail-type">TABLE</span>
               </div>
-              <div class="detail-actions-group">
+              <div class="detail-actions-group" id="browser-detail-actions-group" style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                <div id="browser-context-actions-bar" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;"></div>
                 <button class="btn" title="Contar registros da tabela" onclick="window.TracesApp.schemaBrowser.countCurrentTableRows()">
                   📊 Contar Linhas
                 </button>
                 <button class="btn" onclick="window.TracesApp.schemaBrowser.recompileCurrentObject()">
-                  Recompile
+                  ⚡ Recompile
                 </button>
-                <button class="btn btn-primary" onclick="window.TracesApp.openObjectInWorksheet(window.TracesApp.schemaBrowser.selectedObject.name)">
-                  Open in Editor
+                <button class="btn btn-primary" onclick="window.TracesApp.openObjectInWorksheet(window.TracesApp.schemaBrowser.selectedObject?.name)">
+                  📝 Open in Editor
                 </button>
               </div>
             </div>
@@ -639,6 +702,8 @@
               <button class="detail-tab" data-tab="partitions">Partitions</button>
               <button class="detail-tab" data-tab="dependencies">Dependencies</button>
               <button class="detail-tab" data-tab="stats">Stats</button>
+              <button class="detail-tab" data-tab="tsoverview" id="detail-tab-btn-tsoverview">📊 Visão Geral &amp; Uso Máx</button>
+              <button class="detail-tab" data-tab="tsdatafiles" id="detail-tab-btn-tsdatafiles">📁 Datafiles Mapeados</button>
               <button class="detail-tab" data-tab="erd">Diagrama ER (Mini-ERD)</button>
             </div>
 
@@ -654,6 +719,8 @@
               <div class="detail-tab-pane" id="tab-pane-partitions"></div>
               <div class="detail-tab-pane" id="tab-pane-dependencies"></div>
               <div class="detail-tab-pane" id="tab-pane-stats"></div>
+              <div class="detail-tab-pane" id="tab-pane-tsoverview"></div>
+              <div class="detail-tab-pane" id="tab-pane-tsdatafiles"></div>
               <div class="detail-tab-pane" id="tab-pane-erd"></div>
             </div>
           </div>
@@ -799,17 +866,24 @@
               </label>
 
               <span style="font-weight: 700; font-size: 11px; margin-left: 2px;">Auto:</span>
-              <select class="toad-conn-combobox" id="session-autorefresh-select" style="height: 24px; width: 72px;" onchange="window.TracesApp.sessionMonitor.setAutoRefresh(this.value)">
+              <select class="toad-conn-combobox" id="session-autorefresh-select" style="height: 24px; width: 78px;" onchange="window.TracesApp.sessionMonitor.setAutoRefresh(this.value)">
                 <option value="0">Off</option>
                 <option value="3">3s</option>
-                <option value="5" selected>5s</option>
-                <option value="10">10s</option>
+                <option value="5">5s</option>
+                <option value="10" selected>10s</option>
+                <option value="15">15s</option>
                 <option value="30">30s</option>
+                <option value="60">60s</option>
               </select>
 
-              <button class="btn" style="height: 24px; padding: 0 8px; font-weight: 600;" onclick="window.TracesApp.sessionMonitor.refresh()" title="Atualizar sessões agora">
+              <button type="button" class="btn" id="btn-session-pause-refresh" style="height: 24px; padding: 0 8px; font-weight: 600;" onclick="window.TracesApp.sessionMonitor.togglePauseAutoRefresh()" title="Pausar / Retomar atualização automática">
+                ⏸ Pausar
+              </button>
+
+              <button class="btn" style="height: 24px; padding: 0 8px; font-weight: 600;" onclick="window.TracesApp.sessionMonitor.refresh(true)" title="Atualizar sessões agora">
                 🔄 Atualizar
               </button>
+              <span id="session-refresh-status-badge" style="font-size: 10px; color: #475569; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: 600;">Auto: 10s</span>
             </div>
 
             <!-- Toad Panel Visibility, Orientation & Column Controls -->
@@ -1145,26 +1219,26 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="js/data/mock-db.js?v=20261021v2"></script>
-  <script src="js/data/rule-universe-data.js?v=20261021v2"></script>
-  <script src="js/components/connection-manager.js?v=20261021v2"></script>
-  <script src="js/components/toad-modals.js?v=20261021v2"></script>
-  <script src="js/components/toad-menus.js?v=20261021v2"></script>
-  <script src="js/components/schema-browser.js?v=20261021v3"></script>
-  <script src="js/components/data-grid.js?v=20261021v2"></script>
-  <script src="js/components/sql-editor.js?v=20261021v2"></script>
-  <script src="js/components/explain-plan.js?v=20261021v2"></script>
-  <script src="js/components/session-monitor.js?v=20261021v4"></script>
-  <script src="js/components/rule-auditor.js?v=20261021v2"></script>
-  <script src="js/components/database-probe.js?v=20261021v2"></script>
-  <script src="js/components/traces-copilot.js?v=20261021v2"></script>
-  <script src="js/components/spotlight-oracle.js?v=20261021v2"></script>
-  <script src="js/components/data-modeler.js?v=20261021v2"></script>
-  <script src="js/components/dba-tools.js?v=20261021v2"></script>
-  <script src="js/components/code-quality.js?v=20261021v2"></script>
-  <script src="js/components/automation-designer.js?v=20261021v2"></script>
-  <script src="js/components/sql-optimizer.js?v=20261021v2"></script>
-  <script src="js/components/toad-pro-suite.js?v=20261021v2"></script>
-  <script src="js/app.js?v=20261021v4"></script>
+  <script src="js/data/mock-db.js?v=20261022v7"></script>
+  <script src="js/data/rule-universe-data.js?v=20261022v7"></script>
+  <script src="js/components/connection-manager.js?v=20261022v7"></script>
+  <script src="js/components/toad-modals.js?v=20261022v7"></script>
+  <script src="js/components/toad-menus.js?v=20261022v7"></script>
+  <script src="js/components/schema-browser.js?v=20261022v7"></script>
+  <script src="js/components/data-grid.js?v=20261022v7"></script>
+  <script src="js/components/sql-editor.js?v=20261022v7"></script>
+  <script src="js/components/explain-plan.js?v=20261022v7"></script>
+  <script src="js/components/session-monitor.js?v=20261022v7"></script>
+  <script src="js/components/rule-auditor.js?v=20261022v7"></script>
+  <script src="js/components/database-probe.js?v=20261022v7"></script>
+  <script src="js/components/traces-copilot.js?v=20261022v7"></script>
+  <script src="js/components/spotlight-oracle.js?v=20261022v7"></script>
+  <script src="js/components/data-modeler.js?v=20261022v7"></script>
+  <script src="js/components/dba-tools.js?v=20261022v7"></script>
+  <script src="js/components/code-quality.js?v=20261022v7"></script>
+  <script src="js/components/automation-designer.js?v=20261022v7"></script>
+  <script src="js/components/sql-optimizer.js?v=20261022v7"></script>
+  <script src="js/components/toad-pro-suite.js?v=20261022v7"></script>
+  <script src="js/app.js?v=20261022v7"></script>
 </body>
 </html>

@@ -70,13 +70,15 @@ class ToadMenus {
       ],
 
       'Edit': [
-        { label: 'Undo', icon: '↶', shortcut: 'Ctrl+Z', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.undo(); } },
-        { label: 'Redo', icon: '↷', shortcut: 'Ctrl+Y', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.redo(); } },
+        { label: 'Undo (Desfazer)', icon: '↶', shortcut: 'Ctrl+Z', action: () => { if (!window.TracesApp.activeWindowId) window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.undo(); } },
+        { label: 'Redo (Refazer)', icon: '↷', shortcut: 'Ctrl+Y', action: () => { if (!window.TracesApp.activeWindowId) window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.redo(); } },
         { separator: true },
-        { label: 'Cut', icon: '✂', shortcut: 'Ctrl+X', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.cut(); } },
-        { label: 'Copy', icon: '📋', shortcut: 'Ctrl+C', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.copy(); } },
-        { label: 'Paste', icon: '📄', shortcut: 'Ctrl+V', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.paste(); } },
-        { label: 'Select All', icon: '🔲', shortcut: 'Ctrl+A', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.selectAll(); } },
+        { label: 'Cut (Recortar)', icon: '✂', shortcut: 'Ctrl+X', action: () => { if (!window.TracesApp.activeWindowId) window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.cut(); } },
+        { label: 'Copy (Copiar)', icon: '📋', shortcut: 'Ctrl+C', action: () => { if (!window.TracesApp.activeWindowId) window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.copy(); } },
+        { label: 'Paste (Colar)', icon: '📄', shortcut: 'Ctrl+V', action: () => { if (!window.TracesApp.activeWindowId) window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.paste(); } },
+        { label: 'Select All (Selecionar Tudo)', icon: '🔲', shortcut: 'Ctrl+A', action: () => { if (!window.TracesApp.activeWindowId) window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.selectAll(); } },
+        { separator: true },
+        { label: 'Clear Execution Logs (Limpar Logs)', icon: '🗑', shortcut: '', action: () => { window.TracesApp.sqlEditor.clearOutputLogs(); } },
         { separator: true },
         { label: 'Toggle Line Comment', icon: '💬', shortcut: 'Ctrl+/', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.toggleComment(); } },
         { label: 'Duplicate Line / Selection', icon: '📑', shortcut: 'Ctrl+D', action: () => { window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.duplicateLine(); } },
@@ -154,9 +156,10 @@ class ToadMenus {
           ]
         },
         {
-          label: 'Flashback & Recovery',
-          icon: '⏪',
+          label: 'Flashback, RMAN & Recovery',
+          icon: '🛡️',
           submenu: [
+            { label: 'RMAN Backup & Recovery (Verificações & Terminal Interativo)', action: () => window.TracesApp.openWindow('dba', 'rman') },
             { label: 'Flashback Browser (DBA_RECYCLEBIN & Purge)', action: () => window.TracesApp.openWindow('dba', 'flashback') },
             { label: 'LogMiner Interface (DBMS_LOGMNR Redo/Undo)', action: () => window.TracesApp.openWindow('dba', 'logminer') }
           ]
@@ -466,6 +469,16 @@ class ToadMenus {
   }
 
   bindEvents() {
+    const menuBar = document.querySelector('.toad-menubar');
+    if (menuBar) {
+      // Prevent mousedown on the top menu bar from stealing focus/selection from the SQL Editor or inputs
+      menuBar.addEventListener('mousedown', (e) => {
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+          e.preventDefault();
+        }
+      });
+    }
+
     const menuItems = document.querySelectorAll('.toad-menu-item');
 
     menuItems.forEach(item => {
@@ -497,6 +510,16 @@ class ToadMenus {
           this.closeAll();
           this.openMenu(item, dropdown, menuKey);
         }
+      });
+    });
+
+    // Also allow hover on submenu items to keep submenu open smoothly
+    document.querySelectorAll('.toad-menu-entry.has-submenu').forEach(subEntry => {
+      subEntry.addEventListener('mouseenter', () => {
+        subEntry.parentElement?.querySelectorAll('.toad-menu-entry.has-open-submenu').forEach(sib => {
+          if (sib !== subEntry) sib.classList.remove('has-open-submenu');
+        });
+        subEntry.classList.add('has-open-submenu');
       });
     });
 

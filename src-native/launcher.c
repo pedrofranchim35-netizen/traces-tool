@@ -12,7 +12,7 @@
 #define PORT 3033
 #define APP_URL "http://localhost:3033/index.html"
 
-// Verifica se o servidor local na porta 3033 já está respondendo
+// Verifica se o servidor local na porta 3033 está respondendo HTTP 200 em /api/ping
 static BOOL IsServerRunning(void) {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -25,8 +25,7 @@ static BOOL IsServerRunning(void) {
         return FALSE;
     }
 
-    // Timeout de 300ms
-    DWORD timeout = 300;
+    DWORD timeout = 400;
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
 
@@ -36,30 +35,46 @@ static BOOL IsServerRunning(void) {
     addr.sin_port = htons(PORT);
     addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    int res = connect(s, (struct sockaddr*)&addr, sizeof(addr));
+    BOOL healthy = FALSE;
+    if (connect(s, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        const char *req = "GET /api/ping HTTP/1.0\r\nHost: 127.0.0.1:3033\r\nConnection: close\r\n\r\n";
+        if (send(s, req, (int)strlen(req), 0) > 0) {
+            char buf[512];
+            int n = recv(s, buf, sizeof(buf) - 1, 0);
+            if (n > 0) {
+                buf[n] = '\0';
+                if (strstr(buf, "200") != NULL && strstr(buf, "online") != NULL) {
+                    healthy = TRUE;
+                }
+            }
+        }
+    }
+
     closesocket(s);
     WSACleanup();
-
-    return (res == 0);
+    return healthy;
 }
 
-// Localiza o executável do Python ou retorna NULL
 static BOOL FindPython(char *outPath, size_t outSize, const char *appDir) {
     char test[MAX_PATH];
-    
-    // 1. Python na mesma pasta
+
+    snprintf(test, sizeof(test), "%s\\python\\python.exe", appDir);
+    if (GetFileAttributesA(test) != INVALID_FILE_ATTRIBUTES) {
+        strncpy(outPath, test, outSize);
+        return TRUE;
+    }
+
     snprintf(test, sizeof(test), "%s\\python.exe", appDir);
     if (GetFileAttributesA(test) != INVALID_FILE_ATTRIBUTES) {
         strncpy(outPath, test, outSize);
         return TRUE;
     }
 
-    // 2. Python em %LOCALAPPDATA%\Programs\Python\...
     char localAppData[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, localAppData))) {
         const char *pyVersions[] = {
-            "\\Programs\\Python\\Python312\\python.exe",
             "\\Programs\\Python\\Python311\\python.exe",
+            "\\Programs\\Python\\Python312\\python.exe",
             "\\Programs\\Python\\Python310\\python.exe",
             "\\Programs\\Python\\Python313\\python.exe",
             "\\Programs\\Python\\Python39\\python.exe",
@@ -74,14 +89,13 @@ static BOOL FindPython(char *outPath, size_t outSize, const char *appDir) {
         }
     }
 
-    // 3. Python em C:\Program Files\Python...
     const char *progPaths[] = {
-        "C:\\Program Files\\Python312\\python.exe",
         "C:\\Program Files\\Python311\\python.exe",
+        "C:\\Program Files\\Python312\\python.exe",
         "C:\\Program Files\\Python310\\python.exe",
         "C:\\Program Files\\Python313\\python.exe",
-        "C:\\Python312\\python.exe",
         "C:\\Python311\\python.exe",
+        "C:\\Python312\\python.exe",
         "C:\\Python310\\python.exe",
         NULL
     };
@@ -92,57 +106,65 @@ static BOOL FindPython(char *outPath, size_t outSize, const char *appDir) {
         }
     }
 
-    // 4. Testar python no PATH
     char foundInPath[MAX_PATH];
     if (SearchPathA(NULL, "python.exe", NULL, MAX_PATH, foundInPath, NULL) > 0) {
-        strncpy(outPath, foundInPath, outSize);
-        return TRUE;
+        if (strstr(foundInPath, "WindowsApps") == NULL) {
+            strncpy(outPath, foundInPath, outSize);
+            return TRUE;
+        }
     }
 
     return FALSE;
 }
 
-// Inicia o servidor Python em segundo plano silencioso
 static void StartBackgroundServer(const char *appDir) {
     char pyExe[MAX_PATH];
     char cmdLine[MAX_PATH * 3];
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
 
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandles = TRUE;
+
+    char logPath[MAX_PATH];
+    GetTempPathA(MAX_PATH, logPath);
+    strncat(logPath, "traces_toad_server.log", MAX_PATH - strlen(logPath) - 1);
+    HANDLE hLog = CreateFileA(logPath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
     si.wShowWindow = SW_HIDE;
+    si.hStdOutput = hLog;
+    si.hStdError = hLog;
+    si.hStdInput = NULL;
     memset(&pi, 0, sizeof(pi));
 
     if (FindPython(pyExe, sizeof(pyExe), appDir)) {
         char scriptPath[MAX_PATH];
         snprintf(scriptPath, sizeof(scriptPath), "%s\\bridge\\oracle_server.py", appDir);
-        if (GetFileAttributesA(scriptPath) != INVALID_FILE_ATTRIBUTES) {
-            snprintf(cmdLine, sizeof(cmdLine), "\"%s\" \"%s\"", pyExe, scriptPath);
-        } else {
-            snprintf(cmdLine, sizeof(cmdLine), "\"%s\" -m http.server %d", pyExe, PORT);
-        }
+        snprintf(cmdLine, sizeof(cmdLine), "\"%s\" \"%s\"", pyExe, scriptPath);
     } else {
-        // Fallback: usar PowerShell launcher
         snprintf(cmdLine, sizeof(cmdLine),
                  "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"%s\\installer\\TracesLauncher.ps1\"",
                  appDir);
     }
 
-    CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, appDir, &si, &pi);
+    CreateProcessA(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, appDir, &si, &pi);
 
     if (pi.hProcess) CloseHandle(pi.hProcess);
     if (pi.hThread) CloseHandle(pi.hThread);
+    if (hLog && hLog != INVALID_HANDLE_VALUE) CloseHandle(hLog);
 }
 
-// Lança a janela em modo de aplicativo desktop nativo
 static void LaunchAppWindow(void) {
     const char *browsers[] = {
-        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
         "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
         "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
         NULL
     };
 
@@ -163,12 +185,10 @@ static void LaunchAppWindow(void) {
         }
     }
 
-    // Fallback: navegador padrão
     ShellExecuteA(NULL, "open", APP_URL, NULL, NULL, SW_SHOWNORMAL);
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // 1. Obter diretório do aplicativo
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
     char *lastSlash = strrchr(exePath, '\\');
@@ -176,7 +196,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     char appDir[MAX_PATH];
     strncpy(appDir, exePath, MAX_PATH);
 
-    // Se estiver em uma subpasta (ex: installer\ ou bin\), subir um nível se index.html estiver lá
     char testIndex[MAX_PATH];
     snprintf(testIndex, sizeof(testIndex), "%s\\index.html", appDir);
     if (GetFileAttributesA(testIndex) == INVALID_FILE_ATTRIBUTES) {
@@ -185,13 +204,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             *parentSlash = '\0';
             snprintf(testIndex, sizeof(testIndex), "%s\\index.html", appDir);
             if (GetFileAttributesA(testIndex) == INVALID_FILE_ATTRIBUTES) {
-                // Voltar
                 strncpy(appDir, exePath, MAX_PATH);
             }
         }
     }
 
-    // 2. Se o usuário passou parâmetro --update, rodar o atualizador
     if (strstr(lpCmdLine, "--update") != NULL) {
         char updateScript[MAX_PATH];
         snprintf(updateScript, sizeof(updateScript), "%s\\update.bat", appDir);
@@ -201,12 +218,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
     }
 
-    // 3. Verificar se o servidor já está ativo; se não, iniciar
     if (!IsServerRunning()) {
         StartBackgroundServer(appDir);
-
-        // Aguardar o servidor abrir a porta (até 2.5s)
-        for (int i = 0; i < 25; i++) {
+        for (int i = 0; i < 60; i++) {
             Sleep(100);
             if (IsServerRunning()) {
                 break;
@@ -214,8 +228,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
     }
 
-    // 4. Abrir janela do aplicativo
     LaunchAppWindow();
-
     return 0;
 }

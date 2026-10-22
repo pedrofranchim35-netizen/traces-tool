@@ -81,7 +81,29 @@ class TracesApp {
   }
 
   isConnected() {
-    return Boolean(this.isRealDatabase || (this.connectionManager && this.connectionManager.activeConn));
+    if (this.isRealDatabase) return true;
+    if (this.realDatabaseConfig) return true;
+    if (this.connectionManager) {
+      if (typeof this.connectionManager.getActive === 'function' && this.connectionManager.getActive()) return true;
+      if (this.connectionManager.activeConn) return true;
+      if (this.connectionManager.activeConnections && this.connectionManager.activeConnections.size > 0) return true;
+    }
+    return false;
+  }
+
+  getActiveConnection() {
+    if (this.realDatabaseConfig) return this.realDatabaseConfig;
+    if (this.connectionManager) {
+      if (typeof this.connectionManager.getActive === 'function') {
+        const c = this.connectionManager.getActive();
+        if (c) return c;
+      }
+      if (this.connectionManager.activeConn) return this.connectionManager.activeConn;
+      if (this.connectionManager.activeConnections && this.connectionManager.activeConnections.size > 0) {
+        return this.connectionManager.activeConnections.values().next().value?.config || null;
+      }
+    }
+    return null;
   }
 
   setServerOs(osInfo) {
@@ -112,11 +134,17 @@ class TracesApp {
       this.serverOs.diag_tools = 'top, vmstat, iostat, sar, free -m';
     }
 
-    this.updateConnectionState();
-
-    if (this.sessionMonitor && typeof this.sessionMonitor.renderDetail === 'function') {
-      this.sessionMonitor.renderDetail();
+    const osEl = document.getElementById('status-db-os');
+    if (osEl && this.isConnected()) {
+      const os = this.getServerOs();
+      const icon = os.os_type === 'windows' ? '🪟' : os.os_type === 'aix' ? '🟣' : '🐧';
+      const label = os.os_type === 'windows' ? 'Windows x64' : os.os_type === 'aix' ? 'IBM AIX' : 'Linux x86_64';
+      const badgeClass = os.os_type === 'windows' ? 'os-windows' : os.os_type === 'aix' ? 'os-aix' : 'os-linux';
+      osEl.innerHTML = `<span class="toad-os-badge ${badgeClass}">${icon} ${label}</span>`;
+      osEl.title = `Host SO: ${os.os_name} (${os.platform_name || ''}) | Instância: ${os.instance_name || 'ORCL'} - Clique para abrir o Monitor de Servidor no DBA Hub`;
+      osEl.onclick = () => this.openWindow('dba', 'unixmonitor');
     }
+
     if (this.dbaTools && typeof this.dbaTools.renderCurrentSubtab === 'function' && this.dbaTools.currentSubtab === 'unixmonitor') {
       this.dbaTools.renderCurrentSubtab();
     }
@@ -165,7 +193,7 @@ class TracesApp {
 
   updateConnectionState() {
     const isConn = this.isConnected();
-    const conn = this.isRealDatabase ? this.realDatabaseConfig : this.connectionManager?.getActive();
+    const conn = this.getActiveConnection();
 
     // 1. Update Title & Status Bar
     if (isConn && conn) {
@@ -291,7 +319,7 @@ class TracesApp {
       }
     }
 
-    // 2. Enable or Disable Execution and Transaction Controls
+    // 2. Keep Execution Controls responsive (never lock with pointer-events:none so user gets feedback or mock execution)
     const execButtonIds = [
       'btn-run-statement',
       'btn-run-script',
@@ -304,12 +332,8 @@ class TracesApp {
     execButtonIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
-        if (el.tagName === 'INPUT' && el.type === 'checkbox') {
-          el.disabled = !isConn;
-        } else {
-          el.disabled = !isConn;
-          el.classList.toggle('disabled', !isConn);
-        }
+        el.disabled = false;
+        el.classList.remove('disabled');
       }
     });
 
@@ -330,27 +354,43 @@ class TracesApp {
       this.connectionManager.updateSelectorDropdown();
     }
 
-    // 5. If disconnected, refresh open views
-    if (!isConn) {
-      if (this.currentView === 'dba' && this.dbaTools) {
-        this.dbaTools.render();
-      }
-      if (this.currentView === 'sessions' && this.sessionMonitor) {
-        this.sessionMonitor.render();
-      }
-      if (this.currentView === 'browser' && this.schemaBrowser) {
-        this.schemaBrowser.render();
+    // 5. Only trigger view data reload when connection identity actually changes
+    const connStateKey = isConn
+      ? `CONN:${conn?.id || ''}:${conn?.user || ''}@${conn?.host || ''}:${conn?.serviceName || conn?.service_name || ''}`
+      : 'DISCONNECTED';
+    const stateChanged = this._lastConnStateKey !== connStateKey;
+    this._lastConnStateKey = connStateKey;
+
+    if (stateChanged) {
+      if (!isConn) {
+        if (this.dbaTools) {
+          this.dbaTools.updateConnectionState(false);
+          if (this.currentView === 'dba') this.dbaTools.render();
+        }
+        if (this.currentView === 'sessions' && this.sessionMonitor) {
+          this.sessionMonitor.render();
+        }
+        if (this.currentView === 'browser' && this.schemaBrowser) {
+          this.schemaBrowser.render();
+        }
+      } else {
+        if (this.dbaTools) {
+          this.dbaTools.updateConnectionState(true);
+          if (this.currentView === 'dba') {
+            this.dbaTools.render();
+            this.dbaTools.loadSubtabData(this.dbaTools.currentSubtab);
+          }
+        }
+        if (this.currentView === 'sessions' && this.sessionMonitor) {
+          this.sessionMonitor.refresh(true);
+        }
+        if (this.currentView === 'browser' && this.schemaBrowser) {
+          this.schemaBrowser.loadRealSchemas();
+        }
       }
     } else {
-      if (this.currentView === 'dba' && this.dbaTools) {
-        this.dbaTools.render();
-        this.dbaTools.loadSubtabData(this.dbaTools.currentSubtab);
-      }
-      if (this.currentView === 'sessions' && this.sessionMonitor) {
-        this.sessionMonitor.refresh();
-      }
-      if (this.currentView === 'browser' && this.schemaBrowser) {
-        this.schemaBrowser.loadRealSchemas();
+      if (this.dbaTools) {
+        this.dbaTools.updateConnectionBadge();
       }
     }
   }
@@ -428,6 +468,56 @@ class TracesApp {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // PER-CONNECTION WORKSPACES (TOAD: each connection keeps its own windows/worksheets)
+  // ---------------------------------------------------------------------------
+  swapWorkspace(oldConnId, newConnId) {
+    if (!this.connWorkspaces) this.connWorkspaces = {};
+    if (oldConnId === newConnId) return;
+    const ed = this.sqlEditor;
+    if (oldConnId) {
+      if (ed) ed.saveActiveTabContent();
+      this.connWorkspaces[oldConnId] = {
+        openWindows: this.openWindows,
+        activeWindowId: this.activeWindowId,
+        currentView: this.currentView,
+        editorTabs: ed ? ed.tabs : null,
+        editorActiveTabId: ed ? ed.activeTabId : null
+      };
+    }
+    const ws = newConnId ? this.connWorkspaces[newConnId] : null;
+    if (ws) {
+      this.openWindows = ws.openWindows;
+      this.activeWindowId = ws.activeWindowId;
+      if (ed && ws.editorTabs) { ed.tabs = ws.editorTabs; ed.activeTabId = ws.editorActiveTabId; }
+    } else {
+      this.openWindows = [];
+      this.activeWindowId = null;
+      if (ed && oldConnId) {
+        const content = `-- Nova Worksheet\nSELECT * FROM dual;`;
+        const id = `tab-${Date.now()}`;
+        ed.tabs = [{ id, title: 'worksheet_1.sql', content, history: [{ content, selStart: 0, selEnd: 0 }], future: [] }];
+        ed.activeTabId = id;
+      }
+    }
+    if (ed) { ed.renderTabs(); ed.loadTabContent(); }
+    const win = this.openWindows.find(w => w.id === this.activeWindowId);
+    if (ws && win && ws.currentView !== 'start') {
+      this.renderMdiTabs();
+      this.switchDockView(win.viewKey, win.subtab);
+    } else if (ws && this.openWindows.length === 0) {
+      this.showStartPage();
+    } else if (!ws) {
+      this.openWindow('editor');
+    } else {
+      this.showStartPage();
+    }
+  }
+
+  dropWorkspace(connId) {
+    if (this.connWorkspaces) delete this.connWorkspaces[connId];
+  }
+
   closeActiveWindow() {
     if (this.activeWindowId) {
       this.closeWindow(this.activeWindowId);
@@ -460,7 +550,9 @@ class TracesApp {
     const container = document.getElementById('toad-mdi-tabs');
     if (!container) return;
 
-    let html = `
+    const ac = this.connectionManager?.activeConn;
+    const connLabel = ac ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#334155;padding:0 8px;margin-right:4px;border-right:1px solid #cbd5e1;align-self:center;"><span style="width:8px;height:8px;border-radius:50%;background:${ac.color || '#16a34a'};"></span>${ac.user}@${ac.serviceName}</span>` : '';
+    let html = connLabel + `
       <div class="toad-window-tab ${this.currentView === 'start' ? 'active' : ''}" onclick="window.TracesApp.showStartPage();" title="Página Inicial do Toad">
         <span style="font-size: 11px;">🏠</span>
         <span style="font-weight: 600;">Start Page</span>
@@ -515,6 +607,9 @@ class TracesApp {
         if (data.connection.os) {
           this.setServerOs(data.connection.os);
         }
+        if (this.connectionManager?.syncWithServerState) {
+          this.connectionManager.syncWithServerState();
+        }
         this.updateConnectionState();
 
         // If currently on Start Page, switch to SQL Editor automatically (authentic Toad behavior)
@@ -529,14 +624,18 @@ class TracesApp {
         if (this.schemaBrowser && typeof this.schemaBrowser.loadRealSchemas === 'function') {
           this.schemaBrowser.loadRealSchemas();
         }
-        if (this.sessionMonitor && typeof this.sessionMonitor.loadRealSessions === 'function') {
-          this.sessionMonitor.loadRealSessions();
+        // Note: SessionMonitor manages its own autoRefreshTimer; only trigger initial load if sessions list is empty
+        if (this.sessionMonitor && typeof this.sessionMonitor.loadRealSessions === 'function' && (!this.sessionMonitor.lastRefreshTime)) {
+          this.sessionMonitor.loadRealSessions(false);
         }
         if (this.databaseProbe && typeof this.databaseProbe.loadRealProbe === 'function') {
           this.databaseProbe.loadRealProbe();
         }
-        if (this.dbaTools && typeof this.dbaTools.loadRealData === 'function') {
-          this.dbaTools.loadRealData();
+        if (this.dbaTools) {
+          this.dbaTools.updateConnectionState(true);
+          if (typeof this.dbaTools.loadRealData === 'function' && this.currentView === 'dba') {
+            this.dbaTools.loadRealData();
+          }
         }
       } else {
         this.isRealDatabase = false;
@@ -606,6 +705,9 @@ class TracesApp {
     }
     if (viewKey === 'explain' && this.explainPlan) {
       this.explainPlan.onViewActivated();
+    }
+    if (viewKey === 'dba' && this.dbaTools) {
+      this.dbaTools.onViewActivated(subtabKey);
     }
   }
 
@@ -684,18 +786,96 @@ class TracesApp {
         e.preventDefault();
         this.sqlEditor.formatSql();
       }
+      // Global Windows Editing & File Shortcuts when focus is outside an input/textarea
+      else if (e.ctrlKey || e.metaKey) {
+        const active = document.activeElement;
+        const isEditable = active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.isContentEditable);
+        const k = e.key.toLowerCase();
+        if (k === 'n' && !e.shiftKey) {
+          e.preventDefault();
+          this.openWindow('editor');
+          this.sqlEditor?.addNewTab();
+        } else if (k === 's' && !e.shiftKey) {
+          e.preventDefault();
+          const sql = this.sqlEditor?.getActiveQuery?.() || '';
+          const blob = new Blob([sql], { type: 'text/sql' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'worksheet.sql';
+          a.click();
+          this.notify('Worksheet salva como worksheet.sql.', 'success');
+        } else if (!isEditable && this.currentView === 'editor' && this.sqlEditor) {
+          if (k === 'v' && !e.shiftKey) {
+            e.preventDefault();
+            this.sqlEditor.paste();
+          } else if (k === 'c' && !e.shiftKey && (!window.getSelection || !window.getSelection().toString())) {
+            e.preventDefault();
+            this.sqlEditor.copy();
+          } else if (k === 'x' && !e.shiftKey) {
+            e.preventDefault();
+            this.sqlEditor.cut();
+          } else if (k === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            this.sqlEditor.undo();
+          } else if (k === 'y' || (k === 'z' && e.shiftKey)) {
+            e.preventDefault();
+            this.sqlEditor.redo();
+          } else if (k === 'a' && !e.shiftKey) {
+            e.preventDefault();
+            this.sqlEditor.selectAll();
+          } else if (k === 'f' && !e.shiftKey) {
+            e.preventDefault();
+            this.toadModals?.openFindDialog(false);
+          } else if (k === 'h' && !e.shiftKey) {
+            e.preventDefault();
+            this.toadModals?.openFindDialog(true);
+          } else if (k === 'g' && !e.shiftKey) {
+            e.preventDefault();
+            this.sqlEditor.gotoLine();
+          }
+        }
+      }
     });
   }
 
+  toggleEditorSplitOrientation() {
+    const splitContainer = document.querySelector('#view-editor .editor-split-pane');
+    const upper = document.getElementById('editor-upper-pane');
+    const lower = document.getElementById('editor-lower-pane');
+    const splitter = document.getElementById('editor-pane-splitter');
+    const btn = document.getElementById('btn-toggle-editor-split-orient');
+    if (!splitContainer || !upper || !lower || !splitter) return;
+
+    this.editorSideBySide = !this.editorSideBySide;
+    splitContainer.classList.toggle('side-by-side', this.editorSideBySide);
+    upper.classList.remove('collapsed-pane');
+    lower.classList.remove('collapsed-pane');
+    lower.style.flex = '';
+
+    if (this.editorSideBySide) {
+      lower.style.height = '100%';
+      lower.style.width = `${Math.round(window.innerWidth * 0.48)}px`;
+      if (btn) btn.innerHTML = '⬍ Dividir Empilhado';
+      this.notify('Editor dividido Lado a Lado (arraste a barra central para os lados).', 'info');
+    } else {
+      lower.style.width = '';
+      lower.style.height = '270px';
+      if (btn) btn.innerHTML = '⬌ Dividir Lado a Lado';
+      this.notify('Editor dividido Superior / Inferior (arraste a barra para cima/baixo).', 'info');
+    }
+  }
+
   initSplitter() {
-    // 1. SQL Editor Horizontal Splitter (Upper Code / Lower Data Grid)
+    // 1. SQL Editor Splitter (Supports both Horizontal Top/Bottom and Vertical Side-by-Side)
     const splitter = document.getElementById('editor-pane-splitter');
     const upper = document.getElementById('editor-upper-pane');
     const lower = document.getElementById('editor-lower-pane');
     if (splitter && upper && lower) {
       let isDragging = false;
       let startY = 0;
+      let startX = 0;
       let startLowerHeight = 0;
+      let startLowerWidth = 0;
 
       splitter.addEventListener('mousedown', (e) => {
         if (e.target.closest('button')) return;
@@ -704,17 +884,30 @@ class TracesApp {
         lower.style.flex = '';
         isDragging = true;
         startY = e.clientY;
+        startX = e.clientX;
         startLowerHeight = lower.offsetHeight || 270;
+        startLowerWidth = lower.offsetWidth || Math.round(window.innerWidth * 0.48);
         splitter.classList.add('dragging');
-        document.body.style.cursor = 'row-resize';
+        document.body.style.cursor = this.editorSideBySide ? 'col-resize' : 'row-resize';
         document.body.style.userSelect = 'none';
+      });
+
+      splitter.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button')) return;
+        this.toggleSplitPane('editor', 'reset');
       });
 
       window.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
-        const dy = startY - e.clientY;
-        const newHeight = Math.max(90, Math.min(window.innerHeight - 190, startLowerHeight + dy));
-        lower.style.height = `${newHeight}px`;
+        if (this.editorSideBySide) {
+          const dx = startX - e.clientX;
+          const newWidth = Math.max(240, Math.min(window.innerWidth - 280, startLowerWidth + dx));
+          lower.style.width = `${newWidth}px`;
+        } else {
+          const dy = startY - e.clientY;
+          const newHeight = Math.max(85, Math.min(window.innerHeight - 170, startLowerHeight + dy));
+          lower.style.height = `${newHeight}px`;
+        }
       });
 
       window.addEventListener('mouseup', () => {
@@ -748,10 +941,16 @@ class TracesApp {
         document.body.style.userSelect = 'none';
       });
 
+      bSplitter.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button')) return;
+        bNav.classList.remove('collapsed-pane');
+        bNav.style.width = '280px';
+      });
+
       window.addEventListener('mousemove', (e) => {
         if (!bDrag) return;
         const dx = e.clientX - startX;
-        const newW = Math.max(160, Math.min(window.innerWidth - 320, startW + dx));
+        const newW = Math.max(160, Math.min(window.innerWidth - 280, startW + dx));
         bNav.style.width = `${newW}px`;
       });
 
@@ -784,6 +983,12 @@ class TracesApp {
         exSplitter.classList.add('dragging');
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+      });
+
+      exSplitter.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button')) return;
+        exAdvisor.classList.remove('collapsed-pane');
+        exAdvisor.style.width = '340px';
       });
 
       window.addEventListener('mousemove', (e) => {
@@ -824,6 +1029,12 @@ class TracesApp {
         document.body.style.userSelect = 'none';
       });
 
+      rSplitter.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button')) return;
+        rSidebar.classList.remove('collapsed-pane');
+        rSidebar.style.width = '320px';
+      });
+
       window.addEventListener('mousemove', (e) => {
         if (!rDrag) return;
         const dx = e.clientX - startX;
@@ -840,6 +1051,56 @@ class TracesApp {
         }
       });
     }
+
+    // 5. Universal Delegated Splitter for Dynamic Views (DBA Hub Sidebar, Data Modeler, Optimizer, etc.)
+    let dynSplitter = null;
+    let dynTarget = null;
+    let dynMode = 'col'; // 'col' or 'row'
+    let dynStart = 0;
+    let dynStartSize = 0;
+
+    document.addEventListener('mousedown', (e) => {
+      const sp = e.target.closest('[data-splitter-target]');
+      if (!sp || e.target.closest('button')) return;
+      const targetSel = sp.getAttribute('data-splitter-target');
+      const targetEl = document.querySelector(targetSel);
+      if (!targetEl) return;
+      targetEl.classList.remove('collapsed-pane');
+      dynSplitter = sp;
+      dynTarget = targetEl;
+      dynMode = sp.getAttribute('data-splitter-mode') || 'col';
+      dynStart = dynMode === 'row' ? e.clientY : e.clientX;
+      dynStartSize = dynMode === 'row' ? targetEl.offsetHeight : targetEl.offsetWidth;
+      sp.classList.add('dragging');
+      document.body.style.cursor = dynMode === 'row' ? 'row-resize' : 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dynSplitter || !dynTarget) return;
+      if (dynMode === 'row') {
+        const dy = e.clientY - dynStart;
+        const nh = Math.max(90, Math.min(window.innerHeight - 180, dynStartSize + dy));
+        dynTarget.style.height = `${nh}px`;
+        dynTarget.style.flex = 'none';
+      } else {
+        const dx = e.clientX - dynStart;
+        const nw = Math.max(150, Math.min(window.innerWidth - 280, dynStartSize + dx));
+        dynTarget.style.width = `${nw}px`;
+        dynTarget.style.flex = 'none';
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (dynSplitter) {
+        dynSplitter.classList.remove('dragging');
+        dynSplitter = null;
+        dynTarget = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
   }
 
   toggleSplitPane(viewKey, targetPane) {

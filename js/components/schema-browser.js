@@ -11,7 +11,11 @@ class SchemaBrowser {
     this.selectedObject = null;
     this.currentDetailTab = 'columns';
     this.searchQuery = '';
+    this.filterMatchMode = 'contains';
     this.statusFilter = 'ALL';
+    this.sortOrder = 'asc';
+    this.subtabFilter = '';
+    this.allTablespacesOverview = null;
     this.realSchemas = [];
     this.realObjects = null;
     this.isLoadingDetails = false;
@@ -23,15 +27,89 @@ class SchemaBrowser {
     this.initElements();
     this.bindEvents();
     this.render();
+    this.updateDetailTabsForCategory(this.currentCategory);
   }
 
   setStatusFilter(filter) {
     this.statusFilter = (filter || 'ALL').toUpperCase();
+    this.refreshFilteredList();
+  }
+
+  setFilterMatchMode(mode) {
+    this.filterMatchMode = mode || 'contains';
+    this.refreshFilteredList();
+  }
+
+  setSortOrder(order) {
+    this.sortOrder = order || 'asc';
+    this.refreshFilteredList();
+  }
+
+  clearObjectSearch() {
+    this.searchQuery = '';
+    if (this.searchInput) this.searchInput.value = '';
+    const clearBtn = document.getElementById('browser-search-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'none';
+    this.refreshFilteredList();
+  }
+
+  refreshFilteredList() {
+    const clearBtn = document.getElementById('browser-search-clear-btn');
+    if (clearBtn) clearBtn.style.display = this.searchQuery ? 'block' : 'none';
     if (this.viewMode === 'tree') {
-      this.renderTreeView();
+      this.renderTreeView(true);
     } else {
-      this.renderObjectList();
+      this.renderObjectList(true);
     }
+  }
+
+  filterAndSortObjects(items) {
+    if (!Array.isArray(items)) return [];
+    let filtered = items.slice();
+
+    if (this.searchQuery) {
+      const rawTerms = this.searchQuery.split(',').map(s => s.trim()).filter(Boolean);
+      filtered = filtered.filter(obj => {
+        const name = (obj.name || '').toLowerCase();
+        return rawTerms.some(term => {
+          if (term.includes('*') || term.includes('%') || term.includes('?')) {
+            const esc = term.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/[*%]/g, '.*').replace(/\?/g, '.');
+            try {
+              const rx = new RegExp(`^${esc}$`, 'i');
+              return this.filterMatchMode === 'negate' ? !rx.test(name) : rx.test(name);
+            } catch (_) {
+              return name.includes(term.replace(/[*%?]/g, ''));
+            }
+          }
+          switch (this.filterMatchMode) {
+            case 'starts': return name.startsWith(term);
+            case 'ends': return name.endsWith(term);
+            case 'exact': return name === term;
+            case 'negate': return !name.includes(term);
+            default: return name.includes(term);
+          }
+        });
+      });
+    }
+
+    if (this.statusFilter && this.statusFilter !== 'ALL') {
+      filtered = filtered.filter(obj => (obj.status || 'VALID').toUpperCase() === this.statusFilter);
+    }
+
+    if (this.sortOrder === 'desc') {
+      filtered.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+    } else if (this.sortOrder === 'invalid_first') {
+      filtered.sort((a, b) => {
+        const sa = (a.status || 'VALID').toUpperCase() === 'INVALID' ? 0 : 1;
+        const sb = (b.status || 'VALID').toUpperCase() === 'INVALID' ? 0 : 1;
+        if (sa !== sb) return sa - sb;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+    } else {
+      filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }
+
+    return filtered;
   }
 
   initElements() {
@@ -78,12 +156,8 @@ class SchemaBrowser {
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => {
           this.searchQuery = e.target.value.toLowerCase().trim();
-          if (this.viewMode === 'tree') {
-            this.renderTreeView();
-          } else {
-            this.renderObjectList();
-          }
-        }, 120);
+          this.refreshFilteredList();
+        }, 100);
       });
     }
 
@@ -103,6 +177,14 @@ class SchemaBrowser {
   toggleCategory(catKey) {
     this.expandedCategories[catKey] = !this.expandedCategories[catKey];
     this.currentCategory = catKey;
+    this.updateDetailTabsForCategory(catKey);
+    if (catKey === 'tablespaces') {
+      this.switchDetailTab('tsoverview');
+      if (this.detailTitle) this.detailTitle.textContent = 'TABLESPACES DA INSTÂNCIA (DBA_TABLESPACES)';
+      if (this.detailTypePill) this.detailTypePill.textContent = 'TABLESPACE SUITE';
+      this.renderContextActionsBar();
+      this.loadAllTablespacesOverview(true);
+    }
     const prevScroll = this.objectList ? this.objectList.scrollTop : 0;
     this.renderTreeView(true);
     if (this.objectList) this.objectList.scrollTop = prevScroll;
@@ -358,15 +440,11 @@ class SchemaBrowser {
     const categories = this.getCategories();
 
     let html = '';
+    let totalMatched = 0;
     for (const cat of categories) {
       const items = data[cat.key] || [];
-      let filtered = items;
-      if (this.searchQuery) {
-        filtered = filtered.filter(obj => obj.name.toLowerCase().includes(this.searchQuery));
-      }
-      if (this.statusFilter && this.statusFilter !== 'ALL') {
-        filtered = filtered.filter(obj => (obj.status || 'VALID').toUpperCase() === this.statusFilter);
-      }
+      const filtered = this.filterAndSortObjects(items);
+      totalMatched += filtered.length;
 
       const isSearching = !!this.searchQuery || (this.statusFilter && this.statusFilter !== 'ALL');
       const isExpanded = isSearching ? (filtered.length > 0) : !!this.expandedCategories[cat.key];
@@ -382,7 +460,12 @@ class SchemaBrowser {
           <div class="toad-tree-category-header" onclick="window.TracesApp.schemaBrowser.toggleCategory('${cat.key}')">
             <span class="toad-tree-arrow ${isExpanded ? 'expanded' : ''}">▶</span>
             <span class="toad-tree-category-title">${cat.icon} ${cat.label}</span>
-            <span class="toad-tree-category-count" title="Total: ${items.length.toLocaleString()} objetos">${countBadge}</span>
+            <button type="button" class="btn" style="height: 17px; padding: 0 5px; font-size: 9.5px; margin-left: auto; margin-right: 4px; background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; font-weight: 700;"
+                    title="Criar novo ${cat.label}"
+                    onclick="event.stopPropagation(); window.TracesApp.schemaBrowser.openCreateObjectWizard('${cat.key}')">
+              + Novo
+            </button>
+            <span class="toad-tree-category-count" style="margin-left: 0;" title="Total: ${items.length.toLocaleString()} objetos">${countBadge}</span>
           </div>
           ${isExpanded ? `
             <div class="toad-tree-category-items">
@@ -431,6 +514,9 @@ class SchemaBrowser {
       `;
     }
 
+    const fBadge = document.getElementById('browser-filter-count-badge');
+    if (fBadge) fBadge.textContent = `${totalMatched.toLocaleString()} obj`;
+
     this.objectList.innerHTML = html;
 
     if (!skipAutoSelect && !this.selectedObject) {
@@ -456,13 +542,63 @@ class SchemaBrowser {
   selectCategory(categoryKey) {
     this.currentCategory = categoryKey;
     this.selectedObject = null;
+    this.updateDetailTabsForCategory(categoryKey);
     this.render();
 
     // Contextual tab switching
-    if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
+    if (categoryKey === 'tablespaces') {
+      this.switchDetailTab('tsoverview');
+      if (this.detailTitle) this.detailTitle.textContent = 'TABLESPACES DA INSTÂNCIA (DBA_TABLESPACES)';
+      if (this.detailTypePill) this.detailTypePill.textContent = 'TABLESPACE SUITE';
+      this.renderContextActionsBar();
+      this.loadAllTablespacesOverview(true);
+    } else if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(categoryKey)) {
       this.switchDetailTab('source');
-    } else if (this.currentDetailTab === 'source') {
+    } else if (this.currentDetailTab === 'source' || this.currentDetailTab === 'tsoverview' || this.currentDetailTab === 'tsdatafiles') {
       this.switchDetailTab('columns');
+    }
+  }
+
+  updateDetailTabsForCategory(categoryKey) {
+    const catConfigs = {
+      tables: ['columns', 'data', 'indexes', 'constraints', 'ddl', 'grants', 'partitions', 'dependencies', 'stats', 'erd'],
+      views: ['columns', 'data', 'ddl', 'grants', 'dependencies', 'stats'],
+      mviews: ['columns', 'data', 'ddl', 'grants', 'dependencies', 'stats'],
+      packages: ['source', 'ddl', 'grants', 'dependencies', 'stats'],
+      procedures: ['source', 'ddl', 'grants', 'dependencies', 'stats'],
+      functions: ['source', 'ddl', 'grants', 'dependencies', 'stats'],
+      triggers: ['source', 'ddl', 'grants', 'dependencies'],
+      types: ['source', 'ddl', 'grants', 'dependencies'],
+      indexes: ['columns', 'ddl', 'partitions', 'stats'],
+      sequences: ['columns', 'ddl', 'grants'],
+      synonyms: ['columns', 'ddl'],
+      users: ['columns', 'grants', 'ddl'],
+      dblinks: ['columns', 'ddl'],
+      tablespaces: ['tsoverview', 'columns', 'tsdatafiles', 'ddl']
+    };
+
+    const allowedKeys = catConfigs[categoryKey] || ['columns', 'data', 'ddl', 'stats'];
+    const allTabs = document.querySelectorAll('.detail-tab');
+    allTabs.forEach(tab => {
+      const k = tab.getAttribute('data-tab');
+      if (allowedKeys.includes(k)) {
+        tab.style.display = 'inline-flex';
+        if (categoryKey === 'tablespaces') {
+          if (k === 'tsoverview') tab.innerHTML = '📊 Todas as Tablespaces &amp; Uso Máx';
+          if (k === 'columns') tab.innerHTML = '💾 Tablespace Selecionada';
+          if (k === 'tsdatafiles') tab.innerHTML = '📁 Datafiles Mapeados';
+          if (k === 'ddl') tab.innerHTML = '📜 Script (DDL)';
+        } else if (categoryKey === 'tables') {
+          if (k === 'columns') tab.innerHTML = 'Columns';
+          if (k === 'ddl') tab.innerHTML = 'Script (DDL)';
+        }
+      } else {
+        tab.style.display = 'none';
+      }
+    });
+
+    if (!allowedKeys.includes(this.currentDetailTab)) {
+      this.switchDetailTab(allowedKeys[0]);
     }
   }
 
@@ -488,19 +624,18 @@ class SchemaBrowser {
 
     const data = this.getSchemaData();
     const items = data[this.currentCategory] || [];
+    const filtered = this.filterAndSortObjects(items);
 
-    let filtered = items;
-    if (this.searchQuery) {
-      filtered = filtered.filter(obj => obj.name.toLowerCase().includes(this.searchQuery));
-    }
-    if (this.statusFilter && this.statusFilter !== 'ALL') {
-      filtered = filtered.filter(obj => (obj.status || 'VALID').toUpperCase() === this.statusFilter);
-    }
+    const fBadge = document.getElementById('browser-filter-count-badge');
+    if (fBadge) fBadge.textContent = `${filtered.length.toLocaleString()} / ${items.length.toLocaleString()}`;
 
     if (filtered.length === 0) {
       this.objectList.innerHTML = `
         <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
           Nenhum objeto "${this.currentCategory}" encontrado com filtro ativo
+          <div style="margin-top: 8px;">
+            <button class="btn btn-primary" onclick="window.TracesApp.schemaBrowser.openCreateObjectWizard('${this.currentCategory}')">➕ Criar Novo (${this.currentCategory})</button>
+          </div>
         </div>
       `;
       return;
@@ -598,8 +733,9 @@ class SchemaBrowser {
   }
 
   async selectObject(objectName, categoryKey) {
-    if (categoryKey) {
+    if (categoryKey && categoryKey !== this.currentCategory) {
       this.currentCategory = categoryKey;
+      this.updateDetailTabsForCategory(categoryKey);
     }
     const data = this.getSchemaData();
     const items = data[this.currentCategory] || [];
@@ -612,12 +748,23 @@ class SchemaBrowser {
     if (matched) matched.classList.add('active');
 
     // Update detail pane header
-    if (this.detailTitle) this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
-    if (this.detailTypePill) this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
+    if (this.currentCategory === 'tablespaces') {
+      if (this.detailTitle) this.detailTitle.textContent = `TABLESPACE: ${this.selectedObject.name}`;
+      if (this.detailTypePill) this.detailTypePill.textContent = 'TABLESPACE';
+    } else {
+      if (this.detailTitle) this.detailTitle.textContent = `${this.currentSchema}.${this.selectedObject.name}`;
+      if (this.detailTypePill) this.detailTypePill.textContent = this.currentCategory.slice(0, -1).toUpperCase();
+    }
+    this.renderContextActionsBar();
 
     // Contextual detail tab selection
     if (['procedures', 'functions', 'packages', 'triggers', 'types'].includes(this.currentCategory)) {
       if (this.currentDetailTab === 'columns') this.switchDetailTab('source');
+    } else if (this.currentCategory === 'tablespaces') {
+      this.loadAllTablespacesOverview();
+      if (this.currentDetailTab === 'tsoverview') {
+        this.selectTablespaceInMaster(objectName);
+      }
     }
 
     // If connected to real Oracle DB, fetch complete live object details
@@ -755,6 +902,11 @@ class SchemaBrowser {
       }
     }
 
+    // On-demand fetch for Tablespaces Overview & Max Usage Tab
+    if (tabKey === 'tsoverview') {
+      await this.loadAllTablespacesOverview(true);
+    }
+
     this.renderDetailContent();
   }
 
@@ -809,81 +961,7 @@ class SchemaBrowser {
     if (colPane) {
       // Specialized Inspector: Tablespaces
       if (this.currentCategory === 'tablespaces') {
-        const ts = obj.tablespaceInfo || obj;
-        const totalMb = ts.totalMb || 2048;
-        const usedMb = ts.usedMb || Math.round(totalMb * 0.6);
-        const freeMb = totalMb - usedMb;
-        const pct = ts.pct || Math.round((usedMb / totalMb) * 100);
-        const barColor = pct > 85 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#10b981';
-
-        colPane.innerHTML = `
-          <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
-            <div class="advisor-card" style="padding: 16px;">
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
-                <strong style="font-size: 13px; color: var(--text-primary);">Tablespace Storage: ${obj.name}</strong>
-                <span style="font-weight: 700; font-size: 13px; color: ${barColor};">${pct}% Used</span>
-              </div>
-              <div style="background: #e2e8f0; border-radius: 4px; height: 16px; overflow: hidden; margin-bottom: 8px;">
-                <div style="background: ${barColor}; height: 100%; width: ${pct}%; transition: width 0.3s;"></div>
-              </div>
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 11px;">
-                <div><span style="color: var(--text-muted);">Total Size:</span> <strong>${totalMb.toLocaleString()} MB</strong></div>
-                <div><span style="color: var(--text-muted);">Used Space:</span> <strong style="color: ${barColor};">${usedMb.toLocaleString()} MB</strong></div>
-                <div><span style="color: var(--text-muted);">Free Space:</span> <strong style="color: #10b981;">${freeMb.toLocaleString()} MB</strong></div>
-              </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
-              <div class="advisor-card">
-                <div class="metric-label">Status</div>
-                <div class="metric-value" style="font-size: 14px; color: #10b981;">ONLINE</div>
-              </div>
-              <div class="advisor-card">
-                <div class="metric-label">Contents</div>
-                <div class="metric-value" style="font-size: 14px;">${ts.contents || 'PERMANENT'}</div>
-              </div>
-              <div class="advisor-card">
-                <div class="metric-label">Extent Management</div>
-                <div class="metric-value" style="font-size: 14px;">LOCAL (AUTOALLOCATE)</div>
-              </div>
-              <div class="advisor-card">
-                <div class="metric-label">Autoextend</div>
-                <div class="metric-value" style="font-size: 14px;">${ts.autoextend || 'YES'}</div>
-              </div>
-            </div>
-
-            <div class="advisor-card" style="padding: 12px;">
-              <strong style="font-size: 12px; margin-bottom: 8px; display: block;">Datafiles Mapeados (DBA_DATA_FILES)</strong>
-              <table class="meta-table">
-                <thead>
-                  <tr>
-                    <th>Datafile Path</th>
-                    <th>Size (MB)</th>
-                    <th>Autoextend</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(obj.datafiles && obj.datafiles.length > 0) ? obj.datafiles.map(df => `
-                    <tr>
-                      <td style="font-family: var(--font-code); color: var(--text-primary);">${df.fileName || df.name}</td>
-                      <td>${df.sizeMb || (totalMb / 2)} MB</td>
-                      <td><span style="color:#10b981; font-weight:700;">${df.autoextend || 'YES'}</span></td>
-                      <td><span class="status-indicator valid">${df.status || 'AVAILABLE'}</span></td>
-                    </tr>
-                  `).join('') : `
-                    <tr>
-                      <td style="font-family: var(--font-code); color: var(--text-primary);">+DATA/PROD/DATAFILE/${obj.name.toLowerCase()}.dbf</td>
-                      <td>${totalMb} MB</td>
-                      <td><span style="color:#10b981; font-weight:700;">YES</span></td>
-                      <td><span class="status-indicator valid">AVAILABLE</span></td>
-                    </tr>
-                  `}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        `;
+        colPane.innerHTML = this.buildSelectedTablespaceDetailHtml(obj.tablespaceInfo || obj);
       } else if (this.currentCategory === 'dblinks') {
         const link = obj.dbLinkInfo || obj;
         colPane.innerHTML = `
@@ -1102,7 +1180,13 @@ class SchemaBrowser {
             </div>
           </div>
         `;
-      } else if (obj.columns && obj.columns.length > 0) {
+      } else if ((obj.columns && obj.columns.length > 0) || this.currentCategory === 'tables' || this.currentCategory === 'views') {
+        const isTable = this.currentCategory === 'tables';
+        const colSearch = (this.subtabFilter || '').toLowerCase();
+        const allCols = obj.columns || [];
+        const filteredCols = colSearch
+          ? allCols.filter(c => (c.name || '').toLowerCase().includes(colSearch) || (c.type || '').toLowerCase().includes(colSearch) || (c.comments || '').toLowerCase().includes(colSearch))
+          : allCols;
         const mvBanner = (obj.mviewInfo || this.currentCategory === 'mviews') ? `
           <div class="advisor-card" style="margin: 10px 10px 0 10px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #86efac;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -1117,8 +1201,34 @@ class SchemaBrowser {
             </div>
           </div>
         ` : '';
+        const colActionBar = `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #cbd5e1; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              ${isTable ? `
+                <button class="btn btn-primary" style="height: 23px; padding: 0 9px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.promptColumnAction('ADD')">
+                  ➕ Adicionar Coluna
+                </button>
+                <button class="btn" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptColumnAction('MODIFY')">
+                  ✏ Modificar Coluna
+                </button>
+                <button class="btn" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptColumnAction('RENAME')">
+                  🏷 Renomear Coluna
+                </button>
+                <button class="btn btn-danger" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptColumnAction('DROP')">
+                  🗑 Remover Coluna
+                </button>
+              ` : `<span style="font-size: 11px; font-weight: 600; color: #475569;">Colunas de ${obj.name} (${filteredCols.length}/${allCols.length})</span>`}
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <input type="text" placeholder="🔍 Filtrar colunas ou tipo..." value="${this.escapeHtml(this.subtabFilter || '')}"
+                     style="height: 22px; width: 190px; padding: 0 7px; font-size: 10.5px; border: 1px solid #cbd5e1; border-radius: 3px;"
+                     oninput="window.TracesApp.schemaBrowser.setSubtabFilter(this.value)">
+            </div>
+          </div>
+        `;
         colPane.innerHTML = `
           ${mvBanner}
+          ${colActionBar}
           <table class="meta-table">
             <thead>
               <tr>
@@ -1129,10 +1239,11 @@ class SchemaBrowser {
                 <th>Default</th>
                 <th style="width: 80px;">Key</th>
                 <th>Comments</th>
+                ${isTable ? '<th style="width: 130px; text-align: right;">Manipular</th>' : ''}
               </tr>
             </thead>
             <tbody>
-              ${obj.columns.map((col, idx) => `
+              ${filteredCols.map((col, idx) => `
                 <tr>
                   <td style="color: var(--text-muted);">${col.id || (idx + 1)}</td>
                   <td style="font-weight: 600; color: var(--text-primary); font-family: var(--font-code);">${col.name}</td>
@@ -1145,6 +1256,13 @@ class SchemaBrowser {
                     ${!col.pk && !col.fk ? '-' : ''}
                   </td>
                   <td style="color: var(--text-muted); font-size: 11px;">${col.comments || ''}</td>
+                  ${isTable ? `
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button class="btn" style="height: 19px; padding: 0 5px; font-size: 9.5px;" title="Modificar tipo/nullable da coluna ${col.name}" onclick="window.TracesApp.schemaBrowser.promptColumnAction('MODIFY', '${col.name}', '${col.type}', '${col.nullable}')">✏ Alt</button>
+                      <button class="btn" style="height: 19px; padding: 0 5px; font-size: 9.5px;" title="Renomear coluna ${col.name}" onclick="window.TracesApp.schemaBrowser.promptColumnAction('RENAME', '${col.name}')">🏷 Ren</button>
+                      <button class="btn btn-danger" style="height: 19px; padding: 0 5px; font-size: 9.5px;" title="Remover (DROP) coluna ${col.name}" onclick="window.TracesApp.schemaBrowser.promptColumnAction('DROP', '${col.name}')">🗑</button>
+                    </td>
+                  ` : ''}
                 </tr>
               `).join('')}
             </tbody>
@@ -1187,10 +1305,14 @@ class SchemaBrowser {
           <div style="padding: 6px 12px; background: var(--bg-surface); border-top: 1px solid var(--border-default); font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
             <span>Exibindo <strong>${obj.data.length.toLocaleString()}</strong> registros ao vivo de ${this.currentSchema}.${obj.name}${estTotal}</span>
             <div style="display: flex; gap: 8px; align-items: center;">
-              ${(obj.dataHasMore && curLimit < 5000) ? `
+              ${obj.dataHasMore ? `
                 <button class="btn btn-primary" style="height: 22px; padding: 0 10px; font-size: 10px; font-weight: 600;"
                         onclick="window.TracesApp.schemaBrowser.loadMoreObjectData(${nextLimit}, false)">
                   ➕ Ver mais linhas (+500)
+                </button>
+                <button class="btn" style="height: 22px; padding: 0 10px; font-size: 10px; font-weight: 700; color: #0369a1; border-color: #7dd3fc; background: #e0f2fe;"
+                        onclick="window.TracesApp.schemaBrowser.loadMoreObjectData(0, false)">
+                  ⚡ Carregar Todas as Linhas
                 </button>
               ` : ''}
               <button class="btn btn-secondary" style="height: 22px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.openObjectInWorksheet('${obj.name}')">
@@ -1211,11 +1333,28 @@ class SchemaBrowser {
       }
     }
 
-    // 3. Indexes Pane
+    // 3. Indexes Pane (with Create / Rebuild / Drop Actions)
     const idxPane = document.getElementById('tab-pane-indexes');
     if (idxPane) {
+      const idxActionBar = `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #cbd5e1; gap: 6px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-primary" style="height: 23px; padding: 0 9px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('CREATE')">
+              ➕ Criar Novo Índice
+            </button>
+            <button class="btn" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('REBUILD')">
+              🔄 Rebuild Índice
+            </button>
+            <button class="btn btn-danger" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('DROP')">
+              🗑 Remover Índice (Drop)
+            </button>
+          </div>
+          <span style="font-size: 10.5px; color: #64748b;">Total: ${(obj.indexes || []).length} índice(s)</span>
+        </div>
+      `;
       if (obj.indexes && obj.indexes.length > 0) {
         idxPane.innerHTML = `
+          ${idxActionBar}
           <table class="meta-table">
             <thead>
               <tr>
@@ -1225,6 +1364,7 @@ class SchemaBrowser {
                 <th>Tablespace</th>
                 <th>Clustering Factor</th>
                 <th>Status</th>
+                <th style="text-align: right;">Manipular</th>
               </tr>
             </thead>
             <tbody>
@@ -1236,21 +1376,45 @@ class SchemaBrowser {
                   <td style="color: var(--text-muted);">${ix.tablespace || '-'}</td>
                   <td>${ix.clusteringFactor || '-'}</td>
                   <td><span class="status-indicator valid">${ix.status || 'VALID'}</span></td>
+                  <td style="text-align: right; white-space: nowrap;">
+                    <button class="btn" style="height: 19px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('REBUILD', '${ix.name}')">🔄 Rebuild</button>
+                    <button class="btn btn-danger" style="height: 19px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('DROP', '${ix.name}')">🗑 Drop</button>
+                  </td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         `;
       } else {
-        idxPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum índice definido para ${obj.name}.</div>`;
+        idxPane.innerHTML = `${idxActionBar}<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum índice definido para ${obj.name}. Use <strong>+ Criar Novo Índice</strong> acima para adicionar.</div>`;
       }
     }
 
-    // 4. Constraints Pane
+    // 4. Constraints Pane (with Add PK/FK/UK/CHECK, Enable/Disable, Drop Actions)
     const constrPane = document.getElementById('tab-pane-constraints');
     if (constrPane) {
+      const constrActionBar = `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #cbd5e1; gap: 6px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button class="btn btn-primary" style="height: 23px; padding: 0 9px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('ADD_PK')">
+              🔑 + Primary Key (PK)
+            </button>
+            <button class="btn" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('ADD_FK')">
+              🔗 + Foreign Key (FK)
+            </button>
+            <button class="btn" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('ADD_CHECK')">
+              ✔ + Check / Unique
+            </button>
+            <button class="btn btn-danger" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('DROP')">
+              🗑 Remover Constraint
+            </button>
+          </div>
+          <span style="font-size: 10.5px; color: #64748b;">Total: ${(obj.constraints || []).length} constraint(s)</span>
+        </div>
+      `;
       if (obj.constraints && obj.constraints.length > 0) {
         constrPane.innerHTML = `
+          ${constrActionBar}
           <table class="meta-table">
             <thead>
               <tr>
@@ -1259,34 +1423,51 @@ class SchemaBrowser {
                 <th>Columns</th>
                 <th>Details / Condition</th>
                 <th>Status</th>
+                <th style="text-align: right;">Manipular</th>
               </tr>
             </thead>
             <tbody>
-              ${obj.constraints.map(cn => `
+              ${obj.constraints.map(cn => {
+                const isEn = (cn.status || 'ENABLED').toUpperCase() === 'ENABLED';
+                return `
                 <tr>
                   <td style="font-weight: 600; font-family: var(--font-code);">${cn.name}</td>
                   <td style="color: var(--syntax-keyword); font-weight: 700;">${cn.type}</td>
                   <td style="color: var(--text-primary); font-family: var(--font-code);">${cn.columns || '-'}</td>
                   <td style="color: var(--text-secondary); font-size: 11px;">${cn.details || '-'}</td>
-                  <td><span class="status-indicator valid">${cn.status || 'ENABLED'}</span></td>
+                  <td><span class="status-indicator ${isEn ? 'valid' : 'invalid'}">${cn.status || 'ENABLED'}</span></td>
+                  <td style="text-align: right; white-space: nowrap;">
+                    <button class="btn" style="height: 19px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('${isEn ? 'DISABLE' : 'ENABLE'}', '${cn.name}')">${isEn ? '⏸ Disable' : '✅ Enable'}</button>
+                    <button class="btn btn-danger" style="height: 19px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('DROP', '${cn.name}')">🗑 Drop</button>
+                  </td>
                 </tr>
-              `).join('')}
+              `}).join('')}
             </tbody>
           </table>
         `;
       } else {
-        constrPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma constraint definida para ${obj.name}.</div>`;
+        constrPane.innerHTML = `${constrActionBar}<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhuma constraint definida para ${obj.name}.</div>`;
       }
     }
 
     // 5. DDL Script Pane
     const ddlPane = document.getElementById('tab-pane-ddl');
     if (ddlPane) {
-      const ddlCode = obj.ddl || obj.specDdl || `-- DDL extraction for ${this.currentSchema}.${obj.name}`;
+      let ddlCode = obj.ddl || obj.specDdl;
+      if (!ddlCode && this.currentCategory === 'tablespaces') {
+        const ts = obj.tablespaceInfo || obj;
+        const totMb = ts.totalMb || 1024;
+        const maxMb = ts.maxMb || totMb * 4;
+        ddlCode = `CREATE TABLESPACE "${obj.name}"\n  DATAFILE '${obj.name.toLowerCase()}01.dbf' SIZE ${totMb}M\n  AUTOEXTEND ${ts.autoextend === 'NO' ? 'OFF' : 'ON NEXT 128M MAXSIZE ' + maxMb + 'M'}\n  EXTENT MANAGEMENT ${ts.extentManagement || 'LOCAL'} ${ts.allocationType || 'AUTOALLOCATE'}\n  SEGMENT SPACE MANAGEMENT ${ts.segmentSpaceManagement || 'AUTO'};`;
+      }
+      ddlCode = ddlCode || `-- DDL extraction for ${this.currentSchema}.${obj.name}`;
       ddlPane.innerHTML = `
-        <div style="display: flex; justify-content: flex-end; padding: 6px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-default);">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 6px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-default);">
           <button class="btn btn-secondary" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="navigator.clipboard.writeText(document.getElementById('ddl-code-block').textContent); window.TracesApp.notify('DDL copiado para a área de transferência', 'info');">
             Copiar DDL
+          </button>
+          <button class="btn btn-primary" style="height: 24px; padding: 0 8px; font-size: 11px;" onclick="window.TracesApp.openObjectInWorksheet('${obj.name}');">
+            📝 Abrir no Worksheet
           </button>
         </div>
         <div id="ddl-code-block" class="ddl-script-container" style="padding: 12px; font-family: var(--font-code); font-size: 11px; white-space: pre-wrap; line-height: 1.4; overflow: auto; height: calc(100% - 37px);">${this.escapeHtml(ddlCode)}</div>
@@ -1317,21 +1498,36 @@ class SchemaBrowser {
       }
     }
 
-    // 7. Grants Pane
+    // 7. Grants Pane (with GRANT & REVOKE Actions)
     const grantsPane = document.getElementById('tab-pane-grants');
     if (grantsPane) {
+      const grantActionBar = `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #cbd5e1; gap: 6px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-primary" style="height: 23px; padding: 0 9px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.promptGrantAction('GRANT')">
+              ➕ Conceder Privilégio (GRANT)
+            </button>
+            <button class="btn btn-danger" style="height: 23px; padding: 0 8px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptGrantAction('REVOKE')">
+              🚫 Revogar Privilégio (REVOKE)
+            </button>
+          </div>
+          <span style="font-size: 10.5px; color: #64748b;">Total: ${(obj.grants || []).length} permissão(ões)</span>
+        </div>
+      `;
       if (obj.grants && obj.grants.length > 0) {
         const gKey = `${this.currentSchema}.${obj.name}.grants`;
         const gLimit = this.detailListLimits[gKey] || 200;
         const visibleGrants = obj.grants.slice(0, gLimit);
         const remGrants = obj.grants.length - visibleGrants.length;
         grantsPane.innerHTML = `
+          ${grantActionBar}
           <table class="meta-table">
             <thead>
               <tr>
                 <th>Grantee (${obj.grants.length.toLocaleString()} total)</th>
                 <th>Privilege</th>
                 <th>Grantable</th>
+                <th style="text-align: right;">Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -1340,6 +1536,9 @@ class SchemaBrowser {
                   <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${g.grantee}</td>
                   <td style="font-weight: 700;">${g.privilege}</td>
                   <td>${g.grantable === 'YES' ? '<span style="color:#008000; font-weight:700;">YES</span>' : 'NO'}</td>
+                  <td style="text-align: right;">
+                    <button class="btn btn-danger" style="height: 19px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptGrantAction('REVOKE', '${g.privilege}', '${g.grantee}')">🚫 Revogar</button>
+                  </td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1359,8 +1558,18 @@ class SchemaBrowser {
           ` : ''}
         `;
       } else {
-        grantsPane.innerHTML = `<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum privilégio específico concedido em ${obj.name}.</div>`;
+        grantsPane.innerHTML = `${grantActionBar}<div style="padding: 28px; color: var(--text-muted); text-align: center;">Nenhum privilégio específico concedido em ${obj.name}.</div>`;
       }
+    }
+
+    // 7.5. Tablespaces Overview & Max Usage Pane (#tab-pane-tsoverview)
+    const tsOvPane = document.getElementById('tab-pane-tsoverview');
+    if (tsOvPane && this.currentCategory === 'tablespaces') {
+      tsOvPane.innerHTML = this.buildTablespacesOverviewHtml();
+    }
+    const tsDfPane = document.getElementById('tab-pane-tsdatafiles');
+    if (tsDfPane && this.currentCategory === 'tablespaces') {
+      tsDfPane.innerHTML = this.buildDatafilesTabHtml();
     }
 
       // 8. Statistics Pane
@@ -1911,6 +2120,1174 @@ class SchemaBrowser {
     } else {
       window.TracesApp?.notify(`${type} "${objName}" recompilado com sucesso (Modo Local).`, 'success');
     }
+  }
+
+  setSubtabFilter(val) {
+    this.subtabFilter = val || '';
+    this.renderDetailContent();
+  }
+
+  async executeDdlOrOpenInEditor(sql, title = 'ddl_action.sql', runImmediately = false) {
+    if (!sql) return;
+    if (runImmediately && window.TracesApp && window.TracesApp.isRealDatabase) {
+      try {
+        const resp = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+        const data = await resp.json();
+        if (data.error) {
+          window.TracesApp.notify(`Erro Oracle DDL: ${data.error}`, 'error');
+        } else {
+          window.TracesApp.notify(`Comando DDL executado com sucesso!`, 'success');
+          if (this.detailsCache) this.detailsCache.clear();
+          await this.loadRealObjects(this.currentSchema);
+          if (this.selectedObject?.name) {
+            await this.fetchRealObjectDetails(this.currentSchema, this.selectedObject.name, this.currentCategory, true);
+          }
+        }
+      } catch (e) {
+        window.TracesApp?.notify(`Falha ao executar DDL: ${e.message}`, 'error');
+      }
+      return;
+    }
+    this.openDdlPreviewModal(sql, title);
+  }
+
+  openDdlPreviewModal(sql, title = 'Alterar / Criar Objeto Oracle') {
+    let modal = document.getElementById('toad-ddl-action-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'toad-ddl-action-modal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div class="toad-modal-window" style="width: 680px; max-width: 95vw;">
+        <div class="toad-modal-titlebar">
+          <span>⚙ Toad Schema Browser — ${this.escapeHtml(title)}</span>
+          <span class="toad-modal-close" onclick="document.getElementById('toad-ddl-action-modal').classList.remove('open')">×</span>
+        </div>
+        <div class="modal-body" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 11.5px; color: #334155;">
+            Revise ou edite o comando DDL gerado abaixo. Você pode <strong>Executar Direto no Banco</strong> ou <strong>Enviar para a Worksheet</strong>:
+          </div>
+          <textarea id="toad-ddl-modal-textarea" style="width: 100%; height: 190px; font-family: var(--font-code); font-size: 12px; padding: 10px; border: 1px solid #94a3b8; border-radius: 4px; background: #0f172a; color: #f8fafc; line-height: 1.45;">${this.escapeHtml(sql)}</textarea>
+        </div>
+        <div class="modal-footer" style="padding: 10px 14px; background: #f1f5f9; border-top: 1px solid #cbd5e1; display: flex; justify-content: flex-end; gap: 8px;">
+          <button class="btn" onclick="document.getElementById('toad-ddl-action-modal').classList.remove('open')">Cancelar</button>
+          <button class="btn" style="font-weight: 600;" onclick="
+            const code = document.getElementById('toad-ddl-modal-textarea').value;
+            document.getElementById('toad-ddl-action-modal').classList.remove('open');
+            window.TracesApp.openWindow('editor');
+            window.TracesApp.sqlEditor.addNewTab(code, '${title.replace(/[^a-zA-Z0-9_.-]/g, '_')}');
+          ">📝 Abrir no SQL Editor</button>
+          <button class="btn btn-primary" style="font-weight: 700;" onclick="
+            const code = document.getElementById('toad-ddl-modal-textarea').value;
+            document.getElementById('toad-ddl-action-modal').classList.remove('open');
+            window.TracesApp.schemaBrowser.executeDdlOrOpenInEditor(code, '${title.replace(/[^a-zA-Z0-9_.-]/g, '_')}', true);
+          ">⚡ Executar Agora no Oracle</button>
+        </div>
+      </div>
+    `;
+    modal.classList.add('open');
+  }
+
+  renderContextActionsBar() {
+    const bar = document.getElementById('browser-context-actions-bar');
+    if (!bar) return;
+    const cat = this.currentCategory || 'tables';
+    const objName = this.selectedObject?.name || '';
+    const schema = this.currentSchema || 'HR';
+
+    let buttons = `
+      <button class="btn btn-primary" style="height: 24px; padding: 0 8px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.openCreateObjectWizard('${cat}')" title="Criar novo objeto (${cat})">
+        ➕ Criar Novo
+      </button>
+    `;
+
+    if (cat === 'tables' && objName) {
+      buttons += `
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptColumnAction('ADD')" title="Adicionar nova coluna na tabela ${objName}">➕ Coluna</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptConstraintAction('ADD_PK')" title="Adicionar Constraint (PK/FK/Check)">🔑 +Constraint</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('CREATE')" title="Criar Índice para ${objName}">📇 +Índice</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptRenameTable('${schema}', '${objName}')" title="Renomear Tabela">🏷 Renomear</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px; color: #b45309;" onclick="window.TracesApp.schemaBrowser.truncateTable('${schema}', '${objName}')" title="Truncate Table">🧹 Truncate</button>
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', 'TABLE')" title="Drop Table">🗑 Drop</button>
+      `;
+    } else if ((cat === 'views' || cat === 'mviews') && objName) {
+      const vType = cat === 'mviews' ? 'MATERIALIZED VIEW' : 'VIEW';
+      buttons += `
+        ${cat === 'mviews' ? `<button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.executeDdlOrOpenInEditor('BEGIN DBMS_MVIEW.REFRESH(\\'${schema}.${objName}\\', \\'C\\'); END;', 'refresh_mview.sql')">🔄 Refresh MView</button>` : ''}
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', '${vType}')">🗑 Drop</button>
+      `;
+    } else if (['packages', 'procedures', 'functions', 'types'].includes(cat) && objName) {
+      const tSing = cat.slice(0, -1).toUpperCase();
+      buttons += `
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.recompileObject('${schema}', '${objName}', '${tSing}', true)">🐞 Compile Debug</button>
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', '${tSing}')">🗑 Drop</button>
+      `;
+    } else if (cat === 'triggers' && objName) {
+      buttons += `
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.executeDdlOrOpenInEditor('ALTER TRIGGER \\'${schema}\\'.\\'${objName}\\' ENABLE;', 'enable_trigger.sql', true)">✅ Enable</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.executeDdlOrOpenInEditor('ALTER TRIGGER \\'${schema}\\'.\\'${objName}\\' DISABLE;', 'disable_trigger.sql', true)">⏸ Disable</button>
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', 'TRIGGER')">🗑 Drop</button>
+      `;
+    } else if (cat === 'sequences' && objName) {
+      buttons += `
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptAlterSequence('${schema}', '${objName}')">⚙ Alterar Sequence</button>
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', 'SEQUENCE')">🗑 Drop</button>
+      `;
+    } else if (cat === 'indexes' && objName) {
+      buttons += `
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptIndexAction('REBUILD', '${objName}')">🔄 Rebuild Online</button>
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', 'INDEX')">🗑 Drop</button>
+      `;
+    } else if (cat === 'tablespaces') {
+      const tsTarget = objName || this.allTablespacesOverview?.[0]?.name || 'USERS';
+      buttons = `
+        <button class="btn btn-primary" style="height: 24px; padding: 0 8px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.openCreateObjectWizard('tablespaces')">➕ Nova Tablespace</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptAddDatafile('${tsTarget}')">➕ Add Datafile</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptResizeTablespace('${tsTarget}')">↔ Resize</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptAutoextendTablespace('${tsTarget}')">⚙ Autoextend (Max)</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px; background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.switchDetailTab('tsoverview')">📊 Visão Geral &amp; Máx</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.openWindow('dba', 'spacemanager')">🏛 Space Manager</button>
+        ${objName ? `<button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', 'TABLESPACE')">🗑 Drop</button>` : ''}
+      `;
+    } else if (cat === 'users' && objName) {
+      buttons += `
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.executeDdlOrOpenInEditor('ALTER USER \"${objName}\" ACCOUNT UNLOCK;', 'unlock_user.sql')">🔓 Unlock</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.executeDdlOrOpenInEditor('ALTER USER \"${objName}\" ACCOUNT LOCK;', 'lock_user.sql')">🔒 Lock</button>
+        <button class="btn" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.promptGrantAction('GRANT')">🛡 +Grant</button>
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', 'USER')">🗑 Drop</button>
+      `;
+    } else if (objName) {
+      const tSing = cat === 'dblinks' ? 'DATABASE LINK' : cat.slice(0, -1).toUpperCase();
+      buttons += `
+        <button class="btn btn-danger" style="height: 24px; padding: 0 7px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${schema}', '${objName}', '${tSing}')">🗑 Drop</button>
+      `;
+    }
+
+    bar.innerHTML = buttons;
+
+    const countBtn = bar.parentElement ? bar.parentElement.querySelector('button[title*="Contar registros"]') : null;
+    if (countBtn) countBtn.style.display = (cat === 'tables' || cat === 'views') ? '' : 'none';
+    const recompBtn = bar.parentElement ? bar.parentElement.querySelector('button[onclick*="recompileCurrentObject"]') : null;
+    if (recompBtn) recompBtn.style.display = ['procedures', 'functions', 'packages', 'triggers', 'types', 'views'].includes(cat) ? '' : 'none';
+  }
+
+  openCreateObjectWizard(defaultCategory = null) {
+    const cat = defaultCategory || this.currentCategory || 'tables';
+    const schema = this.currentSchema || 'HR';
+    const templates = {
+      tables: `CREATE TABLE "${schema}"."NOVA_TABELA" (\n  ID          NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,\n  DESCRICAO   VARCHAR2(150 CHAR) NOT NULL,\n  STATUS      VARCHAR2(20 CHAR) DEFAULT 'ATIVO',\n  DT_CRIACAO  TIMESTAMP DEFAULT SYSTIMESTAMP\n) TABLESPACE USERS;`,
+      views: `CREATE OR REPLACE FORCE VIEW "${schema}"."VW_NOVA_CONSULTA" AS\nSELECT *\nFROM "${schema}"."${this.selectedObject?.name || 'EMPLOYEES'}";`,
+      mviews: `CREATE MATERIALIZED VIEW "${schema}"."MV_RESUMO"\nBUILD IMMEDIATE\nREFRESH FORCE ON DEMAND\nAS\nSELECT * FROM "${schema}"."${this.selectedObject?.name || 'EMPLOYEES'}";`,
+      procedures: `CREATE OR REPLACE PROCEDURE "${schema}"."PRC_PROCESSA_DADOS" (\n  p_id IN NUMBER,\n  p_status OUT VARCHAR2\n) IS\nBEGIN\n  p_status := 'OK';\nEND PRC_PROCESSA_DADOS;\n/`,
+      functions: `CREATE OR REPLACE FUNCTION "${schema}"."FN_CALCULA_VALOR" (\n  p_id IN NUMBER\n) RETURN NUMBER IS\n  v_ret NUMBER := 0;\nBEGIN\n  RETURN v_ret;\nEND FN_CALCULA_VALOR;\n/`,
+      packages: `CREATE OR REPLACE PACKAGE "${schema}"."PKG_NOVO_MODULO" IS\n  PROCEDURE prc_executar(p_id IN NUMBER);\nEND PKG_NOVO_MODULO;\n/\n\nCREATE OR REPLACE PACKAGE BODY "${schema}"."PKG_NOVO_MODULO" IS\n  PROCEDURE prc_executar(p_id IN NUMBER) IS\n  BEGIN\n    NULL;\n  END prc_executar;\nEND PKG_NOVO_MODULO;\n/`,
+      triggers: `CREATE OR REPLACE TRIGGER "${schema}"."TRG_${this.selectedObject?.name || 'TABELA'}_BIU"\nBEFORE INSERT OR UPDATE ON "${schema}"."${this.selectedObject?.name || 'NOVA_TABELA'}"\nFOR EACH ROW\nBEGIN\n  NULL;\nEND;\n/`,
+      sequences: `CREATE SEQUENCE "${schema}"."SEQ_NOVO_ID"\n  START WITH 1\n  INCREMENT BY 1\n  MINVALUE 1\n  MAXVALUE 999999999999999999\n  CACHE 20\n  NOCYCLE\n  NOORDER;`,
+      synonyms: `CREATE OR REPLACE SYNONYM "${schema}"."SYN_OBJETO" FOR "${schema}"."${this.selectedObject?.name || 'EMPLOYEES'}";`,
+      indexes: `CREATE INDEX "${schema}"."IDX_${this.selectedObject?.name || 'TABELA'}_01"\n  ON "${schema}"."${this.selectedObject?.name || 'NOVA_TABELA'}" (ID)\n  TABLESPACE USERS ONLINE;`,
+      tablespaces: `CREATE TABLESPACE "TS_DADOS_NOVO"\n  DATAFILE 'ts_dados_novo01.dbf' SIZE 512M\n  AUTOEXTEND ON NEXT 128M MAXSIZE 32G\n  EXTENT MANAGEMENT LOCAL AUTOALLOCATE\n  SEGMENT SPACE MANAGEMENT AUTO;`,
+      users: `CREATE USER "NOVO_USUARIO" IDENTIFIED BY "SenhaForte#2026"\n  DEFAULT TABLESPACE USERS\n  TEMPORARY TABLESPACE TEMP\n  QUOTA UNLIMITED ON USERS;\n\nGRANT CONNECT, RESOURCE TO "NOVO_USUARIO";`,
+      roles: `CREATE ROLE "RL_APP_ACESSO";\nGRANT CREATE SESSION, SELECT ANY TABLE TO "RL_APP_ACESSO";`,
+      dblinks: `CREATE DATABASE LINK "LK_REMOTO"\n  CONNECT TO "USUARIO_REMOTO" IDENTIFIED BY "SenhaRemota"\n  USING '//host-remoto:1521/ORCL';`,
+      jobs: `BEGIN\n  DBMS_SCHEDULER.CREATE_JOB(\n    job_name        => '"${schema}"."JOB_ROTINA_DIARIA"',\n    job_type        => 'PLSQL_BLOCK',\n    job_action      => 'BEGIN NULL; END;',\n    start_date      => SYSTIMESTAMP,\n    repeat_interval => 'FREQ=DAILY;BYHOUR=2;BYMINUTE=0',\n    enabled         => TRUE\n  );\nEND;\n/`
+    };
+    const ddl = templates[cat] || templates.tables;
+    this.openDdlPreviewModal(ddl, `Criar Novo Objeto (${cat.toUpperCase()})`);
+  }
+
+  promptRenameTable(schema, tableName) {
+    const newName = prompt(`Novo nome para a tabela ${schema}.${tableName}:`, `${tableName}_NEW`);
+    if (!newName || newName.trim() === tableName) return;
+    const sql = `ALTER TABLE "${schema}"."${tableName}" RENAME TO "${newName.trim().toUpperCase()}";`;
+    this.openDdlPreviewModal(sql, `Renomear Tabela ${tableName}`);
+  }
+
+  promptColumnAction(action, colName = '', colType = 'VARCHAR2(100 CHAR)', colNullable = 'Y') {
+    const schema = this.currentSchema;
+    const table = this.selectedObject?.name || 'TABELA';
+    if (action === 'ADD') {
+      const name = prompt(`Nome da nova coluna para ${schema}.${table}:`, 'NOVA_COLUNA');
+      if (!name) return;
+      const type = prompt(`Tipo de dado da coluna ${name.toUpperCase()}:`, 'VARCHAR2(100 CHAR)');
+      if (!type) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" ADD ("${name.trim().toUpperCase()}" ${type.trim()});`;
+      this.openDdlPreviewModal(sql, `Adicionar Coluna em ${table}`);
+    } else if (action === 'MODIFY') {
+      const cName = colName || prompt(`Nome da coluna a modificar em ${schema}.${table}:`, this.selectedObject?.columns?.[0]?.name || 'COLUNA');
+      if (!cName) return;
+      const nType = prompt(`Novo tipo / tamanho / constraint para ${cName}:`, `${colType} ${colNullable === 'N' ? 'NOT NULL' : 'NULL'}`);
+      if (!nType) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" MODIFY ("${cName.trim().toUpperCase()}" ${nType.trim()});`;
+      this.openDdlPreviewModal(sql, `Modificar Coluna ${cName}`);
+    } else if (action === 'RENAME') {
+      const cName = colName || prompt(`Nome atual da coluna em ${schema}.${table}:`, this.selectedObject?.columns?.[0]?.name || 'COLUNA');
+      if (!cName) return;
+      const newName = prompt(`Novo nome para a coluna ${cName}:`, `${cName}_NOVO`);
+      if (!newName) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" RENAME COLUMN "${cName.trim().toUpperCase()}" TO "${newName.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `Renomear Coluna ${cName}`);
+    } else if (action === 'DROP') {
+      const cName = colName || prompt(`Nome da coluna a REMOVER (DROP) de ${schema}.${table}:`, '');
+      if (!cName) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" DROP COLUMN "${cName.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `Remover Coluna ${cName}`);
+    }
+  }
+
+  promptIndexAction(action, idxName = '') {
+    const schema = this.currentSchema;
+    const table = this.selectedObject?.name || 'TABELA';
+    if (action === 'CREATE') {
+      const defaultCol = this.selectedObject?.columns?.[0]?.name || 'ID';
+      const cols = prompt(`Coluna(s) para o novo índice em ${schema}.${table} (separadas por vírgula):`, defaultCol);
+      if (!cols) return;
+      const name = prompt(`Nome do novo índice:`, `IDX_${table}_${cols.split(',')[0].trim().toUpperCase()}`);
+      if (!name) return;
+      const sql = `CREATE INDEX "${schema}"."${name.trim().toUpperCase()}" ON "${schema}"."${table}" (${cols}) TABLESPACE USERS ONLINE;`;
+      this.openDdlPreviewModal(sql, `Criar Índice ${name}`);
+    } else if (action === 'REBUILD') {
+      const name = idxName || prompt(`Nome do índice para REBUILD ONLINE:`, this.selectedObject?.indexes?.[0]?.name || `IDX_${table}`);
+      if (!name) return;
+      const sql = `ALTER INDEX "${schema}"."${name.trim().toUpperCase()}" REBUILD ONLINE;`;
+      this.openDdlPreviewModal(sql, `Rebuild Index ${name}`);
+    } else if (action === 'DROP') {
+      const name = idxName || prompt(`Nome do índice para remover (DROP):`, this.selectedObject?.indexes?.[0]?.name || '');
+      if (!name) return;
+      const sql = `DROP INDEX "${schema}"."${name.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `Drop Index ${name}`);
+    }
+  }
+
+  promptConstraintAction(action, cnName = '') {
+    const schema = this.currentSchema;
+    const table = this.selectedObject?.name || 'TABELA';
+    const firstCol = this.selectedObject?.columns?.[0]?.name || 'ID';
+    if (action === 'ADD_PK') {
+      const cols = prompt(`Coluna(s) da Primary Key em ${schema}.${table}:`, firstCol);
+      if (!cols) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" ADD CONSTRAINT "PK_${table}" PRIMARY KEY (${cols});`;
+      this.openDdlPreviewModal(sql, `Adicionar Primary Key em ${table}`);
+    } else if (action === 'ADD_FK') {
+      const col = prompt(`Coluna local (FK) em ${schema}.${table}:`, firstCol);
+      if (!col) return;
+      const ref = prompt(`Tabela e coluna referenciada (ex: DEPARTMENTS(DEPARTMENT_ID)):`, 'DEPARTMENTS(DEPARTMENT_ID)');
+      if (!ref) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" ADD CONSTRAINT "FK_${table}_${col.trim().toUpperCase()}" FOREIGN KEY (${col}) REFERENCES "${schema}".${ref};`;
+      this.openDdlPreviewModal(sql, `Adicionar Foreign Key em ${table}`);
+    } else if (action === 'ADD_CHECK') {
+      const cond = prompt(`Condição CHECK (ex: SALARIO > 0) para ${schema}.${table}:`, `${firstCol} IS NOT NULL`);
+      if (!cond) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" ADD CONSTRAINT "CK_${table}_${Date.now().toString().slice(-4)}" CHECK (${cond});`;
+      this.openDdlPreviewModal(sql, `Adicionar Constraint CHECK em ${table}`);
+    } else if (action === 'ENABLE' || action === 'DISABLE') {
+      const name = cnName || prompt(`Nome da constraint para ${action}:`, '');
+      if (!name) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" ${action} CONSTRAINT "${name.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `${action} Constraint ${name}`);
+    } else if (action === 'DROP') {
+      const name = cnName || prompt(`Nome da constraint a remover (DROP) de ${schema}.${table}:`, '');
+      if (!name) return;
+      const sql = `ALTER TABLE "${schema}"."${table}" DROP CONSTRAINT "${name.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `Drop Constraint ${name}`);
+    }
+  }
+
+  promptGrantAction(action, priv = 'SELECT', grantee = '') {
+    const schema = this.currentSchema;
+    const objName = this.selectedObject?.name || 'EMPLOYEES';
+    if (action === 'GRANT') {
+      const privs = prompt(`Privilégios a conceder em ${schema}.${objName} (ex: SELECT, INSERT, UPDATE, DELETE, EXECUTE):`, 'SELECT, INSERT, UPDATE');
+      if (!privs) return;
+      const targetUser = prompt(`Conceder para qual Usuário ou Role (Grantee)?`, 'PUBLIC');
+      if (!targetUser) return;
+      const sql = `GRANT ${privs} ON "${schema}"."${objName}" TO "${targetUser.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `Conceder Privilégio (GRANT)`);
+    } else if (action === 'REVOKE') {
+      const p = priv || prompt(`Privilégio a revogar de ${schema}.${objName}:`, 'SELECT');
+      if (!p) return;
+      const g = grantee || prompt(`Revogar de qual Usuário / Role?`, '');
+      if (!g) return;
+      const sql = `REVOKE ${p} ON "${schema}"."${objName}" FROM "${g.trim().toUpperCase()}";`;
+      this.openDdlPreviewModal(sql, `Revogar Privilégio (REVOKE)`);
+    }
+  }
+
+  promptAlterSequence(schema, seqName) {
+    const inc = prompt(`Novo INCREMENT BY para ${schema}.${seqName}:`, '1');
+    if (!inc) return;
+    const cache = prompt(`Novo CACHE SIZE (ou 0 para NOCACHE):`, '20');
+    const cacheClause = Number(cache) > 0 ? `CACHE ${Number(cache)}` : 'NOCACHE';
+    const sql = `ALTER SEQUENCE "${schema}"."${seqName}" INCREMENT BY ${Number(inc) || 1} ${cacheClause};`;
+    this.openDdlPreviewModal(sql, `Alterar Sequence ${seqName}`);
+  }
+
+  promptAddDatafile(tsName) {
+    const ts = tsName || this.selectedObject?.name || 'USERS';
+    const dfPath = prompt(`Caminho/nome do novo Datafile para a tablespace ${ts}:`, `${ts.toLowerCase()}_02.dbf`);
+    if (!dfPath) return;
+    const size = prompt(`Tamanho inicial (ex: 512M, 1G, 2G):`, '512M');
+    if (!size) return;
+    const maxSize = prompt(`Tamanho Máximo Autoextend (ex: 16G, 32G, UNLIMITED):`, '32G');
+    const sql = `ALTER TABLESPACE "${ts}" ADD DATAFILE '${dfPath}' SIZE ${size} AUTOEXTEND ON NEXT 128M MAXSIZE ${maxSize || 'UNLIMITED'};`;
+    this.openDdlPreviewModal(sql, `Adicionar Datafile em ${ts}`);
+  }
+
+  promptResizeTablespace(tsName, dfPath = '', curSizeMb = 1024) {
+    const ts = tsName || this.selectedObject?.name || 'USERS';
+    const targetFile = dfPath || this.selectedObject?.datafiles?.[0]?.fileName || `${ts.toLowerCase()}01.dbf`;
+    const newSize = prompt(`Novo tamanho para o datafile '${targetFile}' (atual: ${curSizeMb} MB, ex: 2048M ou 4G):`, `${Math.max(512, Math.round(curSizeMb * 1.5))}M`);
+    if (!newSize) return;
+    const sql = `ALTER DATABASE DATAFILE '${targetFile}' RESIZE ${newSize};`;
+    this.openDdlPreviewModal(sql, `Redimensionar (Resize) Datafile — ${ts}`);
+  }
+
+  promptAutoextendTablespace(tsName, dfPath = '') {
+    const ts = tsName || this.selectedObject?.name || 'USERS';
+    const targetFile = dfPath || this.selectedObject?.datafiles?.[0]?.fileName || `${ts.toLowerCase()}01.dbf`;
+    const maxSz = prompt(`Configurar AUTOEXTEND ON para '${targetFile}'. Informe o MAXSIZE (ex: 16G, 32G, UNLIMITED ou OFF para desativar):`, '32G');
+    if (!maxSz) return;
+    const sql = maxSz.trim().toUpperCase() === 'OFF'
+      ? `ALTER DATABASE DATAFILE '${targetFile}' AUTOEXTEND OFF;`
+      : `ALTER DATABASE DATAFILE '${targetFile}' AUTOEXTEND ON NEXT 128M MAXSIZE ${maxSz.trim().toUpperCase()};`;
+    this.openDdlPreviewModal(sql, `Configurar Autoextend / Uso Máx — ${ts}`);
+  }
+
+  async loadAllTablespacesOverview(force = false) {
+    if (!force && this.allTablespacesOverview && this.allTablespacesOverview.length > 0 && this.allDatafiles && this.allDatafiles.length > 0) {
+      return this.allTablespacesOverview;
+    }
+    if (window.TracesApp && window.TracesApp.isConnected()) {
+      try {
+        const activeConn = window.TracesApp?.connectionManager?.getActive?.();
+        const connParam = activeConn?.id ? `?conn_id=${encodeURIComponent(activeConn.id)}` : '';
+        const resp = await fetch(`/api/tablespaces${connParam}`);
+        const data = await resp.json();
+        if (data.tablespaces && Array.isArray(data.tablespaces)) {
+          this.allTablespacesOverview = data.tablespaces;
+          this.allTablespacesSummary = data.summary || null;
+          this.allDatafiles = data.datafiles || [];
+          if (!this.selectedObject && this.allTablespacesOverview.length > 0) {
+            this.selectedObject = this.allTablespacesOverview[0];
+          }
+          if (this.currentCategory === 'tablespaces') {
+            const tsOvPane = document.getElementById('tab-pane-tsoverview');
+            if (tsOvPane) tsOvPane.innerHTML = this.buildTablespacesOverviewHtml();
+            const colPane = document.getElementById('tab-pane-columns');
+            if (colPane) colPane.innerHTML = this.buildSelectedTablespaceDetailHtml(this.selectedObject || this.allTablespacesOverview[0]);
+            const dfPane = document.getElementById('tab-pane-tsdatafiles');
+            if (dfPane) dfPane.innerHTML = this.buildDatafilesTabHtml();
+          }
+          return this.allTablespacesOverview;
+        }
+      } catch (e) {
+        console.warn('Error loading tablespaces overview:', e);
+      }
+    }
+    // Fallback to schema data tablespaces
+    const rawTs = this.getSchemaData().tablespaces || [
+      { name: 'SYSTEM', totalMb: 1200, usedMb: 1020, freeMb: 180, pct: 85.0, maxMb: 32768, freeMaxMb: 31748, maxPct: 3.1, autoextend: 'YES', datafiles: 1, status: 'ONLINE', contents: 'PERMANENT' },
+      { name: 'SYSAUX', totalMb: 1400, usedMb: 1120, freeMb: 280, pct: 80.0, maxMb: 32768, freeMaxMb: 31648, maxPct: 3.4, autoextend: 'YES', datafiles: 1, status: 'ONLINE', contents: 'PERMANENT' },
+      { name: 'USERS', totalMb: 4096, usedMb: 2840, freeMb: 1256, pct: 69.3, maxMb: 32768, freeMaxMb: 29928, maxPct: 8.7, autoextend: 'YES', datafiles: 2, status: 'ONLINE', contents: 'PERMANENT' },
+      { name: 'UNDOTBS1', totalMb: 2048, usedMb: 420, freeMb: 1628, pct: 20.5, maxMb: 16384, freeMaxMb: 15964, maxPct: 2.6, autoextend: 'YES', datafiles: 1, status: 'ONLINE', contents: 'UNDO' },
+      { name: 'TEMP', totalMb: 1024, usedMb: 180, freeMb: 844, pct: 17.6, maxMb: 8192, freeMaxMb: 8012, maxPct: 2.2, autoextend: 'YES', datafiles: 1, status: 'ONLINE', contents: 'TEMPORARY' }
+    ];
+    this.allTablespacesOverview = rawTs.map(t => {
+      const tot = Number(t.totalMb || 1024);
+      const used = Number(t.usedMb ?? Math.round(tot * 0.55));
+      const free = Number(t.freeMb ?? Math.max(0, tot - used));
+      const pct = Number(t.pct ?? t.usedPct ?? (tot > 0 ? Math.round((used / tot) * 1000) / 10 : 0));
+      const maxMb = Number(t.maxMb && t.maxMb >= tot ? t.maxMb : (t.autoextend === 'NO' ? tot : tot * 4));
+      const freeMaxMb = Number(t.freeMaxMb ?? Math.max(0, maxMb - used));
+      const maxPct = Number(t.maxPct ?? t.maxPctUsed ?? (maxMb > 0 ? Math.round((used / maxMb) * 1000) / 10 : pct));
+      return Object.assign({}, t, { totalMb: tot, usedMb: used, freeMb: free, pct, maxMb, freeMaxMb, maxPct, autoextend: t.autoextend || 'YES', datafiles: t.datafiles || 1 });
+    });
+    if (!this.allDatafiles || this.allDatafiles.length === 0) {
+      this.allDatafiles = [];
+      this.allTablespacesOverview.forEach(t => {
+        if (Array.isArray(t.datafilesList) && t.datafilesList.length > 0) {
+          t.datafilesList.forEach(df => this.allDatafiles.push(df));
+        }
+      });
+    }
+    if (!this.selectedObject && this.allTablespacesOverview.length > 0) {
+      this.selectedObject = this.allTablespacesOverview[0];
+    }
+    if (this.currentCategory === 'tablespaces') {
+      const tsOvPane = document.getElementById('tab-pane-tsoverview');
+      if (tsOvPane) tsOvPane.innerHTML = this.buildTablespacesOverviewHtml();
+      const colPane = document.getElementById('tab-pane-columns');
+      if (colPane) colPane.innerHTML = this.buildSelectedTablespaceDetailHtml(this.selectedObject || this.allTablespacesOverview[0]);
+      const dfPane = document.getElementById('tab-pane-tsdatafiles');
+      if (dfPane) dfPane.innerHTML = this.buildDatafilesTabHtml();
+    }
+    return this.allTablespacesOverview;
+  }
+
+  buildTablespacesOverviewHtml() {
+    const list = this.allTablespacesOverview || [];
+    if (list.length === 0) {
+      this.loadAllTablespacesOverview();
+    }
+    const tsList = this.allTablespacesOverview || [];
+    const sumAlloc = tsList.reduce((acc, t) => acc + Number(t.totalMb || 0), 0);
+    const sumUsed = tsList.reduce((acc, t) => acc + Number(t.usedMb || 0), 0);
+    const sumFree = tsList.reduce((acc, t) => acc + Number(t.freeMb ?? Math.max(0, (t.totalMb || 0) - (t.usedMb || 0))), 0);
+    const sumMax = tsList.reduce((acc, t) => acc + Number(t.maxMb || t.totalMb || 0), 0);
+    const sumFreeMax = Math.max(0, sumMax - sumUsed);
+    const sumFiles = tsList.reduce((acc, t) => acc + Number(t.datafiles || t.filesCount || 1), 0);
+    const globalAllocPct = sumAlloc > 0 ? ((sumUsed / sumAlloc) * 100).toFixed(1) : '0.0';
+    const globalMaxPct = sumMax > 0 ? ((sumUsed / sumMax) * 100).toFixed(1) : '0.0';
+
+    const selectedTs = (this.selectedObject && this.selectedObject.name)
+      ? tsList.find(t => t.name === this.selectedObject.name) || tsList[0]
+      : tsList[0];
+
+    return `
+      <div class="toad-ts-container">
+        <!-- 1. Header Banner -->
+        <div class="toad-ts-header-card">
+          <div>
+            <div style="font-size: 14px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+              <span>💾</span>
+              <span>Visão Geral de Todas as Tablespaces &amp; Uso Máximo (Autoextend / MAXBYTES)</span>
+              <span class="status-indicator valid" style="font-size: 10px;">PROD INSTANCE</span>
+            </div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+              Sessão corporativa consolidada: monitoramento de capacidade alocada atual, tetos de expansão física (MAXBYTES) e datafiles.
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-primary" style="height: 26px; padding: 0 11px; font-weight: 700; font-size: 11px;" onclick="window.TracesApp.schemaBrowser.openCreateObjectWizard('tablespaces')">
+              ➕ Nova Tablespace
+            </button>
+            <button class="btn" style="height: 26px; padding: 0 10px; font-weight: 600; font-size: 11px;" onclick="window.TracesApp.schemaBrowser.loadAllTablespacesOverview(true)">
+              🔄 Atualizar Métricas
+            </button>
+            <button class="btn" style="height: 26px; padding: 0 10px; font-weight: 600; font-size: 11px;" onclick="window.TracesApp.openWindow('dba', 'spacemanager')">
+              🏛 DBA Space Manager
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Executive KPI Ribbon -->
+        <div class="toad-ts-kpis">
+          <div class="toad-ts-kpi-card">
+            <div class="toad-ts-kpi-title">🗄️ Tablespaces &amp; Arqs</div>
+            <div class="toad-ts-kpi-val">${tsList.length} TS <span style="font-size: 12px; color: #0284c7; font-weight: 600;">(${sumFiles} dbf)</span></div>
+            <div class="toad-ts-kpi-sub">Total de recipientes físicos</div>
+          </div>
+          <div class="toad-ts-kpi-card">
+            <div class="toad-ts-kpi-title">💾 Total Alocado Atual</div>
+            <div class="toad-ts-kpi-val">${(sumAlloc / 1024).toFixed(2)} GB</div>
+            <div class="toad-ts-kpi-sub">${Math.round(sumAlloc).toLocaleString()} MB alocados em disco</div>
+          </div>
+          <div class="toad-ts-kpi-card">
+            <div class="toad-ts-kpi-title">📈 Total Usado Alocado</div>
+            <div class="toad-ts-kpi-val" style="color: ${Number(globalAllocPct) > 85 ? '#dc2626' : Number(globalAllocPct) > 70 ? '#d97706' : '#0f172a'};">
+              ${(sumUsed / 1024).toFixed(2)} GB <span style="font-size: 12px; font-weight: 700;">(${globalAllocPct}%)</span>
+            </div>
+            <div class="toad-ts-kpi-sub">${Math.round(sumUsed).toLocaleString()} MB ocupados</div>
+          </div>
+          <div class="toad-ts-kpi-card">
+            <div class="toad-ts-kpi-title">🟢 Livre no Alocado</div>
+            <div class="toad-ts-kpi-val" style="color: #15803d;">${(sumFree / 1024).toFixed(2)} GB</div>
+            <div class="toad-ts-kpi-sub">${Math.round(sumFree).toLocaleString()} MB livres sem autoextend</div>
+          </div>
+          <div class="toad-ts-kpi-card highlight-max">
+            <div class="toad-ts-kpi-title" style="color: #0369a1;">🚀 Capacidade Máx (MAXBYTES)</div>
+            <div class="toad-ts-kpi-val" style="color: #0284c7;">${(sumMax / 1024).toFixed(2)} GB</div>
+            <div class="toad-ts-kpi-sub" style="color: #0369a1;">Teto de autoexpansão do storage</div>
+          </div>
+          <div class="toad-ts-kpi-card highlight-free">
+            <div class="toad-ts-kpi-title" style="color: #15803d;">🛡️ Livre Real até o Teto</div>
+            <div class="toad-ts-kpi-val" style="color: #15803d;">${(sumFreeMax / 1024).toFixed(2)} GB</div>
+            <div class="toad-ts-kpi-sub" style="color: #166534;">Ocupação do teto: <strong>${globalMaxPct}%</strong></div>
+          </div>
+        </div>
+
+        <!-- 3. Filter Toolbar -->
+        <div class="toad-ts-toolbar">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div class="toad-ts-filter-box">
+              <span style="font-size: 12px; color: #64748b;">🔍</span>
+              <input type="text" id="toad-ts-filter-text" placeholder="Filtrar tablespace por nome..." oninput="window.TracesApp.schemaBrowser.filterTablespacesGrid()">
+            </div>
+            <select class="toad-conn-combobox" id="toad-ts-filter-usage" style="height: 24px; min-width: 140px;" onchange="window.TracesApp.schemaBrowser.filterTablespacesGrid()">
+              <option value="all">Todas as Faixas de Uso</option>
+              <option value="50">Uso Alocado &gt; 50%</option>
+              <option value="70">⚠️ Atenção (&gt; 70%)</option>
+              <option value="85">🚨 Crítico (&gt; 85%)</option>
+            </select>
+            <select class="toad-conn-combobox" id="toad-ts-filter-autoext" style="height: 24px; min-width: 130px;" onchange="window.TracesApp.schemaBrowser.filterTablespacesGrid()">
+              <option value="all">Todos os Autoextend</option>
+              <option value="YES">Com Autoextend (YES)</option>
+              <option value="NO">Sem Autoextend (Fixo)</option>
+            </select>
+            <button class="btn" style="height: 24px; padding: 0 8px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.resetTablespacesGridFilter()">
+              ✕ Limpar
+            </button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="dba-filter-count-badge" id="toad-ts-count-badge">Exibindo ${tsList.length} de ${tsList.length} tablespaces</span>
+          </div>
+        </div>
+
+        <!-- 4. Master Data Grid (All Tablespaces) -->
+        <div class="toad-ts-table-wrapper">
+          <table class="toad-ts-table" id="toad-ts-master-table">
+            <thead>
+              <tr>
+                <th style="min-width: 130px;">Tablespace</th>
+                <th style="width: 80px;">Status</th>
+                <th style="width: 90px;">Tipo</th>
+                <th style="text-align: center; width: 45px;">Arq</th>
+                <th style="text-align: right; width: 95px;">Alocado</th>
+                <th style="text-align: right; width: 95px;">Usado</th>
+                <th style="text-align: right; width: 95px;">Livre Aloc</th>
+                <th style="min-width: 140px;">% Uso Alocado</th>
+                <th style="text-align: center; width: 75px;">Autoext</th>
+                <th style="text-align: right; min-width: 110px;">Capacidade Máx</th>
+                <th style="text-align: right; min-width: 100px;">Livre até Máx</th>
+                <th style="min-width: 140px;">% Uso sobre o Máx</th>
+                <th style="text-align: right; min-width: 140px;">Ações Rápidas</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tsList.map(t => {
+                const tot = Number(t.totalMb || 0);
+                const used = Number(t.usedMb || 0);
+                const free = Number(t.freeMb ?? Math.max(0, tot - used));
+                const pct = Number(t.pct ?? t.pctUsed ?? (tot > 0 ? Math.round((used / tot) * 1000) / 10 : 0));
+                const maxMb = Number(t.maxMb && t.maxMb >= tot ? t.maxMb : (t.autoextend === 'NO' ? tot : tot * 4));
+                const freeMax = Number(t.freeMaxMb ?? Math.max(0, maxMb - used));
+                const maxPct = Number(t.maxPct ?? t.maxPctUsed ?? (maxMb > 0 ? Math.round((used / maxMb) * 1000) / 10 : pct));
+                const cAlloc = pct >= 85 ? '#dc2626' : pct >= 70 ? '#d97706' : '#16a34a';
+                const cMax = maxPct >= 85 ? '#dc2626' : maxPct >= 70 ? '#d97706' : '#0284c7';
+                const isSelected = selectedTs && selectedTs.name === t.name;
+
+                return `
+                  <tr class="ts-grid-row ${isSelected ? 'active-ts-row' : ''}" data-name="${t.name.toLowerCase()}" data-pct="${pct}" data-autoext="${t.autoextend || 'YES'}"
+                      onclick="window.TracesApp.schemaBrowser.selectTablespaceInMaster('${t.name}')" style="cursor: pointer;">
+                    <td style="font-weight: 700; color: #0284c7; font-family: var(--font-code);">
+                      💾 ${t.name}
+                    </td>
+                    <td>
+                      <span class="status-indicator ${t.status === 'ONLINE' ? 'valid' : 'invalid'}" style="font-size: 10px; font-weight: 700;">
+                        ${t.status || 'ONLINE'}
+                      </span>
+                    </td>
+                    <td style="color: #64748b; font-size: 10.5px; font-weight: 600;">
+                      ${t.contents || 'PERMANENT'}
+                    </td>
+                    <td style="text-align: center; font-weight: 700; color: #334155;">
+                      ${t.datafiles || t.filesCount || 1}
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 600;">
+                      ${tot.toLocaleString()} MB
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); color: ${cAlloc}; font-weight: 700;">
+                      ${used.toLocaleString()} MB
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); color: #15803d; font-weight: 600;">
+                      ${free.toLocaleString()} MB
+                    </td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        <div class="toad-ts-meter-track">
+                          <div class="toad-ts-meter-fill" style="width: ${Math.min(100, pct)}%; background: ${cAlloc};"></div>
+                        </div>
+                        <span style="font-size: 10.5px; font-weight: 700; color: ${cAlloc}; min-width: 38px; text-align: right;">${pct}%</span>
+                      </div>
+                    </td>
+                    <td style="text-align: center;">
+                      <span style="font-weight: 700; font-size: 10px; padding: 2px 7px; border-radius: 8px; background: ${t.autoextend === 'NO' ? '#fee2e2' : '#dcfce7'}; color: ${t.autoextend === 'NO' ? '#991b1b' : '#166534'};">
+                        ${t.autoextend || 'YES'}
+                      </span>
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 700; color: #0369a1;">
+                      ${maxMb.toLocaleString()} MB <span style="font-size: 9.5px; color: #64748b;">(${(maxMb / 1024).toFixed(1)}G)</span>
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 600; color: #15803d;">
+                      ${freeMax.toLocaleString()} MB
+                    </td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        <div class="toad-ts-meter-track">
+                          <div class="toad-ts-meter-fill" style="width: ${Math.min(100, maxPct)}%; background: ${cMax};"></div>
+                        </div>
+                        <span style="font-size: 10.5px; font-weight: 700; color: ${cMax}; min-width: 38px; text-align: right;">${maxPct}%</span>
+                      </div>
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;" onclick="event.stopPropagation()">
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" title="Adicionar Datafile em ${t.name}" onclick="window.TracesApp.schemaBrowser.promptAddDatafile('${t.name}')">+File</button>
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" title="Redimensionar Datafile de ${t.name}" onclick="window.TracesApp.schemaBrowser.promptResizeTablespace('${t.name}', '', ${tot})">↔Resize</button>
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" title="Configurar Autoextend / MaxSize de ${t.name}" onclick="window.TracesApp.schemaBrowser.promptAutoextendTablespace('${t.name}')">⚙Max</button>
+                      <button class="btn btn-danger" style="height: 20px; padding: 0 6px; font-size: 9.5px;" title="Drop ${t.name}" onclick="window.TracesApp.schemaBrowser.dropObject('${this.currentSchema}', '${t.name}', 'TABLESPACE')">🗑</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 5. Lower Master-Detail Inspector for Selected Tablespace -->
+        <div id="ts-master-detail-lower">
+          ${this.buildSelectedTablespaceDetailHtml(selectedTs)}
+        </div>
+      </div>
+    `;
+  }
+
+  buildSelectedTablespaceDetailHtml(ts) {
+    if (!ts) {
+      return `
+        <div class="toad-ts-detail-pane" style="text-align: center; color: #64748b; font-size: 11px; padding: 24px;">
+          Selecione uma tablespace na tabela acima para visualizar seus datafiles mapeados, parâmetros de bloco e script DDL.
+        </div>
+      `;
+    }
+
+    const totalMb = Number(ts.totalMb || 1024);
+    const usedMb = Number(ts.usedMb || Math.round(totalMb * 0.55));
+    const freeMb = Number(ts.freeMb ?? Math.max(0, totalMb - usedMb));
+    const pct = Number(ts.pct ?? (totalMb > 0 ? Math.round((usedMb / totalMb) * 1000) / 10 : 0));
+    const maxMb = Number(ts.maxMb && ts.maxMb >= totalMb ? ts.maxMb : (ts.autoextend === 'NO' ? totalMb : totalMb * 4));
+    const freeMaxMb = Number(ts.freeMaxMb ?? Math.max(0, maxMb - usedMb));
+    const maxPct = Number(ts.maxPct ?? (maxMb > 0 ? Math.round((usedMb / maxMb) * 1000) / 10 : pct));
+    const barColor = pct > 85 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#10b981';
+    const maxBarColor = maxPct > 85 ? '#ef4444' : maxPct > 70 ? '#f59e0b' : '#0284c7';
+
+    const rawDatafiles = (Array.isArray(ts.datafilesList) && ts.datafilesList.length > 0)
+      ? ts.datafilesList
+      : (Array.isArray(ts.datafiles) && ts.datafiles.length > 0
+          ? ts.datafiles
+          : (this.allDatafiles ? this.allDatafiles.filter(f => (f.tablespace || '').toUpperCase() === (ts.name || '').toUpperCase()) : []));
+    const hasDatafiles = Array.isArray(rawDatafiles) && rawDatafiles.length > 0;
+
+    return `
+      <div class="toad-ts-detail-pane">
+        <!-- Sub-header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">💾</span>
+            <div>
+              <div style="font-size: 13px; font-weight: 800; color: #0f172a;">
+                Detalhes &amp; Datafiles da Tablespace: <span style="color: #0284c7;">${ts.name}</span>
+              </div>
+              <div style="font-size: 10.5px; color: #64748b;">
+                Status: <strong>${ts.status || 'ONLINE'}</strong> &bull; Tipo: <strong>${ts.contents || 'PERMANENT'}</strong> &bull; Extent: <strong>${ts.extentManagement || 'LOCAL'}</strong> &bull; Block: <strong>${ts.blockSize || 8192} B</strong>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="btn btn-primary" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.promptAddDatafile('${ts.name}')">
+              ➕ Add Datafile
+            </button>
+            <button class="btn" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptResizeTablespace('${ts.name}')">
+              ↔ Resize Datafile
+            </button>
+            <button class="btn" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.promptAutoextendTablespace('${ts.name}')">
+              ⚙ Config Autoextend
+            </button>
+            <button class="btn" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.openObjectInWorksheet('${ts.name}')">
+              📝 Abrir no Worksheet
+            </button>
+            <button class="btn btn-danger" style="height: 24px; padding: 0 9px; font-size: 10.5px;" onclick="window.TracesApp.schemaBrowser.dropObject('${this.currentSchema}', '${ts.name}', 'TABLESPACE')">
+              🗑 Drop
+            </button>
+          </div>
+        </div>
+
+        <!-- Dual Capacity Visual Meter for Selected TS -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+          <!-- 1. Alocado -->
+          <div class="advisor-card" style="padding: 12px; border-left: 3px solid ${barColor};">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+              <strong style="font-size: 11px; color: #1e293b;">1. Ocupação do Espaço Alocado</strong>
+              <span style="font-weight: 800; font-size: 12px; color: ${barColor};">${pct}% Alocado</span>
+            </div>
+            <div class="toad-ts-meter-track" style="margin-bottom: 6px;">
+              <div class="toad-ts-meter-fill" style="width: ${Math.min(100, pct)}%; background: ${barColor};"></div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 10.5px;">
+              <div><span style="color: #64748b;">Alocado:</span><br><strong>${totalMb.toLocaleString()} MB</strong></div>
+              <div><span style="color: #64748b;">Usado:</span><br><strong style="color: ${barColor};">${usedMb.toLocaleString()} MB</strong></div>
+              <div><span style="color: #64748b;">Livre:</span><br><strong style="color: #10b981;">${freeMb.toLocaleString()} MB</strong></div>
+            </div>
+          </div>
+
+          <!-- 2. Capacidade Máxima com Autoextend -->
+          <div class="advisor-card" style="padding: 12px; border-left: 3px solid ${maxBarColor};">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+              <strong style="font-size: 11px; color: #1e293b;">2. Capacidade Máxima (MAXBYTES / Autoextend)</strong>
+              <span style="font-weight: 800; font-size: 12px; color: ${maxBarColor};">${maxPct}% do Máx</span>
+            </div>
+            <div class="toad-ts-meter-track" style="margin-bottom: 6px;">
+              <div class="toad-ts-meter-fill" style="width: ${Math.min(100, maxPct)}%; background: ${maxBarColor};"></div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 10.5px;">
+              <div><span style="color: #64748b;">Teto Máx:</span><br><strong style="color: #0369a1;">${maxMb.toLocaleString()} MB</strong></div>
+              <div><span style="color: #64748b;">Livre até Máx:</span><br><strong style="color: #15803d;">${freeMaxMb.toLocaleString()} MB</strong></div>
+              <div><span style="color: #64748b;">Autoextend:</span><br><strong style="color: ${ts.autoextend === 'NO' ? '#dc2626' : '#16a34a'};">${ts.autoextend || 'YES'}</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Datafiles Table for Selected TS -->
+        <div style="border: 1px solid #cbd5e1; border-radius: 5px; overflow: hidden; background: #fff;">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 6px 12px; border-bottom: 1px solid #cbd5e1;">
+            <strong style="font-size: 11px; color: #334155;">📁 Datafiles Mapeados (${rawDatafiles.length} arquivos físicos)</strong>
+            <button class="btn" style="height: 20px; padding: 0 7px; font-size: 10px;" onclick="window.TracesApp.schemaBrowser.promptAddDatafile('${ts.name}')">➕ Novo Datafile</button>
+          </div>
+          <table class="meta-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="width: 50px; text-align: center;">ID</th>
+                <th style="width: 80px; text-align: center;">Tipo</th>
+                <th>Caminho do Datafile (.dbf)</th>
+                <th style="text-align: right; width: 105px;">Alocado</th>
+                <th style="text-align: right; width: 105px;">User Bytes</th>
+                <th style="text-align: right; width: 130px;">Máximo (MAXBYTES)</th>
+                <th style="text-align: right; width: 95px;">Incremento</th>
+                <th style="text-align: center; width: 85px;">Autoextend</th>
+                <th style="text-align: center; width: 80px;">Status</th>
+                <th style="text-align: center; width: 120px;">I/O Reads/Writes</th>
+                <th style="text-align: right; width: 140px;">Ações Rápidas</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${hasDatafiles ? rawDatafiles.map(df => {
+                const dfPath = df.fileName || df.name || `/u01/app/oracle/oradata/${ts.name.toLowerCase()}01.dbf`;
+                const dfSize = df.sizeMb || totalMb;
+                const dfUserBytes = df.userBytesMb || dfSize;
+                const dfMax = df.maxMb || (df.autoextend === 'NO' ? dfSize : maxMb);
+                const dfIncr = df.incrementMb || 0;
+                const dfType = df.fileType || (ts.contents === 'TEMPORARY' ? 'TEMPFILE' : 'DATAFILE');
+                const reads = df.phyReads != null ? Number(df.phyReads).toLocaleString() : '0';
+                const writes = df.phyWrites != null ? Number(df.phyWrites).toLocaleString() : '0';
+                return `
+                  <tr>
+                    <td style="text-align: center; font-family: var(--font-code); color: #64748b; font-weight: 700; font-size: 10px;">
+                      #${df.fileId || '-'}
+                    </td>
+                    <td style="text-align: center;">
+                      <span style="font-size: 9.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: ${dfType === 'TEMPFILE' ? '#fef3c7' : '#e0f2fe'}; color: ${dfType === 'TEMPFILE' ? '#92400e' : '#0369a1'};">
+                        ${dfType}
+                      </span>
+                    </td>
+                    <td style="font-family: var(--font-code); color: #0f172a; font-weight: 600; font-size: 11px;">
+                      📄 ${dfPath}
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 600;">
+                      ${Number(dfSize).toLocaleString()} MB
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); color: #475569;">
+                      ${Number(dfUserBytes).toLocaleString()} MB
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 700; color: #0369a1;">
+                      ${Number(dfMax).toLocaleString()} MB <span style="font-size: 9.5px; color: #64748b;">(${(dfMax/1024).toFixed(1)}G)</span>
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); color: #64748b;">
+                      ${Number(dfIncr).toLocaleString()} MB
+                    </td>
+                    <td style="text-align: center;">
+                      <span style="font-weight: 700; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: ${df.autoextend === 'NO' ? '#fee2e2' : '#dcfce7'}; color: ${df.autoextend === 'NO' ? '#991b1b' : '#166534'};">
+                        ${df.autoextend || 'YES'}
+                      </span>
+                    </td>
+                    <td style="text-align: center;">
+                      <span class="status-indicator valid" style="font-size: 10px;">${df.status || 'AVAILABLE'}</span>
+                    </td>
+                    <td style="text-align: center; font-size: 10px; color: #475569; font-family: var(--font-code);">
+                      R:${reads} / W:${writes}
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptResizeTablespace('${ts.name}', '${dfPath.replace(/\\/g, '\\\\')}', ${dfSize})">↔ Resize</button>
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptAutoextendTablespace('${ts.name}', '${dfPath.replace(/\\/g, '\\\\')}')">⚙ Max</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('') : `
+                <tr>
+                  <td colspan="11" style="text-align: center; color: #64748b; padding: 12px; font-size: 11px;">
+                    Nenhum datafile físico associado a esta tablespace.
+                  </td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Storage Parameters Strip -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
+          <div class="advisor-card" style="padding: 8px 10px;">
+            <div class="metric-label" style="font-size: 10px;">Extent Mgmt</div>
+            <div class="metric-value" style="font-size: 12px; font-weight: 700;">${ts.extentManagement || 'LOCAL'}</div>
+          </div>
+          <div class="advisor-card" style="padding: 8px 10px;">
+            <div class="metric-label" style="font-size: 10px;">Allocation Type</div>
+            <div class="metric-value" style="font-size: 12px; font-weight: 700;">${ts.allocationType || 'SYSTEM'}</div>
+          </div>
+          <div class="advisor-card" style="padding: 8px 10px;">
+            <div class="metric-label" style="font-size: 10px;">Segment Space Mgmt</div>
+            <div class="metric-value" style="font-size: 12px; font-weight: 700;">${ts.segmentSpaceManagement || 'AUTO (ASSM)'}</div>
+          </div>
+          <div class="advisor-card" style="padding: 8px 10px;">
+            <div class="metric-label" style="font-size: 10px;">Block Size</div>
+            <div class="metric-value" style="font-size: 12px; font-weight: 700;">${ts.blockSize || 8192} Bytes</div>
+          </div>
+          <div class="advisor-card" style="padding: 8px 10px;">
+            <div class="metric-label" style="font-size: 10px;">Logging</div>
+            <div class="metric-value" style="font-size: 12px; font-weight: 700; color: #16a34a;">LOGGING</div>
+          </div>
+        </div>
+
+        <!-- Quick DDL Box -->
+        <div style="background: #1e293b; border-radius: 5px; padding: 10px 12px; color: #e2e8f0; font-family: var(--font-code); font-size: 11px; overflow-x: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; color: #94a3b8; font-size: 10px; font-weight: 700; text-transform: uppercase;">
+            <span>📜 DDL de Criação da Tablespace</span>
+            <button class="btn" style="height: 18px; padding: 0 6px; font-size: 9.5px; background: #334155; color: #f8fafc; border: none;"
+                    onclick="navigator.clipboard.writeText('CREATE TABLESPACE \\&quot;${ts.name}\\&quot; DATAFILE \\&apos;${ts.name.toLowerCase()}01.dbf\\&apos; SIZE ${totalMb}M AUTOEXTEND ON NEXT 128M MAXSIZE ${maxMb}M EXTENT MANAGEMENT LOCAL SEGMENT SPACE MANAGEMENT AUTO;'); window.TracesApp.notify('DDL copiado para a Área de Transferência!', 'success');">
+              📋 Copiar DDL
+            </button>
+          </div>
+          <code>CREATE TABLESPACE "${ts.name}" DATAFILE '${ts.name.toLowerCase()}01.dbf' SIZE ${totalMb}M AUTOEXTEND ${ts.autoextend === 'NO' ? 'OFF' : 'ON NEXT 128M MAXSIZE ' + maxMb + 'M'} EXTENT MANAGEMENT LOCAL SEGMENT SPACE MANAGEMENT AUTO;</code>
+        </div>
+      </div>
+    `;
+  }
+
+  buildDatafilesTabHtml() {
+    let allFiles = [];
+    if (this.allDatafiles && Array.isArray(this.allDatafiles) && this.allDatafiles.length > 0) {
+      allFiles = this.allDatafiles.map(df => Object.assign({}, df));
+    } else {
+      const tsList = this.allTablespacesOverview || [];
+      tsList.forEach(ts => {
+        const dfs = ts.datafilesList || (Array.isArray(ts.datafiles) ? ts.datafiles : []);
+        if (Array.isArray(dfs) && dfs.length > 0) {
+          dfs.forEach(df => {
+            allFiles.push(Object.assign({}, df, { tablespace: df.tablespace || ts.name }));
+          });
+        }
+      });
+    }
+
+    if (allFiles.length === 0) {
+      const tsList = this.allTablespacesOverview || [];
+      tsList.forEach(ts => {
+        allFiles.push({
+          tablespace: ts.name,
+          fileId: 1,
+          fileName: `/u01/app/oracle/oradata/${ts.name.toLowerCase()}01.dbf`,
+          sizeMb: ts.totalMb || 1024,
+          userBytesMb: ts.totalMb || 1024,
+          maxMb: ts.maxMb || (ts.autoextend === 'NO' ? ts.totalMb : ts.totalMb * 4),
+          incrementMb: 128,
+          autoextend: ts.autoextend || 'YES',
+          status: ts.status || 'AVAILABLE',
+          fileType: ts.contents === 'TEMPORARY' ? 'TEMPFILE' : 'DATAFILE',
+          phyReads: 0,
+          phyWrites: 0
+        });
+      });
+    }
+
+    // Map distinct tablespaces with counts
+    const tsMap = {};
+    allFiles.forEach(f => {
+      const tsName = (f.tablespace || 'UNKNOWN').toUpperCase();
+      tsMap[tsName] = (tsMap[tsName] || 0) + 1;
+    });
+    const tsNames = Object.keys(tsMap).sort();
+
+    const sumAllocMb = allFiles.reduce((acc, f) => acc + Number(f.sizeMb || 0), 0);
+    const sumMaxMb = allFiles.reduce((acc, f) => acc + Number(f.maxMb || f.sizeMb || 0), 0);
+    const sumReads = allFiles.reduce((acc, f) => acc + Number(f.phyReads || 0), 0);
+    const sumWrites = allFiles.reduce((acc, f) => acc + Number(f.phyWrites || 0), 0);
+
+    return `
+      <div class="toad-ts-container">
+        <!-- Header Card -->
+        <div class="toad-ts-header-card">
+          <div>
+            <div style="font-size: 13px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 6px;">
+              📁 Todos os Datafiles da Instância (DBA_DATA_FILES &amp; DBA_TEMP_FILES)
+              <span style="font-size: 11px; background: #0284c7; color: #fff; padding: 1px 7px; border-radius: 10px; font-weight: 700;">${allFiles.length} arquivos</span>
+            </div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+              Mapeamento de <strong>${allFiles.length} arquivos físicos (.dbf)</strong> em <strong>${tsNames.length} tablespaces</strong>. Alocado: <strong>${(sumAllocMb / 1024).toFixed(1)} GB</strong> &bull; Teto MAXBYTES: <strong>${(sumMaxMb / 1024).toFixed(1)} GB</strong> &bull; I/O Total: <strong>${sumReads.toLocaleString()} leituras / ${sumWrites.toLocaleString()} escritas</strong>.
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="btn btn-primary" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 700;" onclick="window.TracesApp.schemaBrowser.promptAddDatafile('${this.selectedObject?.name || 'USERS'}')">
+              ➕ Adicionar Datafile
+            </button>
+            <button class="btn" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.loadAllTablespacesOverview(true)">
+              🔄 Atualizar
+            </button>
+            <button class="btn" style="height: 24px; padding: 0 9px; font-size: 10.5px; font-weight: 600;" onclick="window.TracesApp.schemaBrowser.switchDetailTab('tsoverview')">
+              📊 Voltar à Visão Geral
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Toolbar -->
+        <div class="toad-ts-filter-bar">
+          <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px;">
+            <input type="text" id="toad-df-filter-text" class="toad-ts-search-input" placeholder="🔍 Filtrar por nome do arquivo (.dbf), tablespace ou caminho..." oninput="window.TracesApp.schemaBrowser.filterDatafilesGrid()">
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <label style="font-size: 11px; color: #475569; font-weight: 600;">Tablespace:</label>
+            <select id="toad-df-filter-ts" class="toad-ts-select" onchange="window.TracesApp.schemaBrowser.filterDatafilesGrid()">
+              <option value="all">Todas as Tablespaces (${allFiles.length})</option>
+              ${tsNames.map(ts => `<option value="${ts}">${ts} (${tsMap[ts]})</option>`).join('')}
+            </select>
+
+            <label style="font-size: 11px; color: #475569; font-weight: 600;">Tipo:</label>
+            <select id="toad-df-filter-type" class="toad-ts-select" onchange="window.TracesApp.schemaBrowser.filterDatafilesGrid()">
+              <option value="all">Tipo: Todos</option>
+              <option value="DATAFILE">DATAFILE</option>
+              <option value="TEMPFILE">TEMPFILE</option>
+            </select>
+
+            <label style="font-size: 11px; color: #475569; font-weight: 600;">Autoextend:</label>
+            <select id="toad-df-filter-autoext" class="toad-ts-select" onchange="window.TracesApp.schemaBrowser.filterDatafilesGrid()">
+              <option value="all">Autoextend: Todos</option>
+              <option value="YES">Autoextend ON (YES)</option>
+              <option value="NO">Autoextend OFF (NO)</option>
+            </select>
+
+            <button class="btn" style="height: 24px; padding: 0 8px; font-size: 10px;" onclick="window.TracesApp.schemaBrowser.resetDatafilesFilter()">
+              Limpar Filtros
+            </button>
+          </div>
+
+          <span id="toad-df-count-badge" style="font-size: 11px; font-weight: 700; color: #0284c7; background: #e0f2fe; padding: 3px 8px; border-radius: 4px; white-space: nowrap;">
+            Exibindo ${allFiles.length} de ${allFiles.length} datafiles
+          </span>
+        </div>
+
+        <!-- Master Datafiles Table -->
+        <div class="toad-ts-table-wrapper" style="max-height: calc(100vh - 240px); overflow-y: auto;">
+          <table class="toad-ts-table" id="toad-df-master-table">
+            <thead>
+              <tr>
+                <th style="width: 50px; text-align: center;">ID</th>
+                <th style="width: 80px; text-align: center;">Tipo</th>
+                <th style="width: 140px;">Tablespace</th>
+                <th>Caminho do Datafile (.dbf)</th>
+                <th style="text-align: right; width: 105px;">Alocado</th>
+                <th style="text-align: right; width: 105px;">User Bytes</th>
+                <th style="text-align: right; width: 140px;">Máximo (MAXBYTES)</th>
+                <th style="text-align: right; width: 95px;">Incremento</th>
+                <th style="text-align: center; width: 85px;">Autoextend</th>
+                <th style="text-align: center; width: 80px;">Status</th>
+                <th style="text-align: center; width: 130px;">I/O Reads / Writes</th>
+                <th style="text-align: right; width: 140px;">Ações Rápidas</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${allFiles.map(f => {
+                const tsName = f.tablespace || 'UNKNOWN';
+                const fPath = f.fileName || `${tsName.toLowerCase()}01.dbf`;
+                const szMb = Number(f.sizeMb || 0);
+                const ubMb = Number(f.userBytesMb || szMb);
+                const mxMb = Number(f.maxMb || szMb);
+                const incrMb = Number(f.incrementMb || 0);
+                const aext = (f.autoextend || 'YES').toUpperCase();
+                const fType = (f.fileType || 'DATAFILE').toUpperCase();
+                const reads = f.phyReads != null ? Number(f.phyReads).toLocaleString() : '0';
+                const writes = f.phyWrites != null ? Number(f.phyWrites).toLocaleString() : '0';
+
+                return `
+                  <tr class="df-grid-row" data-name="${fPath.toLowerCase()}" data-ts="${tsName.toUpperCase()}" data-autoext="${aext}" data-type="${fType}">
+                    <td style="text-align: center; font-family: var(--font-code); color: #64748b; font-weight: 700; font-size: 10px;">
+                      #${f.fileId || '-'}
+                    </td>
+                    <td style="text-align: center;">
+                      <span style="font-size: 9.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: ${fType === 'TEMPFILE' ? '#fef3c7' : '#e0f2fe'}; color: ${fType === 'TEMPFILE' ? '#92400e' : '#0369a1'};">
+                        ${fType}
+                      </span>
+                    </td>
+                    <td style="font-weight: 700; color: #0284c7; font-family: var(--font-code); cursor: pointer;" onclick="window.TracesApp.schemaBrowser.selectTablespaceInMaster('${tsName}')">
+                      💾 ${tsName}
+                    </td>
+                    <td style="font-family: var(--font-code); color: #0f172a; font-weight: 600; font-size: 11px;">
+                      ${fPath}
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 600;">
+                      ${szMb.toLocaleString()} MB
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); color: #475569;">
+                      ${ubMb.toLocaleString()} MB
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); font-weight: 700; color: #0369a1;">
+                      ${mxMb.toLocaleString()} MB <span style="font-size: 9.5px; color: #64748b;">(${(mxMb / 1024).toFixed(1)}G)</span>
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-code); color: #64748b;">
+                      ${incrMb.toLocaleString()} MB
+                    </td>
+                    <td style="text-align: center;">
+                      <span style="font-weight: 700; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: ${aext === 'NO' ? '#fee2e2' : '#dcfce7'}; color: ${aext === 'NO' ? '#991b1b' : '#166534'};">
+                        ${aext}
+                      </span>
+                    </td>
+                    <td style="text-align: center;">
+                      <span class="status-indicator valid" style="font-size: 10px;">${f.status || 'AVAILABLE'}</span>
+                    </td>
+                    <td style="text-align: center; font-size: 10px; color: #475569; font-family: var(--font-code);">
+                      📖 ${reads} / ✍️ ${writes}
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptResizeTablespace('${tsName}', '${fPath.replace(/\\/g, '\\\\')}', ${szMb})">↔ Resize</button>
+                      <button class="btn" style="height: 20px; padding: 0 6px; font-size: 9.5px;" onclick="window.TracesApp.schemaBrowser.promptAutoextendTablespace('${tsName}', '${fPath.replace(/\\/g, '\\\\')}')">⚙ Max</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  filterDatafilesGrid() {
+    const textInp = document.getElementById('toad-df-filter-text');
+    const tsSel = document.getElementById('toad-df-filter-ts');
+    const autoextSel = document.getElementById('toad-df-filter-autoext');
+    const typeSel = document.getElementById('toad-df-filter-type');
+    const badge = document.getElementById('toad-df-count-badge');
+
+    const text = textInp ? textInp.value.toLowerCase().trim() : '';
+    const ts = tsSel ? tsSel.value.toUpperCase() : 'ALL';
+    const autoext = autoextSel ? autoextSel.value.toUpperCase() : 'ALL';
+    const ftype = typeSel ? typeSel.value.toUpperCase() : 'ALL';
+
+    const rows = document.querySelectorAll('#toad-df-master-table tbody tr.df-grid-row');
+    let visibleCount = 0;
+
+    rows.forEach(r => {
+      const name = r.getAttribute('data-name') || '';
+      const rowTs = r.getAttribute('data-ts') || '';
+      const aext = r.getAttribute('data-autoext') || 'YES';
+      const rType = r.getAttribute('data-type') || 'DATAFILE';
+
+      let match = true;
+      if (text && !name.includes(text) && !rowTs.toLowerCase().includes(text)) match = false;
+      if (ts !== 'ALL' && rowTs !== ts) match = false;
+      if (autoext !== 'ALL' && aext !== autoext) match = false;
+      if (ftype !== 'ALL' && rType !== ftype) match = false;
+
+      r.style.display = match ? '' : 'none';
+      if (match) visibleCount++;
+    });
+
+    if (badge) {
+      const isFiltered = (text || ts !== 'ALL' || autoext !== 'ALL' || ftype !== 'ALL');
+      badge.textContent = `Exibindo ${visibleCount} de ${rows.length} datafiles${isFiltered ? ' (Filtro Ativo)' : ''}`;
+    }
+  }
+
+  resetDatafilesFilter() {
+    const textInp = document.getElementById('toad-df-filter-text');
+    const tsSel = document.getElementById('toad-df-filter-ts');
+    const autoextSel = document.getElementById('toad-df-filter-autoext');
+    const typeSel = document.getElementById('toad-df-filter-type');
+    if (textInp) textInp.value = '';
+    if (tsSel) tsSel.value = 'all';
+    if (autoextSel) autoextSel.value = 'all';
+    if (typeSel) typeSel.value = 'all';
+    this.filterDatafilesGrid();
+  }
+
+  filterTablespacesGrid() {
+    const textInp = document.getElementById('toad-ts-filter-text');
+    const usageSel = document.getElementById('toad-ts-filter-usage');
+    const autoextSel = document.getElementById('toad-ts-filter-autoext');
+    const badge = document.getElementById('toad-ts-count-badge');
+
+    const text = textInp ? textInp.value.toLowerCase().trim() : '';
+    const usage = usageSel ? usageSel.value : 'all';
+    const autoext = autoextSel ? autoextSel.value : 'all';
+
+    const rows = document.querySelectorAll('#toad-ts-master-table tbody tr.ts-grid-row');
+    let visibleCount = 0;
+
+    rows.forEach(r => {
+      const name = r.getAttribute('data-name') || '';
+      const pct = parseFloat(r.getAttribute('data-pct') || '0');
+      const aext = r.getAttribute('data-autoext') || 'YES';
+
+      let match = true;
+      if (text && !name.includes(text)) match = false;
+      if (usage === '50' && pct <= 50) match = false;
+      if (usage === '70' && pct <= 70) match = false;
+      if (usage === '85' && pct <= 85) match = false;
+      if (autoext !== 'all' && aext !== autoext) match = false;
+
+      r.style.display = match ? '' : 'none';
+      if (match) visibleCount++;
+    });
+
+    if (badge) {
+      badge.textContent = `Exibindo ${visibleCount} de ${rows.length} tablespaces${(text || usage !== 'all' || autoext !== 'all') ? ' (Filtro Ativo)' : ''}`;
+    }
+  }
+
+  resetTablespacesGridFilter() {
+    const textInp = document.getElementById('toad-ts-filter-text');
+    const usageSel = document.getElementById('toad-ts-filter-usage');
+    const autoextSel = document.getElementById('toad-ts-filter-autoext');
+    if (textInp) textInp.value = '';
+    if (usageSel) usageSel.value = 'all';
+    if (autoextSel) autoextSel.value = 'all';
+    this.filterTablespacesGrid();
+  }
+
+  selectTablespaceInMaster(tsName) {
+    if (!tsName) return;
+    const list = this.allTablespacesOverview || [];
+    const ts = list.find(t => t.name === tsName) || { name: tsName };
+    this.selectedObject = ts;
+
+    // Highlight row in master table
+    const rows = document.querySelectorAll('#toad-ts-master-table tbody tr.ts-grid-row');
+    rows.forEach(r => {
+      const match = r.getAttribute('data-name') === tsName.toLowerCase();
+      r.classList.toggle('active-ts-row', match);
+    });
+
+    // Update lower drilldown
+    const lower = document.getElementById('ts-master-detail-lower');
+    if (lower) {
+      lower.innerHTML = this.buildSelectedTablespaceDetailHtml(ts);
+    }
+
+    // Update left tree active state
+    const allItems = this.objectList?.querySelectorAll('.object-item, .toad-tree-item');
+    if (allItems) {
+      allItems.forEach(el => el.classList.remove('active'));
+      const matched = Array.from(allItems).find(el => el.textContent.includes(tsName));
+      if (matched) matched.classList.add('active');
+    }
+
+    // Update header title
+    if (this.detailTitle) this.detailTitle.textContent = `TABLESPACE: ${tsName}`;
+    if (this.detailTypePill) this.detailTypePill.textContent = 'TABLESPACE';
+
+    // Also update tab-pane-columns and tab-pane-tsdatafiles in background
+    const colPane = document.getElementById('tab-pane-columns');
+    if (colPane && this.currentCategory === 'tablespaces') colPane.innerHTML = this.buildSelectedTablespaceDetailHtml(ts);
   }
 
   escapeHtml(str) {

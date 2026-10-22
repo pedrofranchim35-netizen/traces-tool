@@ -17,6 +17,7 @@ class ConnectionManager {
     this.bindEvents();
     this.renderHeaderPill();
     this.updateSelectorDropdown();
+    this.renderConnectionBar();
     setTimeout(() => {
       this.syncSavedConnectionsFromDisk();
       this.syncWithServerState();
@@ -28,6 +29,7 @@ class ConnectionManager {
     this.selectorEl = document.getElementById('toad-conn-selector');
     this.connModal = document.getElementById('connection-modal');
     this.connListEl = document.getElementById('connection-profiles-list');
+    this.connectionBarEl = document.getElementById('toad-connection-bar');
   }
 
   bindEvents() {
@@ -177,6 +179,40 @@ class ConnectionManager {
     }
   }
 
+  openNewConnectionModal() {
+    this.readFormData();
+    const newId = `conn-${Date.now()}`;
+    const newProfile = {
+      id: newId,
+      name: `Novo Host / Banco (${this.connections.length + 1})`,
+      host: 'localhost',
+      port: 1521,
+      serviceName: 'ORCL',
+      user: 'SYS',
+      role: 'SYSDBA',
+      color: '#10b981',
+      password: '',
+      savePassword: true,
+      lastConnected: null,
+      useThick: true,
+      useBridge: false,
+      bridgeType: 'ssh',
+      bridgeHost: '',
+      bridgePort: 22,
+      bridgeUser: '',
+      bridgePassword: '',
+      bridgeKeyPath: '',
+      saveBridgePassword: true
+    };
+    this.connections.push(newProfile);
+    this.editingConn = JSON.parse(JSON.stringify(newProfile));
+    this.activeTab = 'db';
+    this.saveConnections();
+    this.renderModal();
+    this.updateSelectorDropdown();
+    if (this.connModal) this.connModal.classList.add('open');
+  }
+
   createNewProfile() {
     this.readFormData();
     const newId = `conn-${Date.now()}`;
@@ -313,48 +349,98 @@ class ConnectionManager {
 
     this.connListEl.innerHTML = `
       <div style="display: flex; height: 440px; gap: 14px; font-size: 11.5px;">
-        <!-- Left: Saved Connections List -->
-        <div style="width: 220px; border-right: 1px solid #d4d4d4; padding-right: 10px; display: flex; flex-direction: column; justify-content: space-between;">
-          <div>
-            <div style="font-weight: 700; color: #333; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <!-- Left: Connections List -->
+        <div style="width: 250px; border-right: 1px solid #d4d4d4; padding-right: 10px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div style="display: flex; flex-direction: column; height: 100%;">
+            <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
               <span>Conexões (${this.connections.length})</span>
               <span style="font-size: 10px; color: ${this.activeConnections.size > 0 ? '#15803d' : '#6b7280'}; font-weight: 700;">
                 ${this.activeConnections.size > 0 ? `🟢 ${this.activeConnections.size} Ativa(s)` : '⚪ 0 Conectada'}
               </span>
-              <button class="btn btn-primary" style="padding: 2px 6px; font-size: 10px;" onclick="window.TracesApp.connectionManager.createNewProfile();">+ Nova</button>
+              <button class="btn btn-primary" style="padding: 2px 7px; font-size: 10px; font-weight: 700;" onclick="window.TracesApp.connectionManager.openNewConnectionModal();" title="Adicionar e conectar a um novo host">+ Nova</button>
             </div>
-            <div style="overflow-y: auto; max-height: 360px; display: flex; flex-direction: column; gap: 4px;">
+
+            <div style="overflow-y: auto; flex: 1; max-height: 380px; display: flex; flex-direction: column; gap: 4px; padding-right: 2px;">
+              ${this.activeConnections.size > 0 ? `
+                <div style="font-size: 9.5px; font-weight: 800; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 2px 2px; display: flex; align-items: center; justify-content: space-between;">
+                  <span>🟢 BANCOS CONECTADOS AGORA (${this.activeConnections.size})</span>
+                </div>
+                ${Array.from(this.activeConnections.entries()).map(([connId, entry]) => {
+                  const item = entry.config;
+                  const isActive = (this.activeConn && this.activeConn.id === connId);
+                  const isSelected = (c && c.id === connId);
+                  return `
+                    <div style="
+                      padding: 6px 8px;
+                      border-radius: 4px;
+                      cursor: pointer;
+                      border-left: 4px solid ${item.color || '#16a34a'};
+                      background: ${isSelected ? '#e0f2fe' : (isActive ? '#f0fdf4' : '#ffffff')};
+                      border-top: 1px solid ${isActive ? '#86efac' : '#cbd5e1'};
+                      border-right: 1px solid ${isActive ? '#86efac' : '#cbd5e1'};
+                      border-bottom: 1px solid ${isActive ? '#86efac' : '#cbd5e1'};
+                      display: flex;
+                      justify-content: space-between;
+                      align-items: center;
+                      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+                    " onclick="window.TracesApp.connectionManager.selectProfile('${connId}')">
+                      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                          <span style="font-weight: 700; color: #111; font-size: 11px;">${item.name || item.user}</span>
+                          ${isActive ? '<span style="font-size: 8px; background: #16a34a; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 700;">★ ATIVO</span>' : '<span style="font-size: 8px; background: #0284c7; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 700;">ON</span>'}
+                        </div>
+                        <div style="font-size: 10px; color: #475569; font-family: var(--toad-font-code);">${item.user}@${item.serviceName}</div>
+                        <div style="font-size: 9.5px; color: #64748b;">${item.host}:${item.port}${item.useBridge && item.bridgeHost ? ` 🌉 via ${item.bridgeHost}` : ''}</div>
+                      </div>
+                      <div style="display: flex; gap: 2px; align-items: center; margin-left: 4px;">
+                        ${!isActive ? `
+                          <button class="btn" style="padding: 2px 5px; font-size: 9.5px; color: #0284c7; font-weight: 700; background: #f0f9ff; border-color: #bae6fd;" onclick="event.stopPropagation(); window.TracesApp.connectionManager.switchConnection('${connId}')" title="Alternar para este banco (0ms lag)">⚡</button>
+                        ` : ''}
+                        <button class="btn" style="padding: 2px 4px; font-size: 9px; color: #ef4444; border-color: #fca5a5;" onclick="event.stopPropagation(); window.TracesApp.connectionManager.disconnect('${connId}')" title="Desconectar este banco">✕</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+                <div style="height: 6px;"></div>
+              ` : ''}
+
+              <div style="font-size: 9.5px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 2px 2px;">
+                📁 PERFIS SALVOS (${this.connections.length})
+              </div>
               ${this.connections.map(item => {
                 const isConn = this.activeConnections.has(item.id);
                 const isActive = this.activeConn && this.activeConn.id === item.id;
+                const isSelected = (c && c.id === item.id);
                 return `
                 <div style="
-                  padding: 8px 10px;
+                  padding: 6px 8px;
                   border-radius: 3px;
                   cursor: pointer;
                   border-left: 4px solid ${item.color || '#0078d7'};
-                  background: ${item.id === c.id ? '#e0f2fe' : (isConn ? '#f0fdf4' : '#f9fafb')};
-                  border: 1px solid ${item.id === c.id ? '#38bdf8' : (isConn ? '#86efac' : '#e5e7eb')};
+                  background: ${isSelected ? '#e0f2fe' : (isConn ? '#f0fdf4' : '#f9fafb')};
+                  border-top: 1px solid ${isSelected ? '#38bdf8' : (isConn ? '#86efac' : '#e5e7eb')};
+                  border-right: 1px solid ${isSelected ? '#38bdf8' : (isConn ? '#86efac' : '#e5e7eb')};
+                  border-bottom: 1px solid ${isSelected ? '#38bdf8' : (isConn ? '#86efac' : '#e5e7eb')};
                   display: flex;
                   justify-content: space-between;
                   align-items: center;
                 " onclick="window.TracesApp.connectionManager.selectProfile('${item.id}')">
-                  <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
                     <div style="display: flex; align-items: center; gap: 4px;">
                       <span style="font-weight: 700; color: #111; font-size: 11px;">${item.name}</span>
-                      ${isActive ? '<span style="font-size: 8.5px; background: #16a34a; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 700;">ATIVO</span>' : (isConn ? '<span style="font-size: 8.5px; background: #0284c7; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 700;">CONECTADO</span>' : '')}
+                      ${isActive ? '<span style="font-size: 8px; background: #16a34a; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 700;">★ ATIVO</span>' : (isConn ? '<span style="font-size: 8px; background: #0284c7; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 700;">ON</span>' : '')}
                     </div>
-                    <div style="font-size: 10px; color: #666; font-family: var(--toad-font-code);">${item.user}@${item.serviceName}</div>
+                    <div style="font-size: 10px; color: #666; font-family: var(--toad-font-code);">${item.user}@${item.serviceName} (${item.host})</div>
                     ${item.useBridge && item.bridgeHost ? `
-                      <div style="font-size: 9.5px; color: #0284c7; font-weight: 600;">🌉 via ${item.bridgeHost}</div>
+                      <div style="font-size: 9px; color: #0284c7; font-weight: 600;">🌉 via ${item.bridgeHost}</div>
                     ` : ''}
                   </div>
-                  <div style="display: flex; gap: 2px;">
+                  <div style="display: flex; gap: 2px; margin-left: 4px;">
                     ${isConn && !isActive ? `
-                      <button class="btn" style="padding: 1px 4px; font-size: 9px; color: #0284c7; background: #fff;" onclick="event.stopPropagation(); window.TracesApp.connectionManager.switchConnection('${item.id}')" title="Alternar para este banco ativo">⚡</button>
+                      <button class="btn" style="padding: 1px 4px; font-size: 9px; color: #0284c7; background: #fff;" onclick="event.stopPropagation(); window.TracesApp.connectionManager.switchConnection('${item.id}')" title="Alternar para este banco">⚡</button>
                     ` : ''}
                     ${this.connections.length > 1 ? `
-                      <button class="btn" style="padding: 1px 4px; font-size: 9px; color: #ef4444;" onclick="event.stopPropagation(); window.TracesApp.connectionManager.deleteProfile('${item.id}')" title="Excluir">✕</button>
+                      <button class="btn" style="padding: 1px 4px; font-size: 9px; color: #ef4444;" onclick="event.stopPropagation(); window.TracesApp.connectionManager.deleteProfile('${item.id}')" title="Excluir Perfil">✕</button>
                     ` : ''}
                   </div>
                 </div>
@@ -553,7 +639,7 @@ class ConnectionManager {
               </button>
               <button class="btn" onclick="window.TracesApp.connectionManager.testCurrentProfile();">🔍 Testar</button>
               <button class="btn btn-primary" style="font-weight: 700; background: #15803d; border-color: #166534;" onclick="window.TracesApp.connectionManager.connectCurrentProfile();">
-                ${this.activeConnections.has(c.id) ? '⚡ Reconectar Banco' : '⚡ Conectar ao Banco'}
+                ${this.activeConnections.has(c.id) ? '⚡ Reconectar Banco' : (this.activeConnections.size > 0 ? '➕ Conectar Também Neste' : '⚡ Conectar ao Banco')}
               </button>
             </div>
           </div>
@@ -729,7 +815,26 @@ class ConnectionManager {
   }
 
   async connectCurrentProfile() {
-    const c = this.readFormData();
+    let c = this.readFormData();
+    if (!c) return;
+
+    // Multi-connection safe guard: If this ID is already connected, but host/port/service/user changed,
+    // clone to a fresh profile so the previous active database stays intact!
+    if (this.activeConnections.has(c.id)) {
+      const activeEntry = this.activeConnections.get(c.id);
+      const prevCfg = activeEntry?.config;
+      if (prevCfg && (prevCfg.host !== c.host || prevCfg.port !== c.port || prevCfg.serviceName !== c.serviceName || prevCfg.user !== c.user)) {
+        const newId = `conn-${Date.now()}`;
+        const cloned = JSON.parse(JSON.stringify(c));
+        cloned.id = newId;
+        cloned.name = `${cloned.user}@${cloned.serviceName} (${cloned.host})`;
+        this.connections.push(cloned);
+        this.saveConnections();
+        this.editingConn = cloned;
+        c = cloned;
+      }
+    }
+
     const statusEl = document.getElementById('real-test-status');
     const viaText = c.useBridge && c.bridgeHost ? ` via Ponte ${c.bridgeHost}` : '';
     if (statusEl) {
@@ -768,8 +873,14 @@ class ConnectionManager {
         this.saveConnections();
 
         // Registra no mapa de conexões simultaneamente ativas
+        const prevConnId = this.activeConn?.id;
+        const isNewConn = !this.activeConnections.has(c.id);
         this.activeConnections.set(c.id, { config: c, data: data });
         this.activeConn = c;
+        if (prevConnId && prevConnId !== c.id && window.TracesApp.swapWorkspace) {
+          if (isNewConn) window.TracesApp.dropWorkspace(c.id);
+          window.TracesApp.swapWorkspace(prevConnId, c.id);
+        }
 
         window.TracesApp.isRealDatabase = true;
         window.TracesApp.realDatabaseConfig = c;
@@ -806,6 +917,8 @@ class ConnectionManager {
 
         this.renderHeaderPill();
         this.updateSelectorDropdown();
+        this.renderConnectionBar();
+        if (window.TracesApp.sqlEditor?.renderTabs) window.TracesApp.sqlEditor.renderTabs();
         this.closeModal();
 
         const successMsg = this.activeConnections.size > 1
@@ -864,6 +977,45 @@ class ConnectionManager {
       return;
     }
 
+    const c = found.config;
+    const prevId = this.activeConn?.id;
+
+    // Instant 0ms visual switch
+    this.activeConn = c;
+    window.TracesApp.isRealDatabase = true;
+    window.TracesApp.realDatabaseConfig = c;
+    if (prevId !== id && window.TracesApp.swapWorkspace) {
+      window.TracesApp.swapWorkspace(prevId, id);
+    }
+
+    // Atualizar título
+    const titleEl = document.getElementById('toad-window-title');
+    const multiCount = this.activeConnections.size > 1 ? ` [${this.activeConnections.size} Bancos Conectados]` : '';
+    if (titleEl) {
+      if (c.useBridge && c.bridgeHost) {
+        titleEl.textContent = `Toad for Oracle - [REAL ORACLE: ${c.user}@${c.host}:${c.port}/${c.serviceName} (via Ponte: ${c.bridgeHost})]${multiCount}`;
+      } else {
+        titleEl.textContent = `Toad for Oracle - [REAL ORACLE: ${c.user}@${c.host}:${c.port}/${c.serviceName} (${c.role})]${multiCount}`;
+      }
+    }
+
+    // Atualizar barra de status
+    const userEl = document.getElementById('status-db-user');
+    if (userEl) {
+      const multiText = this.activeConnections.size > 1 ? ` | +${this.activeConnections.size - 1} banco(s)` : '';
+      userEl.textContent = `${c.user}@${c.serviceName} (${c.role})${c.useBridge && c.bridgeHost ? ' 🌉 Ponte: ' + c.bridgeHost : ''}${multiText}`;
+    }
+
+    // Color band
+    const band = document.getElementById('toad-color-band');
+    if (band) band.style.backgroundColor = c.color || '#0078d7';
+
+    this.renderHeaderPill();
+    this.updateSelectorDropdown();
+    this.renderConnectionBar();
+    if (window.TracesApp.sqlEditor?.renderTabs) window.TracesApp.sqlEditor.renderTabs();
+    this.renderModal();
+
     try {
       const resp = await fetch('/api/switch-connection', {
         method: 'POST',
@@ -871,57 +1023,27 @@ class ConnectionManager {
         body: JSON.stringify({ conn_id: id })
       });
       const data = await resp.json();
-      if (data.success) {
-        this.activeConn = found.config;
-        window.TracesApp.isRealDatabase = true;
-        window.TracesApp.realDatabaseConfig = found.config;
-        if (data.connection && data.connection.os) {
+      if (data.success && data.connection) {
+        if (data.connection.os) {
           window.TracesApp.setServerOs(data.connection.os);
         }
-
-        // Atualizar título
-        const titleEl = document.getElementById('toad-window-title');
-        const c = found.config;
-        const multiCount = this.activeConnections.size > 1 ? ` [${this.activeConnections.size} Bancos Conectados]` : '';
-        if (titleEl) {
-          if (c.useBridge && c.bridgeHost) {
-            titleEl.textContent = `Toad for Oracle - [REAL ORACLE: ${c.user}@${c.host}:${c.port}/${c.serviceName} (via Ponte: ${c.bridgeHost})]${multiCount}`;
-          } else {
-            titleEl.textContent = `Toad for Oracle - [REAL ORACLE: ${c.user}@${c.host}:${c.port}/${c.serviceName} (${c.role})]${multiCount}`;
-          }
-        }
-
-        // Atualizar barra de status
         const dbVerEl = document.getElementById('status-db-version');
-        const userEl = document.getElementById('status-db-user');
         if (dbVerEl) dbVerEl.textContent = `${data.connection.banner || 'Oracle Database'} (${data.connection.mode || 'THICK'})`;
-        if (userEl) {
-          const multiText = this.activeConnections.size > 1 ? ` | +${this.activeConnections.size - 1} banco(s)` : '';
-          userEl.textContent = `${c.user}@${c.serviceName} (${c.role})${c.useBridge && c.bridgeHost ? ' 🌉 Ponte: ' + c.bridgeHost : ''}${multiText}`;
-        }
-
-        // Color band
-        const band = document.getElementById('toad-color-band');
-        if (band) band.style.backgroundColor = c.color || '#0078d7';
-
-        this.renderHeaderPill();
-        this.updateSelectorDropdown();
-        this.renderModal();
-
-        if (window.TracesApp && typeof window.TracesApp.updateConnectionState === 'function') {
-          window.TracesApp.updateConnectionState();
-        }
-
-        // Atualizar Schema Browser, Sessions e DBA Hub para a nova conexão ativa
-        if (window.TracesApp.schemaBrowser?.loadRealSchemas) window.TracesApp.schemaBrowser.loadRealSchemas();
-        if (window.TracesApp.sessionMonitor?.loadRealSessions) window.TracesApp.sessionMonitor.loadRealSessions();
-        if (window.TracesApp.databaseProbe?.loadRealProbe) window.TracesApp.databaseProbe.loadRealProbe();
-
-        window.TracesApp.notify(`Banco ativo alterado para: ${c.name} (${c.user}@${c.serviceName})`, 'info');
       }
     } catch (err) {
-      console.error('Falha ao alternar conexão:', err);
+      console.error('Falha ao alternar conexão no backend:', err);
     }
+
+    if (window.TracesApp && typeof window.TracesApp.updateConnectionState === 'function') {
+      window.TracesApp.updateConnectionState();
+    }
+
+    // Atualizar Schema Browser, Sessions e DBA Hub para a nova conexão ativa
+    if (window.TracesApp.schemaBrowser?.loadRealSchemas) window.TracesApp.schemaBrowser.loadRealSchemas();
+    if (window.TracesApp.sessionMonitor?.loadRealSessions) window.TracesApp.sessionMonitor.loadRealSessions();
+    if (window.TracesApp.databaseProbe?.loadRealProbe) window.TracesApp.databaseProbe.loadRealProbe();
+
+    window.TracesApp.notify(`Banco ativo alterado para: ${c.name} (${c.user}@${c.serviceName} em ${c.host})`, 'info');
   }
 
   renderHeaderPill() {
@@ -947,6 +1069,62 @@ class ConnectionManager {
       ${multiBadge}
       <span style="color: #4b5563; font-size: 10px;">(${c.role || 'NORMAL'})</span>
     `;
+  }
+
+  renderConnectionBar() {
+    if (!this.connectionBarEl) {
+      this.connectionBarEl = document.getElementById('toad-connection-bar');
+    }
+    if (!this.connectionBarEl) return;
+
+    const totalActive = this.activeConnections.size;
+    if (totalActive === 0) {
+      this.connectionBarEl.innerHTML = `
+        <div class="toad-conn-bar-label">
+          <span>🔌 Conexões:</span>
+        </div>
+        <span style="color: #94a3b8; font-size: 10.5px; font-style: italic; margin-right: 8px;">Nenhum banco conectado</span>
+        <button class="toad-conn-bar-add" onclick="window.TracesApp.connectionManager.openModal()" title="Abrir Gerenciador de Conexões">
+          <span>⚡ Conectar ao Banco de Dados...</span>
+        </button>
+      `;
+      return;
+    }
+
+    let html = `
+      <div class="toad-conn-bar-label" title="${totalActive} conexão(ões) Oracle simultaneamente ativa(s)">
+        <span>🔌 Conexões (${totalActive}):</span>
+      </div>
+    `;
+
+    this.activeConnections.forEach((entry, connId) => {
+      const c = entry.config;
+      const isActive = Boolean(this.activeConn && this.activeConn.id === connId);
+      const envColor = c.color || '#16a34a';
+      const bridgeBadge = (c.useBridge && c.bridgeHost) ? ' 🌉' : '';
+      const titleText = `${c.name || 'Oracle'}\nUsuário: ${c.user} (${c.role || 'NORMAL'})\nDestino: ${c.host}:${c.port}/${c.serviceName}${c.useBridge ? '\nPonte: ' + c.bridgeHost : ''}\nStatus: ${isActive ? 'BANCO ATIVO ATUAL (0ms switch)' : 'Conectado (Clique para alternar sem desconectar)'}`;
+
+      html += `
+        <div class="toad-conn-bar-tab ${isActive ? 'active' : ''}" 
+             onclick="window.TracesApp.connectionManager.switchConnection('${connId}')"
+             title="${titleText}">
+          <span class="toad-conn-bar-indicator" style="background: ${envColor};"></span>
+          <span style="font-weight: ${isActive ? '700' : '600'};">${c.user}@${c.serviceName || 'ORCL'}</span>
+          <span class="toad-conn-bar-host">(${c.host}${bridgeBadge})</span>
+          <span class="toad-conn-bar-close" 
+                onclick="event.stopPropagation(); window.TracesApp.connectionManager.disconnect('${connId}');" 
+                title="Desconectar apenas este banco (${c.name})">✕</span>
+        </div>
+      `;
+    });
+
+    html += `
+      <button class="toad-conn-bar-add" onclick="window.TracesApp.connectionManager.openNewConnectionModal()" title="Conectar em mais um banco ou host simultaneamente sem desconectar dos outros (estilo TOAD for Oracle)">
+        <span>➕ Conectar em Mais um Banco / Host...</span>
+      </button>
+    `;
+
+    this.connectionBarEl.innerHTML = html;
   }
 
   updateSelectorDropdown() {
@@ -1020,6 +1198,8 @@ class ConnectionManager {
 
     const wasActive = (this.activeConn && this.activeConn.id === targetId);
     this.activeConnections.delete(targetId);
+    if (window.TracesApp?.dropWorkspace) window.TracesApp.dropWorkspace(targetId);
+    if (wasActive) this.activeConn = null;
 
     if (this.activeConnections.size > 0) {
       if (wasActive) {
@@ -1030,6 +1210,8 @@ class ConnectionManager {
       } else {
         this.renderHeaderPill();
         this.updateSelectorDropdown();
+        this.renderConnectionBar();
+        if (window.TracesApp.sqlEditor?.renderTabs) window.TracesApp.sqlEditor.renderTabs();
         this.renderModal();
       }
       window.TracesApp?.notify(`Conexão desconectada. (${this.activeConnections.size} banco(s) restante(s))`, 'info');
@@ -1041,6 +1223,8 @@ class ConnectionManager {
       }
       this.renderHeaderPill();
       this.updateSelectorDropdown();
+      this.renderConnectionBar();
+      if (window.TracesApp.sqlEditor?.renderTabs) window.TracesApp.sqlEditor.renderTabs();
       this.renderModal();
       const titleEl = document.getElementById('toad-window-title');
       if (titleEl) titleEl.textContent = 'Toad for Oracle - [Desconectado]';
@@ -1080,6 +1264,8 @@ class ConnectionManager {
     }
     this.renderHeaderPill();
     this.updateSelectorDropdown();
+    this.renderConnectionBar();
+    if (window.TracesApp.sqlEditor?.renderTabs) window.TracesApp.sqlEditor.renderTabs();
     this.renderModal();
     const titleEl = document.getElementById('toad-window-title');
     if (titleEl) titleEl.textContent = 'Toad for Oracle - [Desconectado]';
@@ -1124,6 +1310,9 @@ class ConnectionManager {
         if (this.activeConn) {
           window.TracesApp.isRealDatabase = true;
           window.TracesApp.realDatabaseConfig = this.activeConn;
+          if (window.TracesApp.dbaTools?.updateConnectionState) {
+            window.TracesApp.dbaTools.updateConnectionState(true);
+          }
           if (window.TracesApp.sessionMonitor?.loadRealSessions) {
             window.TracesApp.sessionMonitor.loadRealSessions();
           }
@@ -1136,9 +1325,14 @@ class ConnectionManager {
         }
         this.renderHeaderPill();
         this.updateSelectorDropdown();
+        this.renderConnectionBar();
+        if (window.TracesApp.sqlEditor?.renderTabs) window.TracesApp.sqlEditor.renderTabs();
+      } else {
+        this.renderConnectionBar();
       }
     } catch (e) {
       // Offline / startup
+      this.renderConnectionBar();
     }
   }
 
