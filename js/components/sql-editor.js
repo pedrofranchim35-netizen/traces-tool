@@ -126,9 +126,15 @@ END;`
       });
 
       this.textarea.addEventListener('keyup', () => this.updateCursorPosition());
-      this.textarea.addEventListener('click', () => {
+      this.textarea.addEventListener('click', (e) => {
         this.updateCursorPosition();
         this.hideInsight();
+        if (e.ctrlKey || e.metaKey || e.altKey) {
+          const token = this.getWordAtCursor();
+          if (token && window.TracesApp?.smartInspect) {
+            window.TracesApp.smartInspect(token);
+          }
+        }
       });
       this.textarea.addEventListener('select', () => this.updateCursorPosition());
 
@@ -1045,8 +1051,19 @@ END;`
     const tab = this.getActiveTab();
     const canUndo = Boolean(tab && tab.history && tab.history.length > 1);
     const canRedo = Boolean(tab && tab.future && tab.future.length > 0);
+    const token = this.getWordAtCursor();
 
-    const items = [
+    const items = [];
+    if (token) {
+      items.push(
+        { label: `🔍 Inspecionar "${token}" (Mais Informações)`, icon: '⚡', shortcut: 'Ctrl+Click', action: () => window.TracesApp?.smartInspect?.(token) },
+        { label: `🗄 Ir para "${token}" no Schema Browser`, icon: '🗄', shortcut: '', action: () => window.TracesApp?.navigateToObject?.(token) },
+        { label: `🔎 Describe "${token}"`, icon: '🔎', shortcut: 'F4', action: () => window.TracesApp?.toadModals?.openDescribe?.(token) },
+        { separator: true }
+      );
+    }
+
+    items.push(
       { label: 'Desfazer', icon: '↶', shortcut: 'Ctrl+Z', disabled: !canUndo, action: () => this.undo() },
       { label: 'Refazer', icon: '↷', shortcut: 'Ctrl+Y', disabled: !canRedo, action: () => this.redo() },
       { separator: true },
@@ -1062,7 +1079,7 @@ END;`
       { separator: true },
       { label: 'Executar Statement', icon: '▶', shortcut: 'F9', action: () => this.executeStatement() },
       { label: 'Explain Plan', icon: '🌳', shortcut: 'Ctrl+E', action: () => this.explainPlan() }
-    ];
+    );
 
     if (typeof window.showToadContextMenu === 'function') {
       window.showToadContextMenu(x, y, items);
@@ -1857,6 +1874,26 @@ END;`
     }
   }
 
+  getWordAtCursor() {
+    if (!this.textarea) return '';
+    const val = this.textarea.value || '';
+    const selStart = this.textarea.selectionStart || 0;
+    const selEnd = this.textarea.selectionEnd || 0;
+    if (selStart !== selEnd) {
+      const sel = val.substring(selStart, selEnd).trim();
+      if (sel.length > 0 && sel.length <= 90 && !sel.includes('\n')) {
+        return sel.replace(/^['";,()]+|['";,()]+$/g, '');
+      }
+    }
+    let left = selStart;
+    let right = selStart;
+    const isTokenChar = (ch) => /[a-zA-Z0-9_$.#\-]/.test(ch);
+    while (left > 0 && isTokenChar(val[left - 1])) left--;
+    while (right < val.length && isTokenChar(val[right])) right++;
+    const word = val.substring(left, right).replace(/^\.+|\.+$/g, '').trim();
+    return word;
+  }
+
   updateCursorPosition() {
     if (!this.textarea) return;
     const pos = this.textarea.selectionStart || 0;
@@ -1866,6 +1903,51 @@ END;`
     const col = lines[lines.length - 1].length + 1;
     const posEl = document.getElementById('status-editor-pos');
     if (posEl) posEl.textContent = `Ln ${line}, Col ${col}`;
+
+    this.updateInteractiveCursorTokenBar();
+  }
+
+  updateInteractiveCursorTokenBar() {
+    const labelEl = document.getElementById('editor-cursor-token-label');
+    const actionsEl = document.getElementById('editor-cursor-token-actions');
+    if (!labelEl || !actionsEl) return;
+
+    const word = this.getWordAtCursor();
+    const sqlKeywords = new Set([
+      'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER', 'BY', 'GROUP', 'HAVING', 'INSERT', 'INTO',
+      'VALUES', 'UPDATE', 'SET', 'DELETE', 'AS', 'ON', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER',
+      'BEGIN', 'END', 'DECLARE', 'IS', 'IN', 'OUT', 'NULL', 'NOT', 'DISTINCT', 'UNION', 'ALL',
+      'CREATE', 'ALTER', 'DROP', 'TABLE', 'VIEW', 'INDEX', 'PROCEDURE', 'FUNCTION', 'PACKAGE', 'BODY'
+    ]);
+
+    if (!word || word.length < 2) {
+      labelEl.innerHTML = `Posicione o cursor sobre qualquer palavra/objeto (ou use <b>Ctrl+Clique</b> / <b>Duplo-Clique</b> em qualquer tela) para abrir detalhes ou navegar`;
+      actionsEl.innerHTML = '';
+      return;
+    }
+
+    const upper = word.toUpperCase();
+    const safeWord = word.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const isKeyword = sqlKeywords.has(upper);
+
+    labelEl.innerHTML = `Palavra selecionada: <span class="editor-cursor-token-pill" onclick="window.TracesApp.smartInspect('${safeWord}')" title="Clique para inspecionar '${safeWord}'">⚡ ${this.escapeHtml(word)}</span> <span style="color:#64748b; font-size:10.5px;">${isKeyword ? '(Comando / Cláusula SQL)' : '(Clique nos botões ao lado ou pressione Ctrl+Clique para abrir)'}</span>`;
+
+    actionsEl.innerHTML = `
+      <button type="button" class="btn btn-primary" style="height: 20px; padding: 0 8px; font-size: 10px; font-weight: 700;" onclick="window.TracesApp.smartInspect('${safeWord}')">
+        🔍 Mais Informações
+      </button>
+      ${!isKeyword ? `
+        <button type="button" class="btn" style="height: 20px; padding: 0 7px; font-size: 10px; font-weight: 600;" onclick="window.TracesApp.navigateToObject('${safeWord}')">
+          🗄 Ir p/ Schema Browser
+        </button>
+        <button type="button" class="btn" style="height: 20px; padding: 0 7px; font-size: 10px;" onclick="window.TracesApp.toadModals.openDescribe('${safeWord}')">
+          🔎 Describe (F4)
+        </button>
+        <button type="button" class="btn" style="height: 20px; padding: 0 7px; font-size: 10px;" onclick="window.TracesApp.openObjectInWorksheet('${safeWord}')">
+          📊 Consultar Dados
+        </button>
+      ` : ''}
+    `;
   }
 
   switchOutputTab(tabKey) {
@@ -1883,7 +1965,8 @@ END;`
     if (!this.consoleScript) return;
     const div = document.createElement('div');
     div.className = 'console-line';
-    div.innerHTML = `<span class="console-timestamp">${new Date().toLocaleTimeString()}</span> <span>${msg}</span>`;
+    const linkedMsg = window.TracesApp?.linkifyInteractiveText ? window.TracesApp.linkifyInteractiveText(msg) : msg;
+    div.innerHTML = `<span class="console-timestamp">${new Date().toLocaleTimeString()}</span> <span>${linkedMsg}</span>`;
     this.consoleScript.appendChild(div);
     this.consoleScript.scrollTop = this.consoleScript.scrollHeight;
   }

@@ -106,9 +106,9 @@ class DatabaseProbe {
       else if (pct >= 70) stateClass = 'warning';
 
       return `
-        <div class="storage-item">
+        <div class="storage-item toad-interactive-card" style="padding: 4px 6px; border-radius: 4px;" title="Clique para inspecionar a tablespace ${ts.name} ou abrir Visão Geral no Schema Browser" onclick="window.TracesApp.smartInspect('${ts.name}', 'tablespace')">
           <div class="storage-labels">
-            <span class="storage-name" style="font-weight: 600;">${ts.name} (${ts.datafiles || 1} datafiles)</span>
+            <span class="storage-name toad-clickable-token" style="font-weight: 600;">🗄️ ${ts.name} (${ts.datafiles || 1} datafiles)</span>
             <span class="storage-pct">${(ts.usedMb || 0).toLocaleString()} MB / ${(ts.totalMb || 0).toLocaleString()} MB (${pct}%)</span>
           </div>
           <div class="storage-track">
@@ -127,16 +127,18 @@ class DatabaseProbe {
       return;
     }
 
-    this.alertsTableBody.innerHTML = this.alerts.map(a => {
+    this.alertsTableBody.innerHTML = this.alerts.map((a, idx) => {
       const isPass = a.status === 'PASS';
       const isWarn = a.status === 'WARN';
+      const safeName = String(a.name || '').replace(/'/g, "\\'");
+      const safeVal = String(a.value || '').replace(/'/g, "\\'");
 
       return `
-        <tr>
+        <tr style="cursor: pointer;" title="Clique para abrir diagnóstico detalhado e ações recomendadas para '${this.escapeAttr ? this.escapeAttr(a.name) : a.name}'" onclick="window.TracesApp.inspectProbeAlert(${idx})">
           <td style="font-family: var(--font-code); font-weight: 600; width: 60px;">#${a.id}</td>
-          <td style="font-weight: 600; color: var(--text-primary); width: 220px;">${a.name}</td>
+          <td style="font-weight: 600; color: var(--text-primary); width: 220px;"><span class="toad-clickable-token">🔎 ${a.name}</span></td>
           <td style="color: var(--text-secondary); font-size: 11px;">${a.desc}</td>
-          <td style="font-family: var(--font-code); font-size: 11px; color: #0078d7; width: 180px;">${a.value}</td>
+          <td style="font-family: var(--font-code); font-size: 11px; color: #0078d7; width: 180px;" onclick="event.stopPropagation(); window.TracesApp.smartInspect('${safeVal || safeName}')"><span class="toad-clickable-token">${a.value}</span></td>
           <td style="width: 100px;">
             <span class="alert-state-badge ${isPass ? 'pass' : (isWarn ? 'warn' : 'fail')}">
               ${a.status}

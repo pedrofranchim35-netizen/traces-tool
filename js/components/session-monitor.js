@@ -775,7 +775,7 @@ class SessionMonitor {
               case 'status':
                 return `<td style="${baseStyle}"><span class="session-status-badge ${(s.status || 'INACTIVE').toLowerCase()} ${isBlocked ? 'blocked' : ''}">${isBlocked ? 'WAIT LOCK' : s.status}</span></td>`;
               case 'username':
-                return `<td style="${baseStyle} font-weight: 700; color: ${s.username === 'BACKGROUND' ? '#64748b' : '#0284c7'}; font-family: var(--font-code);">${s.username || 'BACKGROUND'}</td>`;
+                return `<td style="${baseStyle} font-weight: 700; color: ${s.username === 'BACKGROUND' ? '#64748b' : '#0284c7'}; font-family: var(--font-code);">${s.username && s.username !== 'BACKGROUND' ? `<span class="toad-clickable-token" title="Clique para inspecionar o schema/usuário ${s.username} ou abrir no Schema Browser" onclick="event.stopPropagation(); window.TracesApp.smartInspect('${s.username}', 'schema')">${s.username}</span>` : 'BACKGROUND'}</td>`;
               case 'osuser':
                 return `<td style="${baseStyle}">${this.escapeHtml(s.osuser || '-')}</td>`;
               case 'machine':
@@ -789,11 +789,11 @@ class SessionMonitor {
               case 'spid':
                 return `<td style="${baseStyle} font-family: var(--font-code); color: #4338ca; font-weight: 600;">${s.spid || '-'}</td>`;
               case 'sqlId':
-                return `<td style="${baseStyle} font-family: var(--font-code); color: #0369a1; font-weight: 600;">${s.sqlId || '-'}</td>`;
+                return `<td style="${baseStyle} font-family: var(--font-code); color: #0369a1; font-weight: 600;">${s.sqlId ? `<span class="toad-clickable-token" title="Clique para abrir o SQL_ID ${s.sqlId} (Texto SQL, Plano de Execução e Métricas)" onclick="event.stopPropagation(); window.TracesApp.smartInspect('${s.sqlId}', 'sql_id')">${s.sqlId}</span>` : '-'}</td>`;
               case 'waitClass':
                 return `<td style="${baseStyle} font-size: 10.5px;">${this.escapeHtml(s.waitClass || '-')}</td>`;
               case 'event':
-                return `<td style="${baseStyle} color: ${isBlocked ? '#dc2626' : 'var(--text-secondary)'}; font-size: 10.5px; font-family: var(--font-code);" title="${this.escapeHtml(s.event || 'None')}">${this.escapeHtml(s.event || 'None')}</td>`;
+                return `<td style="${baseStyle} color: ${isBlocked ? '#dc2626' : 'var(--text-secondary)'}; font-size: 10.5px; font-family: var(--font-code);" title="Clique para inspecionar o Wait Event: ${this.escapeHtml(s.event || 'None')}">${s.event && s.event !== 'None' ? `<span class="toad-clickable-token" onclick="event.stopPropagation(); window.TracesApp.smartInspect('${String(s.event).replace(/'/g, "\\'")}', 'wait_event')">${this.escapeHtml(s.event)}</span>` : 'None'}</td>`;
               case 'lastCallEt':
                 return `<td style="${baseStyle} font-family: var(--font-code);">${(s.lastCallEt ?? 0).toLocaleString()}s</td>`;
               case 'logonTime':

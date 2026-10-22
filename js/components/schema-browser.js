@@ -1370,10 +1370,10 @@ class SchemaBrowser {
             <tbody>
               ${obj.indexes.map(ix => `
                 <tr>
-                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${ix.name}</td>
+                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);"><span class="toad-clickable-token" title="Clique para inspecionar o índice ${ix.name}" onclick="window.TracesApp.smartInspect('${ix.name}', 'object')">${ix.name}</span></td>
                   <td>${ix.type}</td>
                   <td style="color: var(--text-primary); font-family: var(--font-code);">${ix.columns}</td>
-                  <td style="color: var(--text-muted);">${ix.tablespace || '-'}</td>
+                  <td style="color: var(--text-muted);">${ix.tablespace ? `<span class="toad-clickable-token" title="Clique para inspecionar a tablespace ${ix.tablespace}" onclick="window.TracesApp.smartInspect('${ix.tablespace}', 'tablespace')">${ix.tablespace}</span>` : '-'}</td>
                   <td>${ix.clusteringFactor || '-'}</td>
                   <td><span class="status-indicator valid">${ix.status || 'VALID'}</span></td>
                   <td style="text-align: right; white-space: nowrap;">
@@ -1533,7 +1533,7 @@ class SchemaBrowser {
             <tbody>
               ${visibleGrants.map(g => `
                 <tr>
-                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);">${g.grantee}</td>
+                  <td style="font-weight: 600; color: #0078d7; font-family: var(--font-code);"><span class="toad-clickable-token" title="Clique para inspecionar o usuário/role ${g.grantee}" onclick="window.TracesApp.smartInspect('${g.grantee}', 'schema')">${g.grantee}</span></td>
                   <td style="font-weight: 700;">${g.privilege}</td>
                   <td>${g.grantable === 'YES' ? '<span style="color:#008000; font-weight:700;">YES</span>' : 'NO'}</td>
                   <td style="text-align: right;">
@@ -1590,9 +1590,9 @@ class SchemaBrowser {
             <div class="metric-label">Avg Row Length (BYTES)</div>
             <div class="metric-value" style="font-size: 20px;">${(stats.avgRowLen || obj.avgRowLen) ? (stats.avgRowLen || obj.avgRowLen) + ' bytes' : '-'}</div>
           </div>
-          <div class="advisor-card">
-            <div class="metric-label">Tablespace</div>
-            <div class="metric-value" style="font-size: 20px; color: var(--traces-red);">${stats.tablespace || obj.tablespace || 'USERS'}</div>
+          <div class="advisor-card toad-interactive-card" title="Clique para inspecionar esta Tablespace" onclick="window.TracesApp.smartInspect('${stats.tablespace || obj.tablespace || 'USERS'}', 'tablespace')">
+            <div class="metric-label">Tablespace (Clique p/ Detalhes)</div>
+            <div class="metric-value toad-clickable-token" style="font-size: 20px; color: var(--traces-red);">${stats.tablespace || obj.tablespace || 'USERS'}</div>
           </div>
           <div class="advisor-card" style="grid-column: 1 / -1;">
             <div class="metric-label">Last DBMS_STATS Gathered</div>
@@ -1660,8 +1660,8 @@ class SchemaBrowser {
             <tbody>
               ${visibleDeps.map(d => `
                 <tr>
-                  <td style="font-weight: 600; color: #0078d7;">${d.referencedOwner}</td>
-                  <td style="font-weight: 600; font-family: var(--font-code);">${d.referencedName}</td>
+                  <td style="font-weight: 600; color: #0078d7;"><span class="toad-clickable-token" title="Clique para inspecionar o schema ${d.referencedOwner}" onclick="window.TracesApp.smartInspect('${d.referencedOwner}', 'schema')">${d.referencedOwner}</span></td>
+                  <td style="font-weight: 600; font-family: var(--font-code);"><span class="toad-clickable-token" title="Clique para abrir ou inspecionar ${d.referencedOwner}.${d.referencedName}" onclick="window.TracesApp.smartInspect('${d.referencedOwner ? d.referencedOwner + '.' : ''}${d.referencedName}', 'object')">${d.referencedName}</span></td>
                   <td style="color: var(--syntax-keyword);">${d.referencedType}</td>
                   <td style="color: var(--text-muted);">${d.dependencyType || d.link || '-'}</td>
                 </tr>

@@ -1101,3 +1101,78 @@
   width: 180px;
 }
 
+/* --------------------------------------------------------------------------
+   UNIVERSAL INTERACTIVE TOKENS, DRILL-DOWN LINKS & SMART INSPECTOR
+   -------------------------------------------------------------------------- */
+.toad-clickable-token,
+[data-inspect] {
+  cursor: pointer !important;
+  text-decoration: underline dotted rgba(2, 132, 199, 0.55);
+  text-underline-offset: 2px;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  border-radius: 2px;
+}
+
+.toad-clickable-token:hover,
+[data-inspect]:hover {
+  background-color: rgba(14, 165, 233, 0.14) !important;
+  color: #0284c7 !important;
+  text-decoration: underline solid #0284c7;
+}
+
+.toad-xplan-view .toad-clickable-token {
+  text-decoration: underline dotted rgba(250, 204, 21, 0.65);
+}
+
+.toad-xplan-view .toad-clickable-token:hover {
+  background-color: rgba(250, 204, 21, 0.22) !important;
+  color: #fde047 !important;
+  text-decoration: underline solid #fde047;
+}
+
+.toad-interactive-card {
+  cursor: pointer !important;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.toad-interactive-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.18) !important;
+  border-color: #38bdf8 !important;
+}
+
+.editor-cursor-token-bar {
+  height: 25px;
+  background: linear-gradient(90deg, #f0f9ff 0%, #f8fafc 100%);
+  border-top: 1px solid #bae6fd;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  font-size: 11px;
+  color: #0f172a;
+  gap: 8px;
+  flex-shrink: 0;
+  z-index: 5;
+}
+
+.editor-cursor-token-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-family: var(--toad-font-code, monospace);
+  font-weight: 700;
+  font-size: 11px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  cursor: pointer;
+}
+
+.editor-cursor-token-pill:hover {
+  background: #bae6fd;
+}
+
+

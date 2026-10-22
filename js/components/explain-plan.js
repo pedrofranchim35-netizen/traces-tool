@@ -485,7 +485,7 @@ Predicate Information (identified by operation id):
         <div class="toad-xplan-view" style="background: #000000; border: 1px solid #27272a; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column;">
           <div style="background: #18181b; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="color: #facc15; font-weight: 700; font-size: 11px; font-family: var(--font-code);">⚡ DBMS_XPLAN Formatted Output (Starts &amp; E-Rows)</span>
+              <span style="color: #facc15; font-weight: 700; font-size: 11px; font-family: var(--font-code);">⚡ DBMS_XPLAN Formatted Output (Starts &amp; E-Rows) — <span style="color:#38bdf8; font-weight:600;">Clique em qualquer Operação ou Objeto (Tabela/Índice) para inspecionar!</span></span>
             </div>
             <div style="display: flex; gap: 6px;">
               <button class="btn" style="height: 22px; padding: 0 8px; font-size: 10px; background: #27272a; color: #facc15; border: 1px solid #3f3f46;" onclick="navigator.clipboard.writeText(window.TracesApp.explainPlan.planText || ''); window.TracesApp.notify('DBMS_XPLAN copiado!', 'success');">
@@ -493,10 +493,53 @@ Predicate Information (identified by operation id):
               </button>
             </div>
           </div>
-          <pre style="margin: 0; padding: 16px 20px; overflow-x: auto; color: #facc15; background: #000000; font-family: 'Consolas', 'Cascadia Code', 'Fira Code', 'Courier New', monospace; font-size: 12px; line-height: 1.5; letter-spacing: 0.3px; user-select: text; white-space: pre;">${this.escapeHtml(this.planText || '-- Execute o Explain Plan em um banco Oracle conectado para visualizar o DBMS_XPLAN.')}</pre>
+          <pre style="margin: 0; padding: 16px 20px; overflow-x: auto; color: #facc15; background: #000000; font-family: 'Consolas', 'Cascadia Code', 'Fira Code', 'Courier New', monospace; font-size: 12px; line-height: 1.5; letter-spacing: 0.3px; user-select: text; white-space: pre;">${this.renderInteractiveXplanHtml(this.planText || '-- Execute o Explain Plan em um banco Oracle conectado para visualizar o DBMS_XPLAN.')}</pre>
         </div>
       `}
     `;
+  }
+
+  renderInteractiveXplanHtml(rawText) {
+    if (!rawText) return '';
+    const lines = String(rawText).split('\n');
+    return lines.map(line => {
+      // Match table rows: | Id | Operation | Name | ...
+      if (line.startsWith('|') && line.endsWith('|') && !/^\|\s*Id\s*\|/i.test(line)) {
+        const parts = line.split('|');
+        // parts[0] = '', parts[1] = Id, parts[2] = Operation, parts[3] = Name, ...
+        if (parts.length >= 5) {
+          const opRaw = parts[2];
+          const opTrim = opRaw.trim();
+          if (opTrim) {
+            const safeOp = opTrim.replace(/'/g, "\\'");
+            const leadingSpaces = opRaw.match(/^\s*/)?.[0] || '';
+            const trailingSpaces = opRaw.match(/\s*$/)?.[0] || '';
+            parts[2] = `${leadingSpaces}<span class="toad-clickable-token" title="Clique para entender a operação CBO: ${this.escapeHtml(opTrim)}" onclick="window.TracesApp.smartInspect('${safeOp}', 'cbo_op')">${this.escapeHtml(opTrim)}</span>${trailingSpaces}`;
+          }
+          const nameRaw = parts[3];
+          const nameTrim = nameRaw.trim();
+          if (nameTrim && !/^-+$/.test(nameTrim)) {
+            const safeName = nameTrim.replace(/'/g, "\\'");
+            const leadingSpaces = nameRaw.match(/^\s*/)?.[0] || '';
+            const trailingSpaces = nameRaw.match(/\s*$/)?.[0] || '';
+            parts[3] = `${leadingSpaces}<span class="toad-clickable-token" style="color:#38bdf8; font-weight:700;" title="Clique para inspecionar o objeto '${this.escapeHtml(nameTrim)}' ou abrir no Schema Browser" onclick="window.TracesApp.smartInspect('${safeName}', 'object')">${this.escapeHtml(nameTrim)}</span>${trailingSpaces}`;
+          }
+          parts[1] = this.escapeHtml(parts[1]);
+          for (let i = 4; i < parts.length - 1; i++) {
+            parts[i] = this.escapeHtml(parts[i]);
+          }
+          return parts.join('|');
+        }
+      }
+      // Predicate lines: highlight quoted identifiers
+      if (/^\*\s*\d+\s*-\s*(access|filter)\(/i.test(line)) {
+        return this.escapeHtml(line).replace(/&quot;([A-Z0-9_$#]+)&quot;/gi, (m, ident) => {
+          const safeId = ident.replace(/'/g, "\\'");
+          return `&quot;<span class="toad-clickable-token" style="color:#4ade80;" title="Clique para inspecionar '${ident}'" onclick="window.TracesApp.smartInspect('${safeId}')">${ident}</span>&quot;`;
+        });
+      }
+      return this.escapeHtml(line);
+    }).join('\n');
   }
 
   setSubtab(tab) {
@@ -513,12 +556,12 @@ Predicate Information (identified by operation id):
         <div class="plan-node-card ${node.bottleneck ? 'bottleneck' : ''} ${isSelected ? 'selected' : ''}"
              onclick="window.TracesApp.explainPlan.selectNode(${node.id})">
           <div class="node-header">
-            <span class="node-operation">${node.operation} ${node.options ? `(${node.options})` : ''}</span>
+            <span class="node-operation toad-clickable-token" title="Clique para ver detalhes da operação CBO" onclick="event.stopPropagation(); window.TracesApp.smartInspect('${(node.operation + (node.options ? ' ' + node.options : '')).replace(/'/g, "\\'")}', 'cbo_op')">${node.operation} ${node.options ? `(${node.options})` : ''}</span>
             <span class="node-id-badge">ID: ${node.id}</span>
           </div>
           ${node.objectName ? `
-            <div class="node-object">
-              ${node.objectOwner ? node.objectOwner + '.' : ''}${node.objectName}
+            <div class="node-object toad-clickable-token" title="Clique para inspecionar '${node.objectOwner ? node.objectOwner + '.' : ''}${node.objectName}' ou abrir no Schema Browser" onclick="event.stopPropagation(); window.TracesApp.smartInspect('${(node.objectOwner ? node.objectOwner + '.' : '') + node.objectName}', 'object')">
+              📦 ${node.objectOwner ? node.objectOwner + '.' : ''}${node.objectName}
             </div>
           ` : ''}
           ${node.bottleneck ? `

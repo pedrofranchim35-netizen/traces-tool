@@ -577,7 +577,7 @@ class DbaTools {
       const safeVal = String(p.value ?? '').replace(/'/g, "\\'");
       return `
       <tr data-name="${nameLower}" data-desc="${(p.description || '').toLowerCase()}" data-sysmod="${sysMod}" data-dynamic="${sysMod === 'IMMEDIATE' ? 'true' : 'false'}" data-deferred="${sysMod === 'DEFERRED' ? 'true' : 'false'}" data-default="${p.isDefault !== false ? 'true' : 'false'}">
-        <td><b>${p.name}</b></td>
+        <td><span class="toad-clickable-token" style="font-weight:700;" title="Clique para inspecionar '${p.name}' em detalhes" onclick="window.TracesApp.smartInspect('${p.name}', 'parameter')">${p.name}</span></td>
         <td style="font-family: var(--toad-font-code); font-weight: 700; color: #0078d7;">${p.value ?? ''}</td>
         <td>${modBadge}</td>
         <td>${sesBadge}</td>
@@ -594,7 +594,7 @@ class DbaTools {
       <div class="dba-alert-entry" data-text="${(a.message || '').toLowerCase()} ${(a.timestamp || '').toLowerCase()}" data-sev="${a.severity || 'INFO'}" style="font-family: var(--toad-font-code); font-size: 11px; padding: 3px 0; border-bottom: 1px solid #f0f0f0;">
         <span style="color: #666;">[${a.timestamp}]</span>
         <span style="font-weight: 700; color: ${a.severity === 'WARNING' ? '#c00000' : '#0078d7'};">[${a.severity}]</span>
-        <span>${a.message}</span>
+        <span>${window.TracesApp?.linkifyInteractiveText ? window.TracesApp.linkifyInteractiveText(a.message) : a.message}</span>
       </div>
     `).join('');
 
@@ -3960,23 +3960,23 @@ ALTER DATABASE DATAFILE '${fileName}' RESIZE ${shrinkMb}M;`;
 
     const verificationsHtml = `
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; margin-bottom:10px;">
-        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${isArch ? '#16a34a' : '#dc2626'}; padding:8px 10px; border-radius:4px;">
-          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Archive Log &amp; Flashback</div>
+        <div class="toad-interactive-card" title="Clique para listar Archive Logs no Terminal RMAN (LIST ARCHIVELOG ALL;)" onclick="window.TracesApp.dbaTools.executeRmanCommand('LIST ARCHIVELOG ALL;')" style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${isArch ? '#16a34a' : '#dc2626'}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Archive Log &amp; Flashback (Clique)</div>
           <div style="font-size:14px; font-weight:800; color:${isArch ? '#15803d' : '#dc2626'}; margin-top:2px;">${logMode}</div>
           <div style="font-size:11px; color:#475569;">Flashback: <b>${fbOn}</b> | Force Logging: <b>${dbInfo.forceLogging || 'NO'}</b></div>
         </div>
-        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${fraColor}; padding:8px 10px; border-radius:4px;">
-          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Fast Recovery Area (FRA)</div>
+        <div class="toad-interactive-card" title="Clique para inspecionar parâmetros da FRA ou executar CROSSCHECK BACKUP" onclick="window.TracesApp.smartInspect('db_recovery_file_dest_size', 'parameter')" style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${fraColor}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Fast Recovery Area (FRA — Clique)</div>
           <div style="font-size:14px; font-weight:800; color:${fraColor}; margin-top:2px;">${fraPct}% Usado (${fra.usedGb || 0} / ${fra.limitGb || 0} GB)</div>
           <div style="font-size:11px; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${fra.name || ''}">Reclaimable: ${fra.reclaimableGb || 0} GB | Path: ${fra.name || 'N/A'}</div>
         </div>
-        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${corruptions.length === 0 ? '#16a34a' : '#dc2626'}; padding:8px 10px; border-radius:4px;">
-          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Integridade de Blocos</div>
+        <div class="toad-interactive-card" title="Clique para validar integridade física/lógica dos Datafiles (VALIDATE DATABASE;)" onclick="window.TracesApp.dbaTools.executeRmanCommand('VALIDATE DATABASE;')" style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${corruptions.length === 0 ? '#16a34a' : '#dc2626'}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Integridade de Blocos (Clique)</div>
           <div style="font-size:14px; font-weight:800; color:${corruptions.length === 0 ? '#15803d' : '#dc2626'}; margin-top:2px;">${corruptions.length === 0 ? '✅ 0 Blocos Corrompidos' : `🚨 ${corruptions.length} Blocos Corrompidos`}</div>
           <div style="font-size:11px; color:#475569;">Arquivos p/ Recovery: <b>${recoverFiles.length}</b> (V$RECOVER_FILE)</div>
         </div>
-        <div style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${datafilesNeed.length === 0 ? '#16a34a' : '#d97706'}; padding:8px 10px; border-radius:4px;">
-          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Cobertura de Backup (7 Dias)</div>
+        <div class="toad-interactive-card" title="Clique para verificar Datafiles pendentes de backup (REPORT NEED BACKUP;)" onclick="window.TracesApp.dbaTools.executeRmanCommand('REPORT NEED BACKUP;')" style="background:#fff; border:1px solid #cbd5e1; border-left:4px solid ${datafilesNeed.length === 0 ? '#16a34a' : '#d97706'}; padding:8px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">Cobertura de Backup 7d (Clique)</div>
           <div style="font-size:14px; font-weight:800; color:${datafilesNeed.length === 0 ? '#15803d' : '#d97706'}; margin-top:2px;">${datafilesNeed.length === 0 ? '✅ 100% Coberto' : `⚠️ ${datafilesNeed.length} Datafile(s) Sem Backup Recente`}</div>
           <div style="font-size:11px; color:#475569;">Total Datafiles Inspecionados: <b>${(d.datafilesNeedBackup || []).length}</b></div>
         </div>
