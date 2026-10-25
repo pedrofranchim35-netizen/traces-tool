@@ -1474,8 +1474,11 @@ class ExtendedServices:
         child_conn_id = f"{parent_id}-pdb-{clean_pdb.lower().replace('$', '_')}"
         child_name = f"{parent_cfg.get('name', 'CDB')} ➔ PDB: {clean_pdb}"
 
-        user = pdb_user or parent_cfg.get("user")
-        pwd = pdb_pwd or getattr(parent_entry.get("conn"), "password", None) or ""
+        parent_conn = parent_entry.get("conn")
+        base_params = getattr(parent_conn, "_conn_params", {}) or {}
+
+        user = pdb_user or parent_cfg.get("user") or base_params.get("user")
+        pwd = pdb_pwd or base_params.get("password") or getattr(parent_conn, "password", None) or ""
         host = parent_cfg.get("host", "localhost")
         port = int(parent_cfg.get("port", 1521))
         role = parent_cfg.get("role", "NORMAL")
@@ -1487,11 +1490,19 @@ class ExtendedServices:
 
         import oracledb
 
+        # Se a conexão pai utiliza ponte SSH, reaproveita o túnel já aberto
+        if use_bridge and base_params.get("host") and base_params.get("port"):
+            effective_connect_host = base_params.get("host")
+            effective_connect_port = int(base_params.get("port"))
+        else:
+            effective_connect_host = host
+            effective_connect_port = port
+
         t0 = time.time()
         conn_kwargs = {
             "user": user,
-            "host": host,
-            "port": port,
+            "host": effective_connect_host,
+            "port": effective_connect_port,
             "service_name": clean_pdb,
         }
         if pwd:
@@ -1508,7 +1519,7 @@ class ExtendedServices:
         except Exception as direct_err:
             try:
                 # Fallback: conecta ao serviço pai do CDB e faz switch para o container do PDB
-                conn_kwargs["service_name"] = parent_cfg.get("service_name")
+                conn_kwargs["service_name"] = parent_cfg.get("service_name") or base_params.get("service_name")
                 new_conn = oracledb.connect(**conn_kwargs)
                 with new_conn.cursor() as cur:
                     cur.execute(f'ALTER SESSION SET CONTAINER = "{clean_pdb}"')
@@ -1521,8 +1532,15 @@ class ExtendedServices:
 
         elapsed_ms = round((time.time() - t0) * 1000, 1)
 
-        # Encapsula na ThreadSafeConnection de oracle_server
+        # Registra uso do túnel para a sessão filha
         server_mod = sys.modules.get("oracle_server") or sys.modules.get("__main__")
+        if use_bridge and tunnel_key and server_mod and hasattr(server_mod, "SSH_TUNNELS"):
+            if tunnel_key in server_mod.SSH_TUNNELS:
+                t_info = server_mod.SSH_TUNNELS[tunnel_key]
+                t_info["conn_ids"].add(child_conn_id)
+                t_info["ref_count"] += 1
+
+        # Encapsula na ThreadSafeConnection de oracle_server
         ThreadSafeClass = getattr(server_mod, "ThreadSafeConnection", None)
         wrapped_child = ThreadSafeClass(new_conn, conn_params=conn_kwargs, max_aux=2) if ThreadSafeClass else new_conn
 

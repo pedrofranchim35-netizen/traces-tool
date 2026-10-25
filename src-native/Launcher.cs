@@ -199,12 +199,8 @@ namespace TracesToad
                 }
             }
 
-            // Se o servidor já está respondendo HTTP 200, abre instantaneamente (<0.1s)
-            if (IsServerHealthy())
-            {
-                OpenAppWindow();
-                return;
-            }
+            // Limpa processos zumbis anteriores na porta 3033 para garantir código Python 100% atualizado
+            KillStuckPortProcess();
 
             // Caso contrário, exibe splash rápido enquanto inicia o servidor
             Application.EnableVisualStyles();
