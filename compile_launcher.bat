@@ -12,7 +12,7 @@ if not exist "%CSC%" (
 )
 
 if not exist "%CSC%" (
-    echo [ERRO] Compilador C# (csc.exe) nao foi encontrado no sistema.
+    echo [ERRO] Compilador C# csc.exe nao foi encontrado no sistema.
     pause
     exit /b 1
 )

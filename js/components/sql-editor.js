@@ -3285,9 +3285,8 @@ END;`
         <div id="ai-editor-preview" class="ai-response-preview-box" style="display: none;"></div>
       `;
 
-      const textareaContainer = upperPane.querySelector('.editor-textarea-container');
-      if (textareaContainer) {
-        upperPane.insertBefore(aiBar, textareaContainer);
+      if (upperPane.firstElementChild) {
+        upperPane.insertBefore(aiBar, upperPane.firstElementChild);
       } else {
         upperPane.appendChild(aiBar);
       }

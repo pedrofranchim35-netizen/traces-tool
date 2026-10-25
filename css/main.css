@@ -126,6 +126,7 @@
 }
 
 .toad-toolbar-row {
+  min-height: 32px;
   height: 32px;
   display: flex;
   align-items: center;
@@ -133,6 +134,18 @@
   gap: 2px;
   border-bottom: 1px solid #e2e8f0;
   position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.toad-toolbar-row::-webkit-scrollbar {
+  height: 3px;
+}
+
+.toad-toolbar-row::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
 }
 
 .toad-toolbar-row:last-child {

@@ -38,16 +38,16 @@
   </script>
 
   <!-- Core Stylesheets -->
-  <link rel="stylesheet" href="css/tokens.css?v=20261022v8">
-  <link rel="stylesheet" href="css/main.css?v=20261022v8">
-  <link rel="stylesheet" href="css/toad-menus.css?v=20261022v8">
-  <link rel="stylesheet" href="css/suite-tools.css?v=20261022v8">
-  <link rel="stylesheet" href="css/editor.css?v=20261022v8">
-  <link rel="stylesheet" href="css/browser.css?v=20261022v8">
-  <link rel="stylesheet" href="css/grid.css?v=20261022v8">
-  <link rel="stylesheet" href="css/explain.css?v=20261022v8">
-  <link rel="stylesheet" href="css/session.css?v=20261022v8">
-  <link rel="stylesheet" href="css/toad-pro.css?v=20261022v8">
+  <link rel="stylesheet" href="css/tokens.css?v=20261025v10">
+  <link rel="stylesheet" href="css/main.css?v=20261025v10">
+  <link rel="stylesheet" href="css/toad-menus.css?v=20261025v10">
+  <link rel="stylesheet" href="css/suite-tools.css?v=20261025v10">
+  <link rel="stylesheet" href="css/editor.css?v=20261025v10">
+  <link rel="stylesheet" href="css/browser.css?v=20261025v10">
+  <link rel="stylesheet" href="css/grid.css?v=20261025v10">
+  <link rel="stylesheet" href="css/explain.css?v=20261025v10">
+  <link rel="stylesheet" href="css/session.css?v=20261025v10">
+  <link rel="stylesheet" href="css/toad-pro.css?v=20261025v10">
 </head>
 <body>
   <div id="app-container">
@@ -142,27 +142,7 @@
 
         <div class="toad-separator"></div>
 
-        <!-- Toad Pro Suite Extensions (12 Pontos) -->
-        <button class="toad-btn" onclick="window.TracesPro.runHealthCheck360()" title="Database Health Check 360° (50+ Regras Oracle)">
-          <span class="toad-btn-icon" style="color: #dc2626;">🏥</span>
-          <span>Health 360°</span>
-        </button>
-        <button class="toad-btn" onclick="window.TracesPro.openSqlPlusTerminal()" title="Terminal Interativo SQL*Plus / SQLcl">
-          <span class="toad-btn-icon" style="color: #0284c7;">💻</span>
-          <span>SQL*Plus</span>
-        </button>
-        <button class="toad-btn" onclick="window.TracesPro.openVaultDialog()" title="Cofre Criptografado Local (AES-256)">
-          <span class="toad-btn-icon" style="color: #d97706;">🔐</span>
-          <span>Cofre</span>
-        </button>
-        <button class="toad-btn" onclick="window.TracesPro.openTaskSchedulerDialog()" title="Agendador de Tarefas em Background (Task Scheduler)">
-          <span class="toad-btn-icon" style="color: #2563eb;">⏰</span>
-          <span>Scheduler</span>
-        </button>
-
-        <div class="toad-separator"></div>
-
-        <!-- Enterprise Integrations -->
+        <!-- Enterprise & Pro Extensions -->
         <button class="toad-btn" onclick="window.TracesApp.inventoryManager?.openModal()" title="Inventário Corporativo de Bancos (Ambientes &amp; Ping)">
           <span class="toad-btn-icon" style="color: #0284c7;">📋</span>
           <span>Inventário</span>
@@ -182,6 +162,22 @@
         <button class="toad-btn" onclick="window.TracesApp.health360?.openModal()" title="Database Health 360° (Básico 10 Pontos &amp; Complexo 8 Pilares)">
           <span class="toad-btn-icon" style="color: #dc2626;">🩺</span>
           <span>Health 360</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesPro.openVaultDialog()" title="Cofre Criptografado Local (AES-256)">
+          <span class="toad-btn-icon" style="color: #d97706;">🔐</span>
+          <span>Cofre</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesPro.openTaskSchedulerDialog()" title="Agendador de Tarefas em Background (Task Scheduler)">
+          <span class="toad-btn-icon" style="color: #2563eb;">⏰</span>
+          <span>Scheduler</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- Botão Atualizar Aplicativo (GitHub) -->
+        <button class="toad-btn" id="btn-toolbar-update-app" onclick="window.TracesApp.toadModals.openUpdateDialog()" title="Verificar e Aplicar Atualizações do Toad pelo GitHub" style="color: #0369a1; font-weight: 700; background: #e0f2fe; border: 1px solid #7dd3fc;">
+          <span class="toad-btn-icon" style="color: #0284c7;">🔄</span>
+          <span>Atualizar</span>
         </button>
 
         <div class="toad-separator"></div>
@@ -1269,31 +1265,31 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="js/data/mock-db.js?v=20261022v8"></script>
-  <script src="js/data/rule-universe-data.js?v=20261022v8"></script>
-  <script src="js/data/oracle-dictionary.js?v=20261024"></script>
-  <script src="js/components/connection-manager.js?v=20261022v8"></script>
-  <script src="js/components/toad-modals.js?v=20261022v8"></script>
-  <script src="js/components/toad-menus.js?v=20261022v8"></script>
-  <script src="js/components/schema-browser.js?v=20261022v8"></script>
-  <script src="js/components/data-grid.js?v=20261022v8"></script>
-  <script src="js/components/sql-editor.js?v=20261022v8"></script>
-  <script src="js/components/explain-plan.js?v=20261022v8"></script>
-  <script src="js/components/session-monitor.js?v=20261022v8"></script>
-  <script src="js/components/rule-auditor.js?v=20261022v8"></script>
-  <script src="js/components/database-probe.js?v=20261022v8"></script>
-  <script src="js/components/traces-copilot.js?v=20261022v8"></script>
-  <script src="js/components/inventory-manager.js?v=20261024"></script>
-  <script src="js/components/sqlplus-rman-terminal.js?v=20261024"></script>
-  <script src="js/components/python-os-console.js?v=20261024"></script>
-  <script src="js/components/health-360.js?v=20261024"></script>
-  <script src="js/components/spotlight-oracle.js?v=20261022v8"></script>
-  <script src="js/components/data-modeler.js?v=20261022v8"></script>
-  <script src="js/components/dba-tools.js?v=20261022v8"></script>
-  <script src="js/components/code-quality.js?v=20261022v8"></script>
-  <script src="js/components/automation-designer.js?v=20261022v8"></script>
-  <script src="js/components/sql-optimizer.js?v=20261022v8"></script>
-  <script src="js/components/toad-pro-suite.js?v=20261022v8"></script>
-  <script src="js/app.js?v=20261022v8"></script>
+  <script src="js/data/mock-db.js?v=20261025v10"></script>
+  <script src="js/data/rule-universe-data.js?v=20261025v10"></script>
+  <script src="js/data/oracle-dictionary.js?v=20261025v10"></script>
+  <script src="js/components/connection-manager.js?v=20261025v10"></script>
+  <script src="js/components/toad-modals.js?v=20261025v10"></script>
+  <script src="js/components/toad-menus.js?v=20261025v10"></script>
+  <script src="js/components/schema-browser.js?v=20261025v10"></script>
+  <script src="js/components/data-grid.js?v=20261025v10"></script>
+  <script src="js/components/sql-editor.js?v=20261025v10"></script>
+  <script src="js/components/explain-plan.js?v=20261025v10"></script>
+  <script src="js/components/session-monitor.js?v=20261025v10"></script>
+  <script src="js/components/rule-auditor.js?v=20261025v10"></script>
+  <script src="js/components/database-probe.js?v=20261025v10"></script>
+  <script src="js/components/traces-copilot.js?v=20261025v10"></script>
+  <script src="js/components/inventory-manager.js?v=20261025v10"></script>
+  <script src="js/components/sqlplus-rman-terminal.js?v=20261025v10"></script>
+  <script src="js/components/python-os-console.js?v=20261025v10"></script>
+  <script src="js/components/health-360.js?v=20261025v10"></script>
+  <script src="js/components/spotlight-oracle.js?v=20261025v10"></script>
+  <script src="js/components/data-modeler.js?v=20261025v10"></script>
+  <script src="js/components/dba-tools.js?v=20261025v10"></script>
+  <script src="js/components/code-quality.js?v=20261025v10"></script>
+  <script src="js/components/automation-designer.js?v=20261025v10"></script>
+  <script src="js/components/sql-optimizer.js?v=20261025v10"></script>
+  <script src="js/components/toad-pro-suite.js?v=20261025v10"></script>
+  <script src="js/app.js?v=20261025v10"></script>
 </body>
 </html>

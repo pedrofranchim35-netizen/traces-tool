@@ -287,10 +287,13 @@ function startOracleBridgeProcess() {
   const embeddedPy = path.join(appDir, 'python', 'python.exe');
   const pythonCandidates = [
     embeddedPy,
+    'C:\\Python314\\python.exe',
     'python',
     'python3',
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python314', 'python.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+    'C:\\Program Files\\Python314\\python.exe',
     'C:\\Program Files\\Python311\\python.exe',
     'C:\\Program Files\\Python312\\python.exe'
   ];

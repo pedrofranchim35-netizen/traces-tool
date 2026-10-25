@@ -6,14 +6,23 @@ title TRACES Toad for Oracle - Database Server
 cd /d "%~dp0"
 
 REM 1. Configurar caminho do Python automaticamente
+if exist "C:\Python314\python.exe" (
+    set "PATH=C:\Python314;C:\Python314\Scripts;%PATH%"
+)
 if exist "%~dp0python\python.exe" (
     set "PATH=%~dp0python;%~dp0python\Scripts;%PATH%"
+)
+if exist "%LOCALAPPDATA%\Programs\Python\Python314\python.exe" (
+    set "PATH=%LOCALAPPDATA%\Programs\Python\Python314;%LOCALAPPDATA%\Programs\Python\Python314\Scripts;%PATH%"
 )
 if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
     set "PATH=%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Programs\Python\Python311\Scripts;%PATH%"
 )
 if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
     set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%PATH%"
+)
+if exist "C:\Program Files\Python314\python.exe" (
+    set "PATH=C:\Program Files\Python314;C:\Program Files\Python314\Scripts;%PATH%"
 )
 if exist "C:\Program Files\Python311\python.exe" (
     set "PATH=C:\Program Files\Python311;C:\Program Files\Python311\Scripts;%PATH%"
