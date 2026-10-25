@@ -345,12 +345,15 @@ class IsolatedSSHTunnelForwarder:
             "key_passphrase": self.kwargs.get("_key_passphrase")
         }
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+        worker_env = os.environ.copy()
+        worker_env["PYTHONPATH"] = os.pathsep.join([p for p in sys.path if os.path.exists(p)])
         self.proc = subprocess.Popen(
             [sys.executable, "-u", os.path.abspath(__file__), "--ssh-tunnel-worker"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=worker_env,
             creationflags=creationflags
         )
         self.proc.stdin.write(json.dumps(cfg) + "\n")

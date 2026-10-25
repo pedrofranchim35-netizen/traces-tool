@@ -659,7 +659,7 @@ class ConnectionManager {
                     <input type="checkbox" id="form-save-bridge-pwd" ${c.saveBridgePassword !== false ? 'checked' : ''} onchange="window.TracesApp.connectionManager.readFormData();">
                     <label for="form-save-bridge-pwd" style="color: #4b5563;">Lembrar senha da ponte localmente</label>
                   </div>
-                  <button class="btn" style="background: #0284c7; color: #fff; border-color: #0369a1; font-weight: 600; padding: 3px 10px;" onclick="window.TracesApp.connectionManager.testBridgeOnly();">
+                  <button id="btn-test-bridge-only" class="btn" style="background: #0284c7; color: #fff; border-color: #0369a1; font-weight: 600; padding: 3px 10px;" onclick="window.TracesApp.connectionManager.testBridgeOnly();">
                     🔍 Testar Apenas a Ponte
                   </button>
                 </div>
@@ -764,6 +764,7 @@ class ConnectionManager {
   async testBridgeOnly() {
     const c = this.readFormData();
     const statusEl = document.getElementById('bridge-test-status');
+    const testBtn = document.getElementById('btn-test-bridge-only');
     if (!c.bridgeHost) {
       if (statusEl) {
         statusEl.innerHTML = '<span style="color: #ef4444; font-weight: 600;">✕ Informe o Host da Ponte (IP ou DNS).</span>';
@@ -772,8 +773,9 @@ class ConnectionManager {
       return;
     }
 
+    if (testBtn) testBtn.disabled = true;
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color: #0284c7;">⏳ Conectando na ponte ${c.bridgeHost}:${c.bridgePort} e verificando destino ${c.host}:${c.port}...</span>`;
+      statusEl.innerHTML = `<span style="color: #0284c7; font-weight: 600;">⏳ Testando conexão com a máquina de ponte ${c.bridgeHost}:${c.bridgePort || (c.bridgeType === 'cman' ? 1521 : 22)}...</span>`;
     }
 
     try {
@@ -810,9 +812,11 @@ class ConnectionManager {
         ? 'Serviço Bridge local (porta 3033) não respondeu. O servidor pode estar inicializando.'
         : msg;
       if (statusEl) {
-        statusEl.innerHTML = `<span style="color: #ef4444;">✕ Erro de comunicação: ${displayMsg}</span>`;
+        statusEl.innerHTML = `<span style="color: #ef4444; font-weight: 600;">✕ Erro de comunicação: ${displayMsg}</span>`;
       }
       window.TracesApp.notify(`Erro de comunicação: ${displayMsg}`, 'error');
+    } finally {
+      if (testBtn) testBtn.disabled = false;
     }
   }
 
