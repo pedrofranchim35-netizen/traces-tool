@@ -26,13 +26,38 @@
   --toad-text-muted: #64748b;
   --toad-text-disabled: #94a3b8;
 
+  /* Unified Surface & Theme Aliases */
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-surface-active: #e0f2fe;
+  --bg-surface-hover: #f1f5f9;
+  --border-subtle: #e2e8f0;
+  --border-highlight: #0284c7;
+  
+  --status-success: #10b981;
+  --status-warning: #f59e0b;
+  --status-danger: #ef4444;
+
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-disabled: #94a3b8;
+
+  --traces-red-subtle: rgba(239, 68, 68, 0.1);
+  --traces-red-hover: #dc2626;
+  --traces-red-glow: rgba(239, 68, 68, 0.35);
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+  --transition-fast: 120ms ease;
+
   /* Universal Form Input Variables */
   --bg-input: #ffffff;
   --text-primary: #0f172a;
   --border-default: #cbd5e1;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
 
   /* Toad Grid & Selection */
   --toad-select-bg: #0284c7;
@@ -55,6 +80,9 @@
   --toad-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
   --toad-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   --toad-shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+  --shadow-sm: var(--toad-shadow-sm);
+  --shadow-md: var(--toad-shadow-md);
+  --shadow-lg: var(--toad-shadow-lg);
 
   /* Traces Brand Accent */
   --traces-red: #ef4444;
@@ -71,6 +99,10 @@
   /* Modern High-Resolution Typography Font Stack */
   --toad-font-ui: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
   --toad-font-code: "Cascadia Code", "Fira Code", "Consolas", "JetBrains Mono", "Courier New", monospace;
+  --font-ui: var(--toad-font-ui);
+  --font-code: var(--toad-font-code);
+  --font-display: var(--toad-font-ui);
+  --toad-font-mono: var(--toad-font-code);
 }
 
 *, *::before, *::after {

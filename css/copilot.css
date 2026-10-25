@@ -91,13 +91,13 @@
 }
 
 .bubble-code-block {
-  background: var(--bg-input);
+  background: #f8fafc;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   padding: 10px;
   font-family: var(--font-code);
   font-size: 11px;
-  color: #38bdf8;
+  color: #0f172a;
   position: relative;
   overflow-x: auto;
   margin-top: 6px;

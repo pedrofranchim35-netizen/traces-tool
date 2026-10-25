@@ -70,17 +70,20 @@
 
 .severity-badge-card.severe {
   border-color: rgba(239, 68, 68, 0.4);
-  color: #f87171;
+  color: #dc2626;
+  background: #fef2f2;
 }
 
 .severity-badge-card.warning {
   border-color: rgba(245, 158, 11, 0.4);
-  color: #fbbf24;
+  color: #b45309;
+  background: #fffbeb;
 }
 
 .severity-badge-card.info {
-  border-color: rgba(56, 189, 248, 0.4);
-  color: #38bdf8;
+  border-color: rgba(2, 132, 199, 0.4);
+  color: #0284c7;
+  background: #f0f9ff;
 }
 
 .severity-count {

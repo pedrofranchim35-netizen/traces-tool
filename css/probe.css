@@ -159,17 +159,19 @@
 }
 
 .alert-state-badge.pass {
-  background: rgba(16, 185, 129, 0.15);
-  color: #6ee7b7;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
 }
 
 .alert-state-badge.fail {
-  background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
 }
 
 .alert-state-badge.warn {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fde68a;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
 }

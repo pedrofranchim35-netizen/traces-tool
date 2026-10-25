@@ -79,15 +79,17 @@
   display: flex;
   flex-direction: column;
   background: #ffffff;
-  border: 1px solid #c0c0c0;
-  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 5px 10px;
   min-width: 85px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .metric-label {
   font-size: 10px;
-  font-weight: 600;
-  color: #666;
+  font-weight: 700;
+  color: #64748b;
   text-transform: uppercase;
 }
 
@@ -95,7 +97,7 @@
   font-family: var(--toad-font-code);
   font-size: 14px;
   font-weight: 700;
-  color: #000;
+  color: #0f172a;
 }
 
 .plan-body-split {
@@ -120,27 +122,31 @@
 }
 
 .plan-node-card {
-  background: #fbfbfb;
-  border: 1px solid #7f9db9;
-  border-radius: 2px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
   padding: 10px 14px;
   width: 360px;
-  box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   cursor: pointer;
+  transition: all 120ms ease;
 }
 
 .plan-node-card:hover {
-  background: #f0f7ff;
-  border-color: #0078d7;
+  background: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.15);
+  transform: translateY(-1px);
 }
 
 .plan-node-card.selected {
-  border-color: #0078d7;
-  background: #eaf3fb;
+  border-color: #0284c7;
+  background: #f0f9ff;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2);
 }
 
 .plan-node-card.bottleneck {
-  border-left: 4px solid #c00000;
+  border-left: 4px solid #ef4444;
 }
 
 .node-header {
