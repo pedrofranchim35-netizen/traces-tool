@@ -16,7 +16,7 @@ Unicode True
 !define PRODUCT_WEB_SITE "https://github.com/pedrofranchim35-netizen/traces-tool"
 !define PRODUCT_DIR_REGKEY "Software\TracesToad"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\TracesToad"
-!define MAIN_EXE "TracesToad.exe"
+!define MAIN_EXE "Traces.exe"
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "..\TracesToad-Setup.exe"
@@ -93,7 +93,7 @@ Section "MainSection" SEC01
 
     ; 1. Encerrar processos em execucao para permitir sobrescrever executaveis
     DetailPrint "[1/5] Verificando e encerrando instancias ativas do Toad..."
-    nsExec::Exec 'taskkill /F /IM TracesToad.exe /IM Toad.exe /T'
+    nsExec::Exec 'taskkill /F /IM Traces.exe /IM TracesOracle.exe /IM TracesDBA.exe /IM TracesToad.exe /IM Toad.exe /T'
     nsExec::Exec 'powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3033 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $$_.OwningProcess -Force -ErrorAction SilentlyContinue }"'
     Sleep 500
 
@@ -103,7 +103,10 @@ Section "MainSection" SEC01
 
     ; 3. Copiar Executaveis Nativos (.exe) e Scripts Principais
     DetailPrint "[2/5] Copiando executaveis nativos (.exe)..."
-    File "..\TracesToad.exe"
+    File "..\Traces.exe"
+    File /nonfatal "..\TracesOracle.exe"
+    File /nonfatal "..\TracesDBA.exe"
+    File /nonfatal "..\TracesToad.exe"
     File /nonfatal "..\Toad.exe"
     File "..\start.bat"
     File "..\start.sh"

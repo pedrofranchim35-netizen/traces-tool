@@ -1,22 +1,23 @@
 [
   {
     "id": "conn-default",
-    "name": "Produção Oracle 19c",
-    "host": "10.100.10.50",
+    "name": "Conexão Oracle 19c",
+    "host": "localhost",
     "port": 1521,
-    "serviceName": "PROD",
+    "serviceName": "ORCL",
     "user": "SYSTEM",
     "role": "NORMAL",
-    "color": "#dc2626",
+    "color": "#0284c7",
     "password": "",
-    "savePassword": true,
+    "savePassword": false,
     "useThick": true,
-    "useBridge": true,
+    "useBridge": false,
     "bridgeType": "ssh",
-    "bridgeHost": "10.100.10.39",
+    "bridgeHost": "",
     "bridgePort": 22,
-    "bridgeUser": "oracle",
+    "bridgeUser": "",
     "bridgePassword": "",
-    "saveBridgePassword": true
+    "saveBridgePassword": false,
+    "bridgeKeyPath": ""
   }
 ]

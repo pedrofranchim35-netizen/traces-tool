@@ -156,6 +156,30 @@
 
         <div class="toad-separator"></div>
 
+        <!-- Enterprise Integrations -->
+        <button class="toad-btn" onclick="window.TracesApp.inventoryManager?.openModal()" title="Inventário Corporativo de Bancos (Ambientes &amp; Ping)">
+          <span class="toad-btn-icon" style="color: #0284c7;">📋</span>
+          <span>Inventário</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.sqlplusRmanTerminal?.openModal()" title="Terminal Interativo SQL*Plus &amp; RMAN Console">
+          <span class="toad-btn-icon" style="color: #0284c7;">📟</span>
+          <span>SQL*Plus/RMAN</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.pythonOsConsole?.openModal()" title="Python Console com Acesso ao S.O. &amp; oracledb">
+          <span class="toad-btn-icon" style="color: #16a34a;">🐍</span>
+          <span>Python S.O.</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.schemaBrowser?.openAllTablespacesView()" title="Visão de Todas as Tablespaces ao Mesmo Tempo (Visão Unificada)">
+          <span class="toad-btn-icon" style="color: #0284c7;">📊</span>
+          <span>Todas TS</span>
+        </button>
+        <button class="toad-btn" onclick="window.TracesApp.health360?.openModal()" title="Database Health 360° (Básico 10 Pontos &amp; Complexo 8 Pilares)">
+          <span class="toad-btn-icon" style="color: #dc2626;">🩺</span>
+          <span>Health 360</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
         <!-- Traces AI Copilot -->
         <button class="toad-btn" id="btn-toggle-copilot" onclick="window.TracesApp.tracesCopilot.toggleDrawer()" title="Traces AI Copilot" style="font-weight: 600; color: var(--traces-red); margin-left: auto;">
           <span class="toad-btn-icon" style="color: var(--traces-red);">▲</span>
@@ -218,6 +242,14 @@
         <!-- Clear -->
         <button class="toad-btn" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.pushHistorySnapshot(); window.TracesApp.sqlEditor.textarea.value=''; window.TracesApp.sqlEditor.saveActiveTabContent(); window.TracesApp.sqlEditor.updateHighlighting(); window.TracesApp.sqlEditor.updateGutter(); window.TracesApp.sqlEditor.pushHistorySnapshot();" title="Clear Editor">
           <span class="toad-btn-icon">🗑</span>
+        </button>
+
+        <div class="toad-separator"></div>
+
+        <!-- In-Editor AI Prompt Bar Toggle (Ctrl+I) -->
+        <button class="toad-btn" id="btn-editor-ai-copilot" onclick="window.TracesApp.openWindow('editor'); window.TracesApp.sqlEditor.toggleAiBar()" title="Abrir Assistente de IA Gemini no Editor (Ctrl+I)" style="background: #e0f2fe; border: 1px solid #7dd3fc; color: #0369a1; font-weight: 700;">
+          <span class="toad-btn-icon">✨</span>
+          <span>IA no Editor (Ctrl+I)</span>
         </button>
 
         <div class="toad-separator"></div>
@@ -616,6 +648,9 @@
                 </button>
                 <button class="btn btn-primary" style="height: 22px; padding: 0 7px; font-size: 10.5px; font-weight: 700;" title="Criar Novo Objeto no Schema Atual" onclick="window.TracesApp.schemaBrowser.openCreateObjectWizard()">
                   ➕ Criar
+                </button>
+                <button class="btn" style="height: 22px; padding: 0 7px; font-size: 10.5px; font-weight: 700; color: #0369a1; background: #e0f2fe; border: 1px solid #7dd3fc;" title="Ver Visão Consolidada de Todas as Tablespaces ao mesmo tempo com Sizing e Autoextend" onclick="window.TracesApp.schemaBrowser.selectCategory('tablespaces')">
+                  💾 Todas TS
                 </button>
               </div>
             </div>
@@ -1230,6 +1265,7 @@
   <!-- Application Logic Scripts -->
   <script src="js/data/mock-db.js?v=20261022v8"></script>
   <script src="js/data/rule-universe-data.js?v=20261022v8"></script>
+  <script src="js/data/oracle-dictionary.js?v=20261024"></script>
   <script src="js/components/connection-manager.js?v=20261022v8"></script>
   <script src="js/components/toad-modals.js?v=20261022v8"></script>
   <script src="js/components/toad-menus.js?v=20261022v8"></script>
@@ -1241,6 +1277,10 @@
   <script src="js/components/rule-auditor.js?v=20261022v8"></script>
   <script src="js/components/database-probe.js?v=20261022v8"></script>
   <script src="js/components/traces-copilot.js?v=20261022v8"></script>
+  <script src="js/components/inventory-manager.js?v=20261024"></script>
+  <script src="js/components/sqlplus-rman-terminal.js?v=20261024"></script>
+  <script src="js/components/python-os-console.js?v=20261024"></script>
+  <script src="js/components/health-360.js?v=20261024"></script>
   <script src="js/components/spotlight-oracle.js?v=20261022v8"></script>
   <script src="js/components/data-modeler.js?v=20261022v8"></script>
   <script src="js/components/dba-tools.js?v=20261022v8"></script>

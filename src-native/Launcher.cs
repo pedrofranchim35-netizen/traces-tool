@@ -77,19 +77,44 @@ namespace TracesToad
                 Path.Combine(appDir, "python", "python.exe"),
                 Path.Combine(appDir, "python.exe"),
                 Path.Combine(localAppData, @"Programs\Python\Python311\python.exe"),
-                Path.Combine(localAppData, @"Programs\Python\Python312\python.exe"),
-                Path.Combine(localAppData, @"Programs\Python\Python310\python.exe"),
+                Path.Combine(localAppData, @"Programs\Python\Python314\python.exe"),
                 Path.Combine(localAppData, @"Programs\Python\Python313\python.exe"),
-                @"C:\Program Files\Python311\python.exe",
-                @"C:\Program Files\Python312\python.exe",
+                Path.Combine(localAppData, @"Programs\Python\Python312\python.exe"),
+                Path.Combine(localAppData, @"Programs\Python\Python311\python.exe"),
+                Path.Combine(localAppData, @"Programs\Python\Python310\python.exe"),
+                @"C:\Python314\python.exe",
+                @"C:\Python313\python.exe",
+                @"C:\Python312\python.exe",
                 @"C:\Python311\python.exe",
-                @"C:\Python312\python.exe"
+                @"C:\Program Files\Python314\python.exe",
+                @"C:\Program Files\Python313\python.exe",
+                @"C:\Program Files\Python312\python.exe",
+                @"C:\Program Files\Python311\python.exe"
             };
             foreach (string c in candidates)
             {
                 if (File.Exists(c)) return c;
             }
-            return null;
+            try
+            {
+                ProcessStartInfo wherePsi = new ProcessStartInfo("where.exe", "python.exe")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true
+                };
+                using (Process wp = Process.Start(wherePsi))
+                {
+                    if (wp != null)
+                    {
+                        string firstLine = wp.StandardOutput.ReadLine();
+                        wp.WaitForExit(1000);
+                        if (!string.IsNullOrEmpty(firstLine) && File.Exists(firstLine.Trim())) return firstLine.Trim();
+                    }
+                }
+            }
+            catch { }
+            return "python.exe";
         }
 
         static void StartBackendServer(string appDir)

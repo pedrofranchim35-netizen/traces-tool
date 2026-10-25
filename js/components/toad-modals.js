@@ -1538,7 +1538,7 @@ GRANT SELECT ON ${schema}.DEPARTMENTS TO PUBLIC;
       { token: 'pkg_spec', name: 'Package Specification', code: `CREATE OR REPLACE PACKAGE my_pkg AS\n  PROCEDURE run_process(p_id IN NUMBER);\n  FUNCTION get_status(p_id IN NUMBER) RETURN VARCHAR2;\nEND my_pkg;\n/` },
       { token: 'try_catch', name: 'Exception Block with Logging', code: `BEGIN\n  -- Execution logic\n  NULL;\nEXCEPTION\n  WHEN OTHERS THEN\n    DBMS_OUTPUT.PUT_LINE('Error ' || SQLCODE || ': ' || SQLERRM);\n    RAISE;\nEND;` },
       { token: 'ins_sel', name: 'Insert into Select', code: `INSERT INTO target_table (col1, col2, col3)\nSELECT col1, col2, col3\nFROM source_table\nWHERE status = 'ACTIVE';` },
-      { token: 'dblink', name: 'Create Database Link', code: `CREATE DATABASE LINK remote_db_link\nCONNECT TO remote_user IDENTIFIED BY remote_password\nUSING 'sales_prod_tns';` }
+      { token: 'dblink', name: 'Create Database Link', code: `CREATE DATABASE LINK remote_db_link\nCONNECT TO remote_user IDENTIFIED BY "********"\nUSING 'sales_prod_tns';` }
     ];
 
     const body = `

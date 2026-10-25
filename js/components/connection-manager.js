@@ -244,6 +244,63 @@ class ConnectionManager {
     this.updateSelectorDropdown();
   }
 
+  async connectToProfile(profileData) {
+    if (!profileData) return;
+    let target = this.connections.find(p => p.host === profileData.host && (p.serviceName === profileData.serviceName || p.sid === profileData.sid));
+    if (!target) {
+      target = {
+        id: `conn-${Date.now()}`,
+        name: profileData.name || `${profileData.user || 'SYSTEM'}@${profileData.serviceName || profileData.sid || 'orcl'}`,
+        host: profileData.host || 'localhost',
+        port: profileData.port || 1521,
+        serviceName: profileData.serviceName || profileData.sid || 'orcl',
+        user: profileData.user || 'SYSTEM',
+        role: profileData.role || 'NORMAL',
+        color: profileData.color || '#10b981',
+        password: profileData.password || '',
+        savePassword: true,
+        useThick: true,
+        useBridge: false,
+        bridgeType: 'ssh',
+        bridgeHost: '',
+        bridgePort: 22,
+        bridgeUser: '',
+        bridgePassword: '',
+        bridgeKeyPath: '',
+        saveBridgePassword: true
+      };
+      this.connections.push(target);
+      this.saveConnections();
+    }
+    this.editingConn = JSON.parse(JSON.stringify(target));
+    this.selectProfile(target.id);
+
+    if (!target.password) {
+      this.openModal();
+      window.TracesApp?.notify(`Informe a senha para conectar a ${target.name}`, 'info');
+      setTimeout(() => { document.getElementById('form-password')?.focus(); }, 150);
+    } else {
+      await this.connectCurrentProfile();
+    }
+  }
+
+  populateFromInventory(invId) {
+    const inv = window.TracesApp?.inventoryManager?.inventory || [];
+    const item = inv.find(i => i.id === invId);
+    if (!item || !this.editingConn) return;
+
+    this.editingConn.name = item.name;
+    this.editingConn.host = item.host;
+    this.editingConn.port = item.port || 1521;
+    this.editingConn.serviceName = item.serviceName || item.sid || 'orcl';
+    this.editingConn.user = item.user || 'SYSTEM';
+    this.editingConn.color = item.color || (item.environment === 'PROD' ? '#dc2626' : '#10b981');
+    this.editingConn.environment = item.environment || 'DEV';
+
+    this.renderModal();
+    window.TracesApp?.notify(`Dados carregados do inventário: ${item.name}`, 'success');
+  }
+
   saveCurrentProfile(showNotification = true) {
     const c = this.readFormData();
     this.saveConnections();
@@ -352,12 +409,12 @@ class ConnectionManager {
         <!-- Left: Connections List -->
         <div style="width: 250px; border-right: 1px solid #d4d4d4; padding-right: 10px; display: flex; flex-direction: column; justify-content: space-between;">
           <div style="display: flex; flex-direction: column; height: 100%;">
-            <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; gap: 4px;">
               <span>Conexões (${this.connections.length})</span>
-              <span style="font-size: 10px; color: ${this.activeConnections.size > 0 ? '#15803d' : '#6b7280'}; font-weight: 700;">
-                ${this.activeConnections.size > 0 ? `🟢 ${this.activeConnections.size} Ativa(s)` : '⚪ 0 Conectada'}
-              </span>
-              <button class="btn btn-primary" style="padding: 2px 7px; font-size: 10px; font-weight: 700;" onclick="window.TracesApp.connectionManager.openNewConnectionModal();" title="Adicionar e conectar a um novo host">+ Nova</button>
+              <div style="display: flex; gap: 3px; align-items: center;">
+                <button class="btn" style="padding: 2px 5px; font-size: 9.5px; font-weight: 700; color: #0284c7; background: #e0f2fe; border-color: #bae6fd;" onclick="window.TracesApp.inventoryManager.openInventoryModal();" title="Abrir Catálogo &amp; Inventário Corporativo de Bancos">📋 Inventário</button>
+                <button class="btn btn-primary" style="padding: 2px 6px; font-size: 9.5px; font-weight: 700;" onclick="window.TracesApp.connectionManager.openNewConnectionModal();" title="Adicionar e conectar a um novo host">+ Nova</button>
+              </div>
             </div>
 
             <div style="overflow-y: auto; flex: 1; max-height: 380px; display: flex; flex-direction: column; gap: 4px; padding-right: 2px;">
@@ -487,6 +544,12 @@ class ConnectionManager {
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <label style="width: 140px; font-weight: 600;">Nome do Perfil:</label>
                   <input type="text" id="form-name" value="${c.name || ''}" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-weight: 600;" oninput="window.TracesApp.connectionManager.updateRoutePreview();" onchange="window.TracesApp.connectionManager.readFormData();">
+                  <select class="toad-conn-combobox" style="height: 25px; font-size: 10px; min-width: 155px; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; font-weight: 600;" onchange="if(this.value){window.TracesApp.connectionManager.populateFromInventory(this.value);this.value='';}">
+                    <option value="">📋 Do Inventário...</option>
+                    ${(window.TracesApp?.inventoryManager?.inventory || []).map(inv => `
+                      <option value="${inv.id}">${inv.environment}: ${inv.name}</option>
+                    `).join('')}
+                  </select>
                 </div>
 
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -552,7 +615,7 @@ class ConnectionManager {
                     Conectar através de uma Ponte / Jump Host intermediário (Túnel SSH Bastion)
                   </label>
                   <div style="color: #64748b; font-size: 10.5px; margin-top: 2px;">
-                    Ative quando o banco Oracle estiver em uma rede privada ou VPC isolada, exigindo conexão prévia em um servidor intermediário (ex: <strong>10.100.10.39</strong>) para rotear o tráfego.
+                    Ative quando o banco Oracle estiver em uma rede privada ou VPC isolada, exigindo conexão prévia em um servidor intermediário (ex: <strong>bastion.empresa.com</strong>) para rotear o tráfego.
                   </div>
                 </div>
               </div>
@@ -569,7 +632,7 @@ class ConnectionManager {
 
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <label style="width: 140px; font-weight: 600;">Host da Ponte (IP/DNS):</label>
-                  <input type="text" id="form-bridge-host" value="${c.bridgeHost || ''}" placeholder="e.g. 10.100.10.39 ou bastion.empresa.com" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);" oninput="window.TracesApp.connectionManager.updateRoutePreview();" onchange="window.TracesApp.connectionManager.readFormData();">
+                  <input type="text" id="form-bridge-host" value="${c.bridgeHost || ''}" placeholder="e.g. bastion.empresa.com ou jump-host.corp" style="flex: 1; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);" oninput="window.TracesApp.connectionManager.updateRoutePreview();" onchange="window.TracesApp.connectionManager.readFormData();">
                   <label style="font-weight: 600;">Porta:</label>
                   <input type="number" id="form-bridge-port" value="${c.bridgePort || (c.bridgeType === 'cman' ? 1521 : 22)}" style="width: 75px; padding: 4px 6px; border: 1px solid #ccc; font-family: var(--toad-font-code);" oninput="window.TracesApp.connectionManager.updateRoutePreview();" onchange="window.TracesApp.connectionManager.readFormData();">
                 </div>

@@ -2292,9 +2292,9 @@ class SchemaBrowser {
       synonyms: `CREATE OR REPLACE SYNONYM "${schema}"."SYN_OBJETO" FOR "${schema}"."${this.selectedObject?.name || 'EMPLOYEES'}";`,
       indexes: `CREATE INDEX "${schema}"."IDX_${this.selectedObject?.name || 'TABELA'}_01"\n  ON "${schema}"."${this.selectedObject?.name || 'NOVA_TABELA'}" (ID)\n  TABLESPACE USERS ONLINE;`,
       tablespaces: `CREATE TABLESPACE "TS_DADOS_NOVO"\n  DATAFILE 'ts_dados_novo01.dbf' SIZE 512M\n  AUTOEXTEND ON NEXT 128M MAXSIZE 32G\n  EXTENT MANAGEMENT LOCAL AUTOALLOCATE\n  SEGMENT SPACE MANAGEMENT AUTO;`,
-      users: `CREATE USER "NOVO_USUARIO" IDENTIFIED BY "SenhaForte#2026"\n  DEFAULT TABLESPACE USERS\n  TEMPORARY TABLESPACE TEMP\n  QUOTA UNLIMITED ON USERS;\n\nGRANT CONNECT, RESOURCE TO "NOVO_USUARIO";`,
+      users: `CREATE USER "NOVO_USUARIO" IDENTIFIED BY "********"\n  DEFAULT TABLESPACE USERS\n  TEMPORARY TABLESPACE TEMP\n  QUOTA UNLIMITED ON USERS;\n\nGRANT CONNECT, RESOURCE TO "NOVO_USUARIO";`,
       roles: `CREATE ROLE "RL_APP_ACESSO";\nGRANT CREATE SESSION, SELECT ANY TABLE TO "RL_APP_ACESSO";`,
-      dblinks: `CREATE DATABASE LINK "LK_REMOTO"\n  CONNECT TO "USUARIO_REMOTO" IDENTIFIED BY "SenhaRemota"\n  USING '//host-remoto:1521/ORCL';`,
+      dblinks: `CREATE DATABASE LINK "LK_REMOTO"\n  CONNECT TO "USUARIO_REMOTO" IDENTIFIED BY "********"\n  USING '//host-remoto:1521/ORCL';`,
       jobs: `BEGIN\n  DBMS_SCHEDULER.CREATE_JOB(\n    job_name        => '"${schema}"."JOB_ROTINA_DIARIA"',\n    job_type        => 'PLSQL_BLOCK',\n    job_action      => 'BEGIN NULL; END;',\n    start_date      => SYSTIMESTAMP,\n    repeat_interval => 'FREQ=DAILY;BYHOUR=2;BYMINUTE=0',\n    enabled         => TRUE\n  );\nEND;\n/`
     };
     const ddl = templates[cat] || templates.tables;
@@ -3288,6 +3288,19 @@ class SchemaBrowser {
     // Also update tab-pane-columns and tab-pane-tsdatafiles in background
     const colPane = document.getElementById('tab-pane-columns');
     if (colPane && this.currentCategory === 'tablespaces') colPane.innerHTML = this.buildSelectedTablespaceDetailHtml(ts);
+  }
+
+  openAllTablespacesView() {
+    this.currentCategory = 'tablespaces';
+    this.updateDetailTabsForCategory('tablespaces');
+    this.switchDetailTab('tsoverview');
+    if (this.detailTitle) this.detailTitle.textContent = 'TODAS AS TABLESPACES DA INSTÂNCIA (VISÃO CONSOLIDADA)';
+    if (this.detailTypePill) this.detailTypePill.textContent = 'TABLESPACE SUITE';
+    this.render();
+    this.loadAllTablespacesOverview(true);
+    if (window.TracesApp?.openWindow) {
+      window.TracesApp.openWindow('browser');
+    }
   }
 
   escapeHtml(str) {

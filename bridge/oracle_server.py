@@ -41,6 +41,15 @@ import ssl
 import threading
 from datetime import datetime, date
 
+try:
+    from bridge.extended_services import ExtendedServices
+except Exception:
+    try:
+        from extended_services import ExtendedServices
+    except Exception:
+        ExtendedServices = None
+
+
 # Garantir que stdout e stderr nunca sejam None em execução oculta/detached no Windows
 if sys.stdout is None or not hasattr(sys.stdout, "write"):
     try:
@@ -868,6 +877,18 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             reconnect_fn=None
         )
 
+    def get_extended_services(self):
+        if not hasattr(self, "_extended_services") or self._extended_services is None:
+            if ExtendedServices:
+                self._extended_services = ExtendedServices(
+                    base_dir=BASE_DIR,
+                    active_connections=ACTIVE_CONNECTIONS,
+                    get_active_conn_func=lambda payload=None, query=None: self.get_connection_entry(payload=payload, query=query),
+                    send_response_func=self.send_api_response
+                )
+        return getattr(self, "_extended_services", None)
+
+
     def get_connection_entry(self, payload=None, query=None):
         """
         Localiza a conexão correta no registro ACTIVE_CONNECTIONS:
@@ -1176,8 +1197,22 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_rman(parsed.query)
         elif parsed.path == "/api/clipboard":
             self.handle_get_clipboard()
-        elif parsed.path == "/api/update/check":
-            self.handle_update_check()
+        elif parsed.path == "/api/inventory":
+            srv = self.get_extended_services()
+            if srv: srv.handle_get_inventory()
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/inventory/ping":
+            srv = self.get_extended_services()
+            if srv: srv.handle_inventory_ping(parsed.query)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/health360":
+            srv = self.get_extended_services()
+            if srv: srv.handle_health360(parsed.query)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/ai/config":
+            srv = self.get_extended_services()
+            if srv: srv.handle_get_ai_config()
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
         elif parsed.path.startswith("/api/pro/"):
             if toad_pro:
                 query_params = urllib.parse.parse_qs(parsed.query)
@@ -1243,6 +1278,42 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_post_clipboard(payload)
         elif parsed.path == "/api/update/apply":
             self.handle_update_apply(payload)
+        elif parsed.path == "/api/inventory":
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_inventory(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/inventory/ping":
+            srv = self.get_extended_services()
+            if srv: srv.handle_inventory_ping(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/ai/gemini":
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_ai_gemini(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/ai/config":
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_ai_config(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path in ("/api/cli/sqlplus", "/api/sqlplus"):
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_sqlplus(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path in ("/api/cli/rman",):
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_cli_rman(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/os/python":
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_os_python(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/os/exec":
+            srv = self.get_extended_services()
+            if srv: srv.handle_post_os_exec(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/health360":
+            srv = self.get_extended_services()
+            if srv: srv.handle_health360(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
         elif parsed.path.startswith("/api/pro/"):
             if toad_pro:
                 res, status = toad_pro.dispatch(self.get_pro_context(), parsed.path, payload)

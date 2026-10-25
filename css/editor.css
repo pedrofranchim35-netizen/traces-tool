@@ -183,7 +183,7 @@
   width: 100%;
   height: 100%;
   padding: 8px 10px;
-  background: #ffffff !important;
+  background: transparent !important;
   color: #0f172a !important;
   caret-color: #000000 !important;
   border: none;
@@ -407,3 +407,240 @@
 .insight-item.selected .insight-item-type {
   color: #e0f2fe !important;
 }
+
+/* ==========================================================================
+   NOTEPAD++ SELECTION STYLES & COLUMN MODE (ALT + MOUSE DRAG)
+   ========================================================================== */
+.npp-overlay-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.npp-col-box {
+  position: absolute;
+  background-color: rgba(0, 120, 215, 0.28);
+  border-left: 1px dashed #0078d7;
+  border-right: 1px dashed #0078d7;
+  border-top: 1px solid rgba(0, 120, 215, 0.4);
+  border-bottom: 1px solid rgba(0, 120, 215, 0.4);
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+.npp-col-caret {
+  position: absolute;
+  width: 2px;
+  background-color: #0078d7;
+  pointer-events: none;
+  animation: nppCaretBlink 1s step-end infinite;
+}
+
+@keyframes nppCaretBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Notepad++ Smart Word Highlighting (#80FF80) */
+.npp-smart-highlight-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.npp-word-match {
+  position: absolute;
+  background-color: #80FF80 !important;
+  color: #000000 !important;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #48c748;
+  opacity: 0.85;
+}
+
+/* Gutter selection cursor indicator */
+.editor-gutter .gutter-line {
+  cursor: e-resize;
+  user-select: none;
+}
+.editor-gutter .gutter-line:hover {
+  background-color: #e2e8f0;
+  color: #0284c7;
+  font-weight: 700;
+}
+.editor-gutter .gutter-line.selected-gutter-line {
+  background-color: #bae6fd !important;
+  color: #0369a1 !important;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   IN-EDITOR AI COPILOT BAR (FLOATING TOP BAR - CTRL+I)
+   ========================================================================== */
+.in-editor-ai-bar {
+  position: relative;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 2px solid #0284c7;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+  animation: slideDownAi 180ms ease-out;
+}
+
+@keyframes slideDownAi {
+  from { transform: translateY(-12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.ai-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-bar-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.3px;
+}
+
+.ai-model-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid #bae6fd;
+}
+
+.ai-bar-close {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.ai-bar-close:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.ai-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ai-editor-prompt-input {
+  flex: 1;
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-family: var(--toad-font-ui);
+  outline: none;
+  background: #ffffff;
+  color: #0f172a;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ai-editor-prompt-input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.btn-ai-action {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 120ms ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.btn-ai-action.primary {
+  background: #0284c7;
+  color: #ffffff;
+  border: 1px solid #0369a1;
+}
+
+.btn-ai-action.primary:hover {
+  background: #0369a1;
+}
+
+.btn-ai-action.secondary {
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-ai-action.secondary:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.ai-bar-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ai-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ai-shortcut-tip {
+  font-size: 10.5px;
+  color: #64748b;
+  margin-left: auto;
+}
+
+.ai-response-preview-box {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: var(--toad-font-code);
+  font-size: 11.5px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  margin-top: 4px;
+  border: 1px solid #334155;
+}
+

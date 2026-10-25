@@ -43,6 +43,12 @@ class TracesApp {
       this.databaseProbe = new DatabaseProbe();
       this.tracesCopilot = new TracesCopilot();
 
+      // 2.1 Enterprise Integrations
+      this.inventoryManager = new InventoryManager();
+      this.sqlplusRmanTerminal = new SqlplusRmanTerminal();
+      this.pythonOsConsole = new PythonOsConsole();
+      this.health360 = new Health360();
+
       // 3. Advanced Suite Modules
       this.spotlightOracle = new SpotlightOracle();
       this.dataModeler = new DataModeler();

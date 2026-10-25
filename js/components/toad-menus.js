@@ -149,10 +149,20 @@ class ToadMenus {
           label: 'Storage & Space Management',
           icon: '💾',
           submenu: [
+            { label: 'Visão de Todas as Tablespaces ao Mesmo Tempo (Visão Unificada)', action: () => window.TracesApp.schemaBrowser.openAllTablespacesView() },
             { label: 'Tablespace Map & High Water Mark (HWM)', action: () => window.TracesApp.openWindow('dba', 'tablespacemap') },
             { label: 'Space Manager & Capacity Growth Forecast', action: () => window.TracesApp.openWindow('dba', 'spacemanager') },
             { label: 'Segment Advisor & Rebuild Multiple Objects', action: () => window.TracesApp.openWindow('dba', 'segmentadvisor') },
             { label: 'Undo Advisor (V$UNDOSTAT / ORA-01555)', action: () => window.TracesApp.openWindow('dba', 'undoadvisor') }
+          ]
+        },
+        {
+          label: 'Inventário & Saúde do Banco',
+          icon: '🏛',
+          submenu: [
+            { label: '📋 Inventário Corporativo de Bancos (Ambientes & TCP Ping)', action: () => window.TracesApp.inventoryManager?.openModal() },
+            { label: '🩺 Health 360: Auditoria Rápida Básica (10 Pontos Vitais)', action: () => window.TracesApp.health360?.openModal('basic') },
+            { label: '🩺 Health 360: Auditoria Completa Complexa (8 Pilares DBA)', action: () => window.TracesApp.health360?.openModal('complex') }
           ]
         },
         {
@@ -288,6 +298,12 @@ class ToadMenus {
       ],
 
       'Tools': [
+        { label: '📋 Inventário Corporativo de Bancos (Ambientes & TCP Ping)', icon: '📋', shortcut: '', action: () => window.TracesApp.inventoryManager?.openModal() },
+        { label: '📟 Terminal Interativo SQL*Plus & RMAN', icon: '📟', shortcut: '', action: () => window.TracesApp.sqlplusRmanTerminal?.openModal() },
+        { label: '🐍 Python Console com Acesso ao S.O. & oracledb', icon: '🐍', shortcut: '', action: () => window.TracesApp.pythonOsConsole?.openModal() },
+        { label: '🩺 Database Health 360° (Básico & Complexo)', icon: '🩺', shortcut: '', action: () => window.TracesApp.health360?.openModal() },
+        { label: '✨ Google Gemini AI Copilot (Configurar Chave & Testar)', icon: '✨', shortcut: '', action: () => window.TracesApp.tracesCopilot?.openSettingsModal() },
+        { separator: true },
         { label: 'Spotlight on Oracle (NOC Architecture Topology)', icon: '💡', shortcut: '', action: () => window.TracesApp.openWindow('spotlight') },
         { label: 'Quest SQL Optimizer (SQL Rewrite & Baselines)', icon: '⚡', shortcut: '', action: () => window.TracesApp.openWindow('optimizer') },
         { label: 'Benchmark Factory (Load & Stress Testing)', icon: '🏎', shortcut: '', action: () => window.TracesApp.toadModals.openBenchmarkFactory() },
@@ -330,6 +346,7 @@ class ToadMenus {
         { separator: true },
         { label: 'Verificar Atualizações do App (GitHub)...', icon: '🔄', shortcut: '', action: () => window.TracesApp.toadModals.openUpdateDialog() },
         { label: 'Baixar Instalador & Atualizador Windows (.exe)', icon: '💾', shortcut: '', action: () => { window.location.href = 'TracesToad-Setup.exe'; } },
+        { label: 'Baixar Executável Portátil (Toad.exe)', icon: '🐸', shortcut: '', action: () => { window.location.href = 'Toad.exe'; } },
         { label: 'Baixar Executável Portátil (TracesToad.exe)', icon: '⚡', shortcut: '', action: () => { window.location.href = 'TracesToad.exe'; } },
         { separator: true },
         { label: 'Sobre o Toad for Oracle', icon: 'ℹ', shortcut: '', action: () => window.TracesApp.toadModals.openAboutDialog() }

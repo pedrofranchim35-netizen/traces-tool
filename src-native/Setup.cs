@@ -179,7 +179,7 @@ namespace TracesToadSetup
 
                         if (!string.Equals(Path.GetFullPath(srcDir).TrimEnd('\\'), Path.GetFullPath(installDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
                         {
-                            string[] topFiles = new string[] { "index.html", "TracesToad.exe", "Toad.exe", "start.bat", "update.bat", "README.md", ".version", "main.js", "preload.js", "package.json" };
+                            string[] topFiles = new string[] { "index.html", "Traces.exe", "TracesOracle.exe", "TracesDBA.exe", "TracesToad.exe", "Toad.exe", "start.bat", "update.bat", "README.md", ".version", "main.js", "preload.js", "package.json" };
                             foreach (string f in topFiles)
                             {
                                 string sf = Path.Combine(srcDir, f);
@@ -190,7 +190,7 @@ namespace TracesToadSetup
                                 }
                             }
 
-                            string[] folders = new string[] { "assets", "css", "js", "bridge", "installer" };
+                            string[] folders = new string[] { "assets", "css", "js", "bridge", "config", "installer" };
                             foreach (string fld in folders)
                             {
                                 CopyDirFast(Path.Combine(srcDir, fld), Path.Combine(installDir, fld));
@@ -207,9 +207,11 @@ namespace TracesToadSetup
 
                         updateUi("[2/4] Criando atalhos na Área de Trabalho e Menu Iniciar...", 65);
 
-                        string mainExe = Path.Combine(installDir, "TracesToad.exe");
+                        string mainExe = Path.Combine(installDir, "Traces.exe");
+                        if (!File.Exists(mainExe)) mainExe = Path.Combine(installDir, "TracesOracle.exe");
+                        if (!File.Exists(mainExe)) mainExe = Path.Combine(installDir, "TracesToad.exe");
                         string iconPath = Path.Combine(installDir, @"assets\traces.ico");
-                        string desktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "TRACES Toad for Oracle.lnk");
+                        string desktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "TRACES Oracle.lnk");
                         CreateShortcut(desktopLnk, mainExe, installDir, iconPath);
 
                         string startMenuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "TRACES Toad for Oracle");

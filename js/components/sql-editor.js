@@ -110,6 +110,8 @@ END;`
     document.addEventListener('select', saveSel, true);
 
     this.initCodeInsight();
+    this.initNotepadPlusPlusSelection();
+    this.initInEditorAiBar();
   }
 
   bindEvents() {
@@ -137,9 +139,20 @@ END;`
         }
       });
       this.textarea.addEventListener('select', () => this.updateCursorPosition());
+      this.textarea.addEventListener('dblclick', () => {
+        setTimeout(() => this.updateSmartWordHighlighting(), 10);
+      });
 
       // Ensure native Windows Ctrl+V / Paste records Undo history and updates line numbers immediately
-      this.textarea.addEventListener('paste', () => {
+      this.textarea.addEventListener('paste', (e) => {
+        if (this.isColumnModeActive()) {
+          e.preventDefault();
+          const pastedText = (e.clipboardData || window.clipboardData)?.getData('text');
+          if (pastedText) {
+            this.executeColumnPaste(pastedText);
+          }
+          return;
+        }
         this._pasteHandledNatively = true;
         this.pushHistorySnapshot();
         setTimeout(() => {
@@ -173,6 +186,27 @@ END;`
 
       // Keyboard Shortcuts inside Editor
       this.textarea.addEventListener('keydown', (e) => {
+        // 0. In-Editor AI Copilot Toggle: Ctrl+I
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'i') {
+          e.preventDefault();
+          this.toggleAiBar();
+          return;
+        }
+
+        // Notepad++ Column Mode: Alt+Shift+Arrows expansion
+        if (e.altKey && e.shiftKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+          e.preventDefault();
+          this.handleColumnKeyboardExpand(e.key);
+          return;
+        }
+
+        // Notepad++ Column Mode: active typing / manipulation
+        if (this.isColumnModeActive()) {
+          if (this.handleColumnKeyDown(e)) {
+            return;
+          }
+        }
+
         // Handle Code Insight autocomplete navigation
         if (this.isInsightVisible()) {
           if (e.key === 'ArrowDown') {
@@ -1076,6 +1110,11 @@ END;`
       { label: 'Duplicar Linha', icon: '📑', shortcut: 'Ctrl+D', action: () => this.duplicateLine() },
       { label: 'Excluir Linha', icon: '🗑', shortcut: 'Ctrl+Shift+K', action: () => this.deleteLine() },
       { label: 'Formatar Código SQL', icon: '🧹', shortcut: 'Ctrl+Shift+F', action: () => this.formatSql() },
+      { separator: true },
+      { label: '✨ IA: Otimizar SQL Selecionado (Gemini)', icon: '🚀', shortcut: '', action: () => this.optimizeSelectedWithAi() },
+      { label: '✨ IA: Explicar Query / Plano (Gemini)', icon: '🔍', shortcut: '', action: () => this.explainSelectedWithAi() },
+      { label: '✨ IA: Corrigir Erro ORA / Sintaxe', icon: '🩺', shortcut: '', action: () => this.fixSelectedWithAi() },
+      { label: '✨ IA: Abrir Prompt no Editor', icon: '⚡', shortcut: 'Ctrl+I', action: () => this.toggleAiBar(true) },
       { separator: true },
       { label: 'Executar Statement', icon: '▶', shortcut: 'F9', action: () => this.executeStatement() },
       { label: 'Explain Plan', icon: '🌳', shortcut: 'Ctrl+E', action: () => this.explainPlan() }
@@ -2262,6 +2301,16 @@ END;`
       { text: 'DBMS_LOCK.SLEEP', type: 'Procedure', icon: '⚡', snippet: 'DBMS_LOCK.SLEEP(1);' },
       { text: 'DBMS_METADATA.GET_DDL', type: 'Function', icon: '⚙', snippet: "DBMS_METADATA.GET_DDL('TABLE', 'TABLE_NAME', 'SCHEMA')" }
     ];
+
+    // Load full 850+ Oracle Dictionary (Keywords, Views, Packages, Hints, Functions)
+    if (window.TRACES_ORACLE_DICTIONARY && Array.isArray(window.TRACES_ORACLE_DICTIONARY)) {
+      const existing = new Set(this.insightDictionary.map(i => (i.text || '').toUpperCase()));
+      for (const item of window.TRACES_ORACLE_DICTIONARY) {
+        if (!existing.has((item.text || '').toUpperCase())) {
+          this.insightDictionary.push(item);
+        }
+      }
+    }
   }
 
   isInsightVisible() {
@@ -2528,6 +2577,1001 @@ END;`
     }
     this.insightItems = [];
     this.insightSelectedIndex = 0;
+  }
+
+  /* ==========================================================================
+     NOTEPAD++ SELECTION ENGINE (COLUMN MODE, MULTI-LINE EDIT & SMART HIGHLIGHT)
+     ========================================================================== */
+  initNotepadPlusPlusSelection() {
+    this.columnSelection = null; // { startLine, startCol, endLine, endCol, active: bool }
+    this.isColumnDragging = false;
+    this.charWidth = this.measureCharWidth();
+    this.lineHeight = 19; // px
+    this.charPaddingLeft = 10; // px
+    this.charPaddingTop = 8; // px
+
+    const container = document.querySelector('.editor-textarea-container');
+    if (!container) return;
+
+    // Smart Highlight Layer (Notepad++ Green #80FF80)
+    let hlLayer = document.getElementById('npp-highlight-layer');
+    if (!hlLayer) {
+      hlLayer = document.createElement('div');
+      hlLayer.id = 'npp-highlight-layer';
+      hlLayer.className = 'npp-smart-highlight-layer';
+      container.appendChild(hlLayer);
+    }
+    this.nppHighlightLayer = hlLayer;
+
+    // Column Mode Selection Overlay
+    let colOverlay = document.getElementById('npp-column-overlay');
+    if (!colOverlay) {
+      colOverlay = document.createElement('div');
+      colOverlay.id = 'npp-column-overlay';
+      colOverlay.className = 'npp-overlay-container';
+      container.appendChild(colOverlay);
+    }
+    this.nppOverlay = colOverlay;
+
+    if (!this.textarea) return;
+
+    // 1. Mouse Alt+Drag for Column Selection
+    this.textarea.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // only left click
+      if (e.altKey) {
+        e.preventDefault(); // prevent native browser selection
+        this.startColumnDrag(e);
+      } else {
+        // Normal click clears any active column mode
+        if (this.isColumnModeActive()) {
+          this.clearColumnSelection();
+        }
+      }
+    });
+
+    // Sync scroll
+    this.textarea.addEventListener('scroll', () => {
+      this.syncNppLayersScroll();
+    });
+
+    // 2. Notepad++ Smart Word Highlighting on selection/dblclick
+    this.textarea.addEventListener('mouseup', () => {
+      setTimeout(() => this.updateSmartWordHighlighting(), 20);
+    });
+    this.textarea.addEventListener('keyup', (e) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+        setTimeout(() => this.updateSmartWordHighlighting(), 20);
+      }
+    });
+
+    // 3. Gutter Line Selection Drag
+    this.initGutterLineSelection();
+  }
+
+  measureCharWidth() {
+    try {
+      let font = '13px Consolas, "Courier New", monospace';
+      if (this.textarea) {
+        const cs = window.getComputedStyle(this.textarea);
+        if (cs && cs.fontSize && cs.fontFamily) {
+          font = `${cs.fontSize} ${cs.fontFamily}`;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.font = font;
+        const w = ctx.measureText('M'.repeat(100)).width / 100;
+        if (w > 4) return w;
+      }
+      const span = document.createElement('span');
+      span.style.font = font;
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.textContent = 'M'.repeat(100);
+      document.body.appendChild(span);
+      const width = span.getBoundingClientRect().width / 100;
+      document.body.removeChild(span);
+      return width > 5 ? width : 7.8;
+    } catch (_) {
+      return 7.8;
+    }
+  }
+
+  syncNppLayersScroll() {
+    if (!this.textarea) return;
+    const top = -this.textarea.scrollTop;
+    const left = -this.textarea.scrollLeft;
+    if (this.nppOverlay) {
+      this.nppOverlay.style.transform = `translate(${left}px, ${top}px)`;
+    }
+    if (this.nppHighlightLayer) {
+      this.nppHighlightLayer.style.transform = `translate(${left}px, ${top}px)`;
+    }
+  }
+
+  getEditorCoordinatesFromMouse(e) {
+    const rect = this.textarea.getBoundingClientRect();
+    const x = e.clientX - rect.left - this.charPaddingLeft + this.textarea.scrollLeft;
+    const y = e.clientY - rect.top - this.charPaddingTop + this.textarea.scrollTop;
+    const lineIndex = Math.max(0, Math.floor(y / this.lineHeight));
+    const colIndex = Math.max(0, Math.round(x / this.charWidth));
+    return { lineIndex, colIndex };
+  }
+
+  startColumnDrag(e) {
+    const pos = this.getEditorCoordinatesFromMouse(e);
+    this.isColumnDragging = true;
+    this.columnSelection = {
+      startLine: pos.lineIndex,
+      startCol: pos.colIndex,
+      endLine: pos.lineIndex,
+      endCol: pos.colIndex,
+      active: true
+    };
+    this.renderColumnSelectionOverlay();
+
+    const onMouseMove = (ev) => {
+      if (!this.isColumnDragging) return;
+      const cur = this.getEditorCoordinatesFromMouse(ev);
+      this.columnSelection.endLine = cur.lineIndex;
+      this.columnSelection.endCol = cur.colIndex;
+      this.renderColumnSelectionOverlay();
+    };
+
+    const onMouseUp = () => {
+      this.isColumnDragging = false;
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      this.textarea.focus();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
+
+  isColumnModeActive() {
+    return Boolean(this.columnSelection && this.columnSelection.active);
+  }
+
+  clearColumnSelection() {
+    this.columnSelection = null;
+    this.isColumnDragging = false;
+    if (this.nppOverlay) {
+      this.nppOverlay.innerHTML = '';
+    }
+  }
+
+  renderColumnSelectionOverlay() {
+    if (!this.nppOverlay || !this.columnSelection) return;
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+
+    const lines = this.textarea.value.split('\n');
+    let html = '';
+
+    for (let l = fromLine; l <= toLine; l++) {
+      if (l >= lines.length && l > fromLine) break;
+      const topPx = this.charPaddingTop + l * this.lineHeight;
+      const leftPx = this.charPaddingLeft + fromCol * this.charWidth;
+      const widthPx = Math.max(2, (toCol - fromCol) * this.charWidth);
+
+      if (toCol > fromCol) {
+        html += `<div class="npp-col-box" style="top: ${topPx}px; left: ${leftPx}px; width: ${widthPx}px; height: ${this.lineHeight}px;"></div>`;
+      }
+      // Caret on the active edge (endCol)
+      const caretLeft = this.charPaddingLeft + sel.endCol * this.charWidth;
+      html += `<div class="npp-col-caret" style="top: ${topPx}px; left: ${caretLeft}px; height: ${this.lineHeight}px;"></div>`;
+    }
+
+    this.nppOverlay.innerHTML = html;
+    this.syncNppLayersScroll();
+  }
+
+  handleColumnKeyboardExpand(arrowKey) {
+    if (!this.isColumnModeActive()) {
+      const text = this.textarea.value;
+      const selStart = this.textarea.selectionStart;
+      const before = text.slice(0, selStart);
+      const lines = before.split('\n');
+      const curLine = lines.length - 1;
+      const curCol = lines[curLine].length;
+      this.columnSelection = {
+        startLine: curLine,
+        startCol: curCol,
+        endLine: curLine,
+        endCol: curCol,
+        active: true
+      };
+    }
+
+    const sel = this.columnSelection;
+    if (arrowKey === 'ArrowUp') sel.endLine = Math.max(0, sel.endLine - 1);
+    if (arrowKey === 'ArrowDown') sel.endLine = sel.endLine + 1;
+    if (arrowKey === 'ArrowLeft') sel.endCol = Math.max(0, sel.endCol - 1);
+    if (arrowKey === 'ArrowRight') sel.endCol = sel.endCol + 1;
+
+    this.renderColumnSelectionOverlay();
+  }
+
+  handleColumnKeyDown(e) {
+    const sel = this.columnSelection;
+    if (!sel || !sel.active) return false;
+
+    // Escape clears column mode
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this.clearColumnSelection();
+      return true;
+    }
+
+    // Ctrl+C: Copy rectangular block to clipboard
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      this.copyColumnSelection();
+      return true;
+    }
+
+    // Ctrl+X: Cut rectangular block
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
+      e.preventDefault();
+      this.cutColumnSelection();
+      return true;
+    }
+
+    // Ctrl+V: Paste rectangular block / distribute lines across column selection
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(text => {
+          if (text) this.executeColumnPaste(text);
+        }).catch(() => {});
+      }
+      return true;
+    }
+
+    // Tab / Shift+Tab: Indent or unindent selected column block
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      this.executeColumnTab(e.shiftKey);
+      return true;
+    }
+
+    // Backspace: Delete character before or clear block across lines
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      this.executeColumnBackspace();
+      return true;
+    }
+
+    // Delete: Delete character at cursor or clear block across lines
+    if (e.key === 'Delete') {
+      e.preventDefault();
+      this.executeColumnDelete();
+      return true;
+    }
+
+    // Enter: Insert newline across column lines
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.executeColumnEnter();
+      return true;
+    }
+
+    // Arrow navigation without Shift/Alt moves the column caret
+    if (!e.shiftKey && !e.altKey && !e.ctrlKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      e.preventDefault();
+      if (e.key === 'ArrowUp') { sel.startLine = Math.max(0, sel.startLine - 1); sel.endLine = sel.startLine; }
+      if (e.key === 'ArrowDown') { sel.startLine = sel.startLine + 1; sel.endLine = sel.startLine; }
+      if (e.key === 'ArrowLeft') { sel.startCol = Math.max(0, sel.startCol - 1); sel.endCol = sel.startCol; }
+      if (e.key === 'ArrowRight') { sel.startCol = sel.startCol + 1; sel.endCol = sel.startCol; }
+      this.renderColumnSelectionOverlay();
+      return true;
+    }
+
+    // Printable character: insert simultaneously on each selected line
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+      e.preventDefault();
+      this.executeColumnType(e.key);
+      return true;
+    }
+
+    return false;
+  }
+
+  executeColumnType(char) {
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+
+    this.pushHistorySnapshot();
+    const lines = this.textarea.value.split('\n');
+
+    while (lines.length <= toLine) {
+      lines.push('');
+    }
+
+    for (let l = fromLine; l <= toLine; l++) {
+      let line = lines[l] || '';
+      if (line.length < fromCol) {
+        line = line.padEnd(fromCol, ' ');
+      }
+      const before = line.slice(0, fromCol);
+      const after = line.slice(toCol);
+      lines[l] = before + char + after;
+    }
+
+    this.textarea.value = lines.join('\n');
+    sel.startCol = fromCol + char.length;
+    sel.endCol = sel.startCol;
+    this.renderColumnSelectionOverlay();
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+  }
+
+  executeColumnBackspace() {
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+
+    this.pushHistorySnapshot();
+    const lines = this.textarea.value.split('\n');
+
+    if (toCol > fromCol) {
+      for (let l = fromLine; l <= toLine; l++) {
+        if (l < lines.length) {
+          const line = lines[l];
+          lines[l] = line.slice(0, fromCol) + line.slice(toCol);
+        }
+      }
+      sel.startCol = fromCol;
+      sel.endCol = fromCol;
+    } else if (fromCol > 0) {
+      for (let l = fromLine; l <= toLine; l++) {
+        if (l < lines.length) {
+          const line = lines[l];
+          if (line.length >= fromCol) {
+            lines[l] = line.slice(0, fromCol - 1) + line.slice(fromCol);
+          }
+        }
+      }
+      sel.startCol = fromCol - 1;
+      sel.endCol = sel.startCol;
+    }
+
+    this.textarea.value = lines.join('\n');
+    this.renderColumnSelectionOverlay();
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+  }
+
+  executeColumnDelete() {
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+
+    this.pushHistorySnapshot();
+    const lines = this.textarea.value.split('\n');
+
+    if (toCol > fromCol) {
+      for (let l = fromLine; l <= toLine; l++) {
+        if (l < lines.length) {
+          const line = lines[l];
+          lines[l] = line.slice(0, fromCol) + line.slice(toCol);
+        }
+      }
+      sel.startCol = fromCol;
+      sel.endCol = fromCol;
+    } else {
+      for (let l = fromLine; l <= toLine; l++) {
+        if (l < lines.length) {
+          const line = lines[l];
+          if (line.length > fromCol) {
+            lines[l] = line.slice(0, fromCol) + line.slice(fromCol + 1);
+          }
+        }
+      }
+    }
+
+    this.textarea.value = lines.join('\n');
+    this.renderColumnSelectionOverlay();
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+  }
+
+  executeColumnEnter() {
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+
+    this.pushHistorySnapshot();
+    const lines = this.textarea.value.split('\n');
+    const newLines = [];
+
+    for (let l = 0; l < lines.length; l++) {
+      if (l >= fromLine && l <= toLine) {
+        let line = lines[l] || '';
+        if (line.length < fromCol) line = line.padEnd(fromCol, ' ');
+        newLines.push(line.slice(0, fromCol));
+        newLines.push(line.slice(fromCol));
+      } else {
+        newLines.push(lines[l]);
+      }
+    }
+
+    this.textarea.value = newLines.join('\n');
+    this.clearColumnSelection();
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+  }
+
+  executeColumnPaste(pastedText) {
+    if (!pastedText || !this.isColumnModeActive()) return;
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+
+    this.pushHistorySnapshot();
+    const lines = this.textarea.value.split('\n');
+    const pasteLines = pastedText.split(/\r?\n/);
+
+    const rowCount = toLine - fromLine + 1;
+    const isMultiLinePaste = pasteLines.length > 1;
+    const targetRowCount = isMultiLinePaste ? Math.max(rowCount, pasteLines.length) : rowCount;
+
+    while (lines.length <= fromLine + targetRowCount) {
+      lines.push('');
+    }
+
+    let maxInsertedCol = fromCol;
+    for (let i = 0; i < targetRowCount; i++) {
+      const l = fromLine + i;
+      let line = lines[l] || '';
+      if (line.length < fromCol) {
+        line = line.padEnd(fromCol, ' ');
+      }
+      const before = line.slice(0, fromCol);
+      const after = line.slice(toCol > fromCol ? toCol : fromCol);
+      const chunk = isMultiLinePaste ? (pasteLines[i] !== undefined ? pasteLines[i] : '') : pastedText;
+      lines[l] = before + chunk + after;
+      if (fromCol + chunk.length > maxInsertedCol) {
+        maxInsertedCol = fromCol + chunk.length;
+      }
+    }
+
+    this.textarea.value = lines.join('\n');
+    sel.startCol = maxInsertedCol;
+    sel.endCol = maxInsertedCol;
+    if (isMultiLinePaste && pasteLines.length > rowCount) {
+      sel.endLine = fromLine + pasteLines.length - 1;
+    }
+    this.renderColumnSelectionOverlay();
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+  }
+
+  executeColumnTab(isShift) {
+    const sel = this.columnSelection;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+    const tabSpaces = '  ';
+
+    this.pushHistorySnapshot();
+    const lines = this.textarea.value.split('\n');
+
+    for (let l = fromLine; l <= toLine; l++) {
+      if (l < lines.length) {
+        let line = lines[l];
+        if (isShift) {
+          if (line.slice(fromCol, fromCol + 2) === '  ') {
+            lines[l] = line.slice(0, fromCol) + line.slice(fromCol + 2);
+          } else if (line.slice(fromCol, fromCol + 1) === ' ') {
+            lines[l] = line.slice(0, fromCol) + line.slice(fromCol + 1);
+          }
+        } else {
+          if (line.length < fromCol) line = line.padEnd(fromCol, ' ');
+          lines[l] = line.slice(0, fromCol) + tabSpaces + line.slice(toCol > fromCol ? toCol : fromCol);
+        }
+      }
+    }
+
+    this.textarea.value = lines.join('\n');
+    if (isShift) {
+      sel.startCol = Math.max(0, fromCol - 2);
+      sel.endCol = sel.startCol;
+    } else {
+      sel.startCol = fromCol + 2;
+      sel.endCol = sel.startCol;
+    }
+    this.renderColumnSelectionOverlay();
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+  }
+
+  copyColumnSelection() {
+    const sel = this.columnSelection;
+    if (!sel) return;
+    const fromLine = Math.min(sel.startLine, sel.endLine);
+    const toLine = Math.max(sel.startLine, sel.endLine);
+    const fromCol = Math.min(sel.startCol, sel.endCol);
+    const toCol = Math.max(sel.startCol, sel.endCol);
+
+    const lines = this.textarea.value.split('\n');
+    const copied = [];
+    for (let l = fromLine; l <= toLine; l++) {
+      const line = lines[l] || '';
+      copied.push(line.slice(fromCol, toCol));
+    }
+    const text = copied.join('\r\n');
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+    }
+    window.TracesApp?.notify(`Bloco retangular copiado (${copied.length} linhas)`, 'info');
+  }
+
+  cutColumnSelection() {
+    this.copyColumnSelection();
+    this.executeColumnBackspace();
+  }
+
+  initGutterLineSelection() {
+    if (!this.gutterEl) return;
+    let isGutterDragging = false;
+    let gutterStartLine = 0;
+
+    this.gutterEl.addEventListener('mousedown', (e) => {
+      const lineEl = e.target.closest('.gutter-line');
+      if (!lineEl) return;
+      e.preventDefault();
+      const lineNum = parseInt(lineEl.textContent.replace(/[^0-9]/g, ''), 10);
+      if (isNaN(lineNum)) return;
+
+      isGutterDragging = true;
+      gutterStartLine = lineNum - 1;
+      this.selectFullLines(gutterStartLine, gutterStartLine);
+
+      const onMouseMove = (ev) => {
+        if (!isGutterDragging) return;
+        const hoverEl = ev.target.closest('.gutter-line');
+        if (hoverEl) {
+          const curNum = parseInt(hoverEl.textContent.replace(/[^0-9]/g, ''), 10);
+          if (!isNaN(curNum)) {
+            this.selectFullLines(gutterStartLine, curNum - 1);
+          }
+        }
+      };
+
+      const onMouseUp = () => {
+        isGutterDragging = false;
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
+  }
+
+  selectFullLines(fromLineIdx, toLineIdx) {
+    const lines = this.textarea.value.split('\n');
+    const start = Math.min(fromLineIdx, toLineIdx);
+    const end = Math.max(fromLineIdx, toLineIdx);
+
+    let charStart = 0;
+    for (let i = 0; i < start; i++) {
+      charStart += (lines[i] ? lines[i].length : 0) + 1;
+    }
+
+    let charEnd = charStart;
+    for (let i = start; i <= end; i++) {
+      charEnd += (lines[i] ? lines[i].length : 0) + (i < lines.length - 1 ? 1 : 0);
+    }
+
+    this.textarea.focus();
+    this.textarea.setSelectionRange(charStart, charEnd);
+    this.updateCursorPosition();
+  }
+
+  updateSmartWordHighlighting() {
+    if (!this.nppHighlightLayer || !this.textarea) return;
+    const start = this.textarea.selectionStart;
+    const end = this.textarea.selectionEnd;
+    const text = this.textarea.value;
+
+    let word = '';
+    if (end > start) {
+      word = text.slice(start, end).trim();
+    } else {
+      const left = text.slice(0, start).match(/[a-zA-Z0-9_$#]+$/);
+      const right = text.slice(start).match(/^[a-zA-Z0-9_$#]+/);
+      if (left || right) {
+        word = (left ? left[0] : '') + (right ? right[0] : '');
+      }
+    }
+
+    if (!word || word.length < 2 || !/^[a-zA-Z0-9_$#]+$/.test(word)) {
+      this.nppHighlightLayer.innerHTML = '';
+      return;
+    }
+
+    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(?<![a-zA-Z0-9_$#])${escapedWord}(?![a-zA-Z0-9_$#])`, 'gi');
+    const lines = text.split('\n');
+    let html = '';
+
+    for (let l = 0; l < lines.length; l++) {
+      const line = lines[l];
+      let match;
+      while ((match = regex.exec(line)) !== null) {
+        const col = match.index;
+        const len = match[0].length;
+        const topPx = this.charPaddingTop + l * this.lineHeight;
+        const leftPx = this.charPaddingLeft + col * this.charWidth;
+        const widthPx = len * this.charWidth;
+        html += `<div class="npp-word-match" style="top: ${topPx}px; left: ${leftPx}px; width: ${widthPx}px; height: ${this.lineHeight}px;"></div>`;
+      }
+    }
+
+    this.nppHighlightLayer.innerHTML = html;
+    this.syncNppLayersScroll();
+  }
+
+  /* ==========================================================================
+     IN-EDITOR AI COPILOT ENGINE (GEMINI INTEGRATION & QUERY GENERATION)
+     ========================================================================== */
+  initInEditorAiBar() {
+    const upperPane = document.querySelector('.editor-upper-pane');
+    if (!upperPane) return;
+
+    let aiBar = document.getElementById('in-editor-ai-bar');
+    if (!aiBar) {
+      aiBar = document.createElement('div');
+      aiBar.id = 'in-editor-ai-bar';
+      aiBar.className = 'in-editor-ai-bar';
+      aiBar.style.display = 'none';
+
+      aiBar.innerHTML = `
+        <div class="ai-bar-header">
+          <span class="ai-bar-title">✨ Gemini AI SQL Copilot &amp; Query Generator</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="ai-model-badge" id="ai-bar-model-badge">gemini-2.5-flash</span>
+            <button class="ai-bar-close" onclick="window.TracesApp.sqlEditor.toggleAiBar(false)" title="Fechar (Esc)">✕</button>
+          </div>
+        </div>
+        <div class="ai-input-row">
+          <input type="text" id="ai-editor-prompt-input" class="ai-editor-prompt-input" 
+                 placeholder="Digite o que deseja em linguagem natural (ex: Crie uma query para listar as 10 maiores tabelas com tablespace e tamanho em MB)..." />
+          <button class="btn-ai-action primary" id="btn-ai-editor-run" onclick="window.TracesApp.sqlEditor.generateQueryFromAiPrompt()">
+            ⚡ Gerar SQL
+          </button>
+        </div>
+        <div class="ai-bar-actions-row">
+          <div class="ai-quick-actions">
+            <button class="btn-ai-action secondary" onclick="window.TracesApp.sqlEditor.optimizeSelectedWithAi()" title="Otimiza a query selecionada para máxima eficiência CBO">
+              🚀 Otimizar SQL
+            </button>
+            <button class="btn-ai-action secondary" onclick="window.TracesApp.sqlEditor.explainSelectedWithAi()" title="Explica o fluxo lógico da query e o que cada etapa realiza">
+              🔍 Explicar Query
+            </button>
+            <button class="btn-ai-action secondary" onclick="window.TracesApp.sqlEditor.fixSelectedWithAi()" title="Analisa código de erro ORA- ou erro de sintaxe e corrige">
+              🩺 Corrigir Erro ORA
+            </button>
+            <button class="btn-ai-action secondary" onclick="window.TracesApp.tracesCopilot?.openSettingsModal()" title="Configurar chave de API Gemini">
+              ⚙ Configurar Chave
+            </button>
+          </div>
+          <span class="ai-shortcut-tip">Atalho: <b>Ctrl+I</b> para abrir/fechar | <b>Enter</b> para enviar</span>
+        </div>
+        <div id="ai-editor-preview" class="ai-response-preview-box" style="display: none;"></div>
+      `;
+
+      const textareaContainer = upperPane.querySelector('.editor-textarea-container');
+      if (textareaContainer) {
+        upperPane.insertBefore(aiBar, textareaContainer);
+      } else {
+        upperPane.appendChild(aiBar);
+      }
+    }
+    this.aiBarEl = aiBar;
+
+    const input = document.getElementById('ai-editor-prompt-input');
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.generateQueryFromAiPrompt();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.toggleAiBar(false);
+        }
+      });
+    }
+  }
+
+  toggleAiBar(forceState) {
+    if (!this.aiBarEl) this.initInEditorAiBar();
+    if (!this.aiBarEl) return;
+    const isVisible = this.aiBarEl.style.display !== 'none';
+    const newState = typeof forceState === 'boolean' ? forceState : !isVisible;
+    this.aiBarEl.style.display = newState ? 'flex' : 'none';
+    if (newState) {
+      const input = document.getElementById('ai-editor-prompt-input');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+      const badge = document.getElementById('ai-bar-model-badge');
+      if (badge && window.TracesApp?.tracesCopilot) {
+        badge.textContent = window.TracesApp.tracesCopilot.model || 'gemini-2.5-flash';
+      }
+    } else {
+      this.textarea?.focus();
+    }
+  }
+
+  getSelectedTextOrCurrentStatement() {
+    if (this.textarea) {
+      const s = this.textarea.selectionStart;
+      const e = this.textarea.selectionEnd;
+      if (e > s) {
+        return this.textarea.value.slice(s, e).trim();
+      }
+    }
+    const stmt = this.getStatementAtCursor();
+    if (stmt && stmt.trim()) return stmt.trim();
+    return this.textarea ? this.textarea.value.trim() : '';
+  }
+
+  async generateQueryFromAiPrompt() {
+    const input = document.getElementById('ai-editor-prompt-input');
+    const prompt = input ? input.value.trim() : '';
+    if (!prompt) {
+      window.TracesApp?.notify('Digite uma instrução para a IA gerar a query', 'warning');
+      return;
+    }
+
+    const runBtn = document.getElementById('btn-ai-editor-run');
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.innerHTML = '⏳ Gerando...';
+    }
+
+    try {
+      const connMgr = window.TracesApp?.connectionManager;
+      const activeConn = connMgr?.getActive?.();
+      const currentSchema = window.TRACES_DB?.activeSchema || 'SYS';
+
+      const fullPrompt = `Você é o Oracle SQL Assistant do TRACES Oracle Studio.
+Escreva a instrução SQL Oracle recomendada para o seguinte pedido:
+"${prompt}"
+
+Contexto do Banco:
+- Schema Ativo: ${currentSchema}
+- Conexão: ${activeConn ? `${activeConn.user}@${activeConn.serviceName}` : 'Oracle Database 19c/23ai'}
+
+Responda fornecendo DIRETAMENTE o código SQL Oracle formatado em bloco \`\`\`sql ... \`\`\` seguido de uma breve explicação técnica.`;
+
+      const resp = await this.callGeminiApi(fullPrompt);
+      if (resp && resp.text) {
+        this.renderAiResponsePreview('Query SQL Gerada:', resp.text);
+      } else {
+        window.TracesApp?.notify('Não foi possível obter resposta da IA Gemini. Verifique a chave de API.', 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      window.TracesApp?.notify('Erro ao consultar IA: ' + e.message, 'error');
+    } finally {
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '⚡ Gerar SQL';
+      }
+    }
+  }
+
+  async optimizeSelectedWithAi() {
+    const sql = this.getSelectedTextOrCurrentStatement();
+    if (!sql) {
+      window.TracesApp?.notify('Nenhum código SQL selecionado no editor', 'warning');
+      return;
+    }
+    this.toggleAiBar(true);
+    const input = document.getElementById('ai-editor-prompt-input');
+    if (input) input.value = 'Otimizar performance do SQL selecionado';
+
+    const fullPrompt = `Analise este comando SQL Oracle e apresente a versão otimizada para o Cost-Based Optimizer (CBO), com sugestões de índices, hints úteis e eliminação de gargalos:
+\`\`\`sql
+${sql}
+\`\`\`
+Forneça o código reescrito completo e justifique as melhorias.`;
+
+    this.renderAiResponsePreview('Otimizando SQL...', '⏳ Consultando Gemini AI...');
+    try {
+      const resp = await this.callGeminiApi(fullPrompt);
+      if (resp && resp.text) {
+        this.renderAiResponsePreview('Otimização Recomendada (Gemini):', resp.text);
+      }
+    } catch (e) {
+      this.renderAiResponsePreview('Erro:', e.message);
+    }
+  }
+
+  async explainSelectedWithAi() {
+    const sql = this.getSelectedTextOrCurrentStatement();
+    if (!sql) {
+      window.TracesApp?.notify('Nenhum código SQL selecionado no editor', 'warning');
+      return;
+    }
+    this.toggleAiBar(true);
+    const input = document.getElementById('ai-editor-prompt-input');
+    if (input) input.value = 'Explicar lógica e etapas da query';
+
+    const fullPrompt = `Explique em detalhes para um Administrador / Desenvolvedor Oracle o que esta query faz, descrevendo:
+1. Objetivo do script
+2. Tabelas e joins envolvidos
+3. Filtros e agregações
+4. Possíveis gargalos de I/O ou CPU
+
+\`\`\`sql
+${sql}
+\`\`\``;
+
+    this.renderAiResponsePreview('Explicando Query...', '⏳ Consultando Gemini AI...');
+    try {
+      const resp = await this.callGeminiApi(fullPrompt);
+      if (resp && resp.text) {
+        this.renderAiResponsePreview('Explicação Técnica (Gemini):', resp.text);
+      }
+    } catch (e) {
+      this.renderAiResponsePreview('Erro:', e.message);
+    }
+  }
+
+  async fixSelectedWithAi() {
+    let sql = this.getSelectedTextOrCurrentStatement();
+    let errorContext = '';
+    const consoleText = (this.consoleScript?.textContent || '') + (this.consoleDbms?.textContent || '');
+    const oraMatch = consoleText.match(/ORA-\d{5}:[^\n\r]+/g);
+    if (oraMatch && oraMatch.length > 0) {
+      errorContext = 'Erro Oracle detectado no console:\n' + oraMatch.slice(-3).join('\n');
+    }
+
+    this.toggleAiBar(true);
+    const input = document.getElementById('ai-editor-prompt-input');
+    if (input) input.value = 'Corrigir erro no código SQL';
+
+    const fullPrompt = `Você é um DBA Oracle sênior especialista em diagnósticos.
+Analise o erro e o código SQL abaixo e apresente a solução corrigida:
+${errorContext ? errorContext : 'Analise se há erros de sintaxe ou de tabelas/colunas.'}
+
+Código SQL:
+\`\`\`sql
+${sql}
+\`\`\`
+
+Apresente a correção completa e o porquê do erro ter ocorrido.`;
+
+    this.renderAiResponsePreview('Diagnosticando Erro...', '⏳ Consultando Gemini AI...');
+    try {
+      const resp = await this.callGeminiApi(fullPrompt);
+      if (resp && resp.text) {
+        this.renderAiResponsePreview('Correção Sugerida (Gemini):', resp.text);
+      }
+    } catch (e) {
+      this.renderAiResponsePreview('Erro:', e.message);
+    }
+  }
+
+  async callGeminiApi(prompt) {
+    if (window.TracesApp?.tracesCopilot?.callGeminiRestApi) {
+      const res = await window.TracesApp.tracesCopilot.callGeminiRestApi(prompt);
+      return { text: res };
+    }
+    const resp = await fetch('/api/ai/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    return await resp.json();
+  }
+
+  renderAiResponsePreview(title, content) {
+    const preview = document.getElementById('ai-editor-preview');
+    if (!preview) return;
+    preview.style.display = 'block';
+
+    const sqlMatch = content.match(/```(?:sql)?\s*([\s\S]*?)```/i);
+    const extractedSql = sqlMatch ? sqlMatch[1].trim() : '';
+    this._lastExtractedAiSql = extractedSql;
+
+    let buttonsHtml = '';
+    if (extractedSql) {
+      buttonsHtml = `
+        <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <button class="btn-ai-action primary" onclick="window.TracesApp.sqlEditor.applyLastExtractedAiSql()">
+            ➕ Inserir no Cursor
+          </button>
+          <button class="btn-ai-action secondary" onclick="window.TracesApp.sqlEditor.replaceWithLastExtractedAiSql()">
+            🔄 Substituir Worksheet
+          </button>
+          <button class="btn-ai-action secondary" onclick="window.TracesApp.sqlEditor.copyLastExtractedAiSql()">
+            📋 Copiar SQL
+          </button>
+        </div>
+      `;
+    }
+
+    preview.innerHTML = `
+      <div style="font-weight: 700; color: #38bdf8; margin-bottom: 6px; font-size: 11px;">${this.escapeHtml(title)}</div>
+      <div style="white-space: pre-wrap; line-height: 1.4;">${this.escapeHtml(content)}</div>
+      ${buttonsHtml}
+    `;
+  }
+
+  applyLastExtractedAiSql() {
+    this.applyAiSql(this._lastExtractedAiSql);
+  }
+
+  replaceWithLastExtractedAiSql() {
+    this.replaceTabWithAiSql(this._lastExtractedAiSql);
+  }
+
+  copyLastExtractedAiSql() {
+    if (this._lastExtractedAiSql) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(this._lastExtractedAiSql);
+      }
+      window.TracesApp?.notify('SQL copiado para a área de transferência!', 'info');
+    }
+  }
+
+  applyAiSql(sql) {
+    if (!sql || !this.textarea) return;
+    const start = this.textarea.selectionStart;
+    const end = this.textarea.selectionEnd;
+    const before = this.textarea.value.slice(0, start);
+    const after = this.textarea.value.slice(end);
+    this.pushHistorySnapshot();
+    this.textarea.value = before + '\n' + sql + '\n' + after;
+    this.textarea.selectionStart = this.textarea.selectionEnd = start + sql.length + 2;
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+    this.toggleAiBar(false);
+    this.textarea.focus();
+    window.TracesApp?.notify('SQL inserido com sucesso na worksheet!', 'success');
+  }
+
+  replaceTabWithAiSql(sql) {
+    if (!sql || !this.textarea) return;
+    this.pushHistorySnapshot();
+    this.textarea.value = sql;
+    this.textarea.selectionStart = this.textarea.selectionEnd = sql.length;
+    this.saveActiveTabContent();
+    this.scheduleGutterUpdate();
+    this.updateHighlighting();
+    this.toggleAiBar(false);
+    this.textarea.focus();
+    window.TracesApp?.notify('Worksheet atualizada com o SQL gerado!', 'success');
   }
 }
 

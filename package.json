@@ -1,8 +1,9 @@
 {
   "name": "traces-toad-oracle",
-  "productName": "TRACES Toad for Oracle",
+  "productName": "Toad for Oracle - TRACES Studio",
+  "executable": "Toad.exe",
   "version": "2026.2.0",
-  "description": "TRACES Toad for Oracle - Native Database Development & Administration Suite",
+  "description": "Toad for Oracle - TRACES Native Database Development & Administration Suite",
   "main": "main.js",
   "author": "TRACES Group",
   "license": "MIT"
