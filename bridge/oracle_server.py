@@ -122,14 +122,25 @@ def _ensure_pip_available():
         return False
 
 def _add_site_packages():
-    """Adiciona diretórios site-packages ao sys.path se existirem."""
+    """Adiciona diretórios site-packages do Python do sistema e do usuário ao sys.path com prioridade máxima."""
     py_dir = os.path.dirname(os.path.abspath(sys.executable))
     cands = [
         os.path.join(py_dir, "Lib", "site-packages"),
         os.path.join(py_dir, "site-packages"),
         os.path.join(py_dir, "..", "Lib", "site-packages")
     ]
-    for c in cands:
+    try:
+        import site
+        if hasattr(site, "getsitepackages"):
+            for sp in site.getsitepackages():
+                if sp and sp not in cands: cands.append(sp)
+        if hasattr(site, "getusersitepackages"):
+            usp = site.getusersitepackages()
+            if usp and usp not in cands: cands.append(usp)
+    except Exception:
+        pass
+
+    for c in reversed(cands):
         if os.path.isdir(c) and c not in sys.path:
             sys.path.insert(0, c)
 
@@ -137,17 +148,14 @@ def ensure_python_dependencies():
     """
     Verifica e garante que as dependências essenciais estejam instaladas e carregadas:
     (oracledb, sshtunnel, paramiko, bcrypt, cryptography).
-    Executa auto-instalação automática via pip sempre que necessário.
+    Prioriza sempre os módulos nativos do ambiente Python ativo.
     """
     global ORACLEDB_AVAILABLE, SSHTUNNEL_AVAILABLE, SSHTunnelForwarder, oracledb, sshtunnel, SSHTUNNEL_ERROR, ORACLEDB_ERROR
     
-    # 1. Garantir pastas do ambiente Python ativo e vendor como fallback
+    # 1. Garantir pastas do ambiente Python ativo (site-packages) no sys.path
     _add_site_packages()
-    for v_dir in [VENDOR_DIR, ROOT_VENDOR]:
-        if os.path.isdir(v_dir) and v_dir not in sys.path:
-            sys.path.append(v_dir)
 
-    # 2. Tentar importar
+    # 2. Tentar importar diretamente do ambiente Python
     try:
         import oracledb
         ORACLEDB_AVAILABLE = True
@@ -165,7 +173,28 @@ def ensure_python_dependencies():
         SSHTUNNEL_AVAILABLE = False
         SSHTUNNEL_ERROR = str(e)
 
-    # 3. Se faltar oracledb ou sshtunnel, forçar auto-instalação completa
+    # 3. Fallback: adicionar diretórios vendor se ainda faltar alguma biblioteca
+    if not ORACLEDB_AVAILABLE or not SSHTUNNEL_AVAILABLE:
+        for v_dir in [VENDOR_DIR, ROOT_VENDOR]:
+            if os.path.isdir(v_dir) and v_dir not in sys.path:
+                sys.path.append(v_dir)
+        if not ORACLEDB_AVAILABLE:
+            try:
+                import oracledb
+                ORACLEDB_AVAILABLE = True
+                ORACLEDB_ERROR = ""
+            except Exception:
+                pass
+        if not SSHTUNNEL_AVAILABLE:
+            try:
+                import sshtunnel
+                from sshtunnel import SSHTunnelForwarder
+                SSHTUNNEL_AVAILABLE = True
+                SSHTUNNEL_ERROR = ""
+            except Exception:
+                pass
+
+    # 4. Se ainda faltar oracledb ou sshtunnel, executar auto-instalação via pip
     if not ORACLEDB_AVAILABLE or not SSHTUNNEL_AVAILABLE:
         print("[TRACES Auto-Dependency] Verificando e instalando dependencias obrigatorias...")
         _fix_embedded_pth()

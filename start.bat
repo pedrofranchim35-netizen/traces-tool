@@ -19,14 +19,7 @@ if exist "C:\Program Files\Python311\python.exe" (
     set "PATH=C:\Program Files\Python311;C:\Program Files\Python311\Scripts;%PATH%"
 )
 
-REM 2. Verificar se o servidor ja esta ativo e respondendo HTTP 200 (ultra-rapido via curl)
-curl.exe -s -m 1 http://127.0.0.1:3033/api/ping | findstr /C:"online" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [OK] Servidor TRACES Toad ja esta ativo! Abrindo janela...
-    goto :OPEN_UI
-)
-
-REM 3. Limpar processo travado na porta 3033 (se houver) via netstat (instantaneo)
+REM 2. Limpar qualquer processo anterior na porta 3033 para garantir codigo 100% atualizado
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3033 ^| findstr LISTENING') do (
     taskkill /F /PID %%a >nul 2>&1
 )
