@@ -4,63 +4,72 @@
    ========================================================================== */
 
 :root {
-  /* Classic Windows / Toad Desktop Palette */
-  --toad-window-bg: #ece9d8;
-  --toad-chrome-bg: #f0f0f0;
-  --toad-chrome-elevated: #f7f7f7;
-  --toad-toolbar-bg: #f5f5f5;
-  --toad-toolbar-border: #d4d4d4;
-  --toad-menu-hover: #e5f3ff;
-  --toad-menu-hover-border: #99d1ff;
+  /* Modern Enterprise Toad Desktop Palette */
+  --toad-window-bg: #f8fafc;
+  --toad-chrome-bg: #f1f5f9;
+  --toad-chrome-elevated: #ffffff;
+  --toad-toolbar-bg: #f8fafc;
+  --toad-toolbar-border: #cbd5e1;
+  --toad-menu-hover: #e0f2fe;
+  --toad-menu-hover-border: #7dd3fc;
   
   --toad-border-light: #ffffff;
-  --toad-border-gray: #c0c0c0;
-  --toad-border-dark: #808080;
-  --toad-border-panel: #dcdcdc;
+  --toad-border-gray: #cbd5e1;
+  --toad-border-dark: #94a3b8;
+  --toad-border-panel: #e2e8f0;
 
   /* Content Surfaces */
   --toad-content-bg: #ffffff;
-  --toad-content-alt: #fbfbfb;
-  --toad-text-main: #000000;
-  --toad-text-secondary: #444444;
-  --toad-text-muted: #666666;
-  --toad-text-disabled: #888888;
+  --toad-content-alt: #f8fafc;
+  --toad-text-main: #0f172a;
+  --toad-text-secondary: #334155;
+  --toad-text-muted: #64748b;
+  --toad-text-disabled: #94a3b8;
 
   /* Universal Form Input Variables */
   --bg-input: #ffffff;
-  --text-primary: #111111;
+  --text-primary: #0f172a;
   --border-default: #cbd5e1;
-  --radius-sm: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 
   /* Toad Grid & Selection */
   --toad-select-bg: #0284c7;
   --toad-select-text: #ffffff;
-  --toad-row-hover: #e0f2fe;
+  --toad-row-hover: #f0f9ff;
   --toad-row-stripe: #f8fafc;
   --toad-grid-header-bg: #f1f5f9;
   --toad-grid-header-border: #cbd5e1;
   --toad-grid-line: #e2e8f0;
   
   /* Status & Accents */
-  --toad-green: #16a34a;
-  --toad-red: #dc2626;
+  --toad-green: #10b981;
+  --toad-red: #ef4444;
   --toad-blue: #0284c7;
-  --toad-amber: #d97706;
+  --toad-amber: #f59e0b;
+  --toad-purple: #8b5cf6;
+
+  /* Elevation & Shadows */
+  --toad-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --toad-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --toad-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --toad-shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
 
   /* Traces Brand Accent */
   --traces-red: #ef4444;
 
-  /* Classic Toad PL/SQL Syntax Highlighting */
-  --toad-syn-keyword: #0000ff;   /* Bold Blue */
-  --toad-syn-function: #000080;  /* Navy */
-  --toad-syn-string: #a31515;    /* Red / Crimson */
-  --toad-syn-number: #097223;    /* Green / Black */
-  --toad-syn-comment: #008000;   /* Italic Green */
-  --toad-syn-variable: #7c3aed;  /* Purple */
+  /* Classic Toad PL/SQL Syntax Highlighting (Vibrant & High-Contrast) */
+  --toad-syn-keyword: #0284c7;   /* Vibrant Blue */
+  --toad-syn-function: #1e40af;  /* Deep Navy */
+  --toad-syn-string: #b91c1c;    /* Rich Crimson */
+  --toad-syn-number: #047857;    /* Forest Emerald */
+  --toad-syn-comment: #15803d;   /* Leaf Green */
+  --toad-syn-variable: #7c3aed;  /* Royal Purple */
   --toad-syn-type: #0891b2;      /* Teal / Blue-green */
 
   /* Modern High-Resolution Typography Font Stack */
-  --toad-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --toad-font-ui: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
   --toad-font-code: "Cascadia Code", "Fira Code", "Consolas", "JetBrains Mono", "Courier New", monospace;
 }
 

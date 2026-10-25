@@ -327,8 +327,8 @@
 
 .session-toolbar {
   height: 28px;
-  background: #f0f0f0;
-  border-bottom: 1px solid #bfbfbf;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -864,12 +864,13 @@
 }
 
 .bubble-code-block {
-  background: #fcfcfc;
-  border: 1px solid #bfbfbf;
-  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 8px 10px;
   font-family: var(--toad-font-code);
   font-size: 11px;
-  color: #000080;
+  color: #0f172a;
   margin-top: 4px;
 }
 
@@ -892,27 +893,35 @@
 .copilot-prompt-chips {
   padding: 6px 10px;
   display: flex;
-  gap: 4px;
+  gap: 5px;
   overflow-x: auto;
-  background: #f0f0f0;
-  border-top: 1px solid #d4d4d4;
+  background: #f8fafc;
+  border-top: 1px solid #cbd5e1;
 }
 
 .prompt-chip {
-  padding: 2px 8px;
+  padding: 3px 10px;
   background: #ffffff;
-  border: 1px solid #adadad;
-  border-radius: 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
   font-size: 11px;
-  color: #333;
+  color: #334155;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 120ms ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.prompt-chip:hover {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
 }
 
 .copilot-input-bar {
   padding: 8px;
-  background: #f0f0f0;
-  border-top: 1px solid #d4d4d4;
+  background: #f8fafc;
+  border-top: 1px solid #cbd5e1;
   display: flex;
   gap: 6px;
 }
@@ -920,8 +929,8 @@
 .copilot-textarea {
   flex: 1;
   background: #ffffff;
-  border: 1px solid #7f9db9;
-  border-radius: 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
   padding: 6px 8px;
   font-size: 11px;
   font-family: var(--toad-font-ui);
@@ -929,17 +938,30 @@
   resize: none;
   height: 34px;
   line-height: 16px;
+  color: #0f172a;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.copilot-textarea:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
 }
 
 .copilot-send-btn {
   width: 34px;
   height: 34px;
-  background: #0078d7;
-  border: 1px solid #005a9e;
-  border-radius: 2px;
+  background: #0284c7;
+  border: 1px solid #0369a1;
+  border-radius: 4px;
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+  transition: all 120ms ease;
+}
+
+.copilot-send-btn:hover {
+  background: #0369a1;
 }

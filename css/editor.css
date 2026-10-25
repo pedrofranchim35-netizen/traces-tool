@@ -344,9 +344,9 @@
   position: absolute;
   z-index: 5000;
   background: #ffffff;
-  border: 1px solid #7f9db9;
-  box-shadow: 2px 2px 14px rgba(0, 0, 0, 0.25);
-  border-radius: 3px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
   max-height: 240px;
   width: 290px;
   overflow-y: auto;
@@ -354,6 +354,7 @@
   font-size: 11.5px;
   display: none;
   user-select: none;
+  padding: 2px 0;
 }
 
 .toad-code-insight.visible {

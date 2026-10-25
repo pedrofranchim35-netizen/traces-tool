@@ -14,42 +14,46 @@
 /* Classic Toad Grid Nav Toolbar */
 .grid-controls-bar {
   height: 28px;
-  background: #f0f0f0;
-  border-bottom: 1px solid #bfbfbf;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
 .grid-nav-group {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 
 .grid-nav-btn {
-  width: 22px;
-  height: 20px;
+  height: 22px;
+  padding: 0 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #fbfbfb;
-  border: 1px solid #adadad;
-  border-radius: 2px;
-  font-size: 10px;
-  color: #333;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #334155;
   cursor: pointer;
   user-select: none;
+  font-family: var(--toad-font-ui);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: all 120ms ease;
 }
 
 .grid-nav-btn:hover:not(:disabled) {
-  background: #e5f1fb;
-  border-color: #0078d7;
+  background: #f8fafc;
+  border-color: #0284c7;
+  color: #0284c7;
 }
 
 .grid-nav-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -201,15 +205,16 @@
 
 /* Pagination Bar */
 .grid-pagination-bar {
-  height: 22px;
-  background: #f0f0f0;
-  border-top: 1px solid #bfbfbf;
+  height: 24px;
+  background: #f8fafc;
+  border-top: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: 0 10px;
   font-size: 11px;
-  color: #333;
+  color: #475569;
+  font-family: var(--toad-font-ui);
 }
 
 /* Enhanced Grid Toolbar and Navigation Styles */
@@ -224,19 +229,20 @@
   min-width: 22px !important;
   width: auto !important;
   height: 22px !important;
-  padding: 0 5px !important;
+  padding: 0 6px !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  background: #fbfbfb;
-  border: 1px solid #adadad;
-  border-radius: 2px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
   font-size: 11px;
-  color: #333;
+  color: #334155;
   cursor: pointer;
   user-select: none;
   font-family: var(--toad-font-ui);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
   transition: all 120ms ease;
 }
 

@@ -24,13 +24,13 @@
   max-width: 520px;
   max-height: 280px;
   background: #ffffff;
-  border: 1px solid #7f9db9;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
-  font-family: var(--toad-font-ui, "Segoe UI", Tahoma, sans-serif);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  font-family: var(--toad-font-ui, "Segoe UI Variable", "Segoe UI", sans-serif);
   font-size: 11px;
   display: none;
   flex-direction: column;
-  border-radius: 2px;
+  border-radius: 6px;
 }
 
 .code-insight-popup.visible {
@@ -126,13 +126,13 @@
   z-index: 9999;
   width: 240px;
   background: #ffffff;
-  border: 1px solid #7f9db9;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
   font-size: 11px;
   display: flex;
   flex-direction: column;
   padding: 6px;
-  border-radius: 2px;
+  border-radius: 6px;
 }
 
 .excel-filter-search {

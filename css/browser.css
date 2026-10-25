@@ -15,7 +15,7 @@
   width: 280px;
   min-width: 150px;
   max-width: 780px;
-  background: #f0f0f0;
+  background: var(--toad-chrome-bg);
   border-right: none;
   display: flex;
   flex-direction: column;
@@ -135,8 +135,8 @@
 
 .browser-schema-selector-bar {
   padding: 6px 8px;
-  background: #f4f4f4;
-  border-bottom: 1px solid #d4d4d4;
+  background: #ffffff;
+  border-bottom: 1px solid #cbd5e1;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -317,8 +317,8 @@
 .detail-header-bar {
   height: 32px;
   padding: 0 10px;
-  background: #f4f4f4;
-  border-bottom: 1px solid #d4d4d4;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -333,16 +333,17 @@
 .detail-object-title {
   font-weight: 700;
   font-size: 13px;
-  color: #000000;
+  color: #0f172a;
 }
 
 .detail-object-type-pill {
   font-size: 10px;
-  font-weight: 600;
-  background: #e8e8e8;
-  border: 1px solid #ccc;
+  font-weight: 700;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
   padding: 1px 6px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .detail-actions-group {
@@ -482,10 +483,10 @@
 .toad-browser-style-bar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   padding: 3px 6px;
-  background: #e9e9e9;
-  border-bottom: 1px solid #c8c8c8;
+  background: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
 }
 
 .browser-style-btn {
@@ -494,27 +495,28 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
-  height: 20px;
+  height: 22px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
-  color: #333333;
-  background: #f7f7f7;
-  border: 1px solid #b5b5b5;
-  border-radius: 2px;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
   cursor: pointer;
   user-select: none;
+  transition: all 120ms ease;
 }
 
 .browser-style-btn:hover {
-  background: #e0f2fe;
-  border-color: #38bdf8;
-  color: #0369a1;
+  background: #f8fafc;
+  border-color: #0284c7;
+  color: #0284c7;
 }
 
 .browser-style-btn.active {
-  background: #0078d7;
-  border-color: #005a9e;
+  background: #0284c7;
+  border-color: #0369a1;
   color: #ffffff;
   font-weight: 700;
 }
@@ -524,9 +526,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
-  background: #f4f4f4;
-  border-bottom: 1px solid #d4d4d4;
+  padding: 5px 6px;
+  background: #ffffff;
+  border-bottom: 1px solid #cbd5e1;
 }
 
 .browser-dropdown-select {
@@ -534,11 +536,18 @@
   height: 24px;
   font-size: 11px;
   font-weight: 600;
-  color: #111111;
+  color: #0f172a;
   background: #ffffff;
-  border: 1px solid #7f9db9;
-  border-radius: 2px;
-  padding: 0 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 0 6px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.browser-dropdown-select:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
 }
 
 /* Toad Hierarchical Expandable Tree (Accordion) */
