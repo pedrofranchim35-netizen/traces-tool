@@ -1314,3 +1314,278 @@ class ExtendedServices:
             "remediationScript": "\n".join(remediation_scripts),
             "evaluatedAt": datetime.now().isoformat()
         }
+
+    # --------------------------------------------------------------------------
+    # 7. ORACLE CDB & PLUGGABLE DATABASE (PDB) CHILD SESSIONS
+    # --------------------------------------------------------------------------
+    def handle_get_cdb_pdbs(self, query=""):
+        """
+        Consulta os PDBs disponíveis para a conexão especificada ou conexão ativa.
+        Retorna is_cdb (boolean), container atual (con_name) e lista de PDBs detectados.
+        """
+        qs = urllib.parse.parse_qs(query) if isinstance(query, str) else {}
+        conn_id = qs.get("conn_id", [None])[0]
+        conn_entry = None
+        if conn_id and conn_id in self.active_connections:
+            conn_entry = self.active_connections[conn_id]
+        else:
+            conn_entry = self.get_active_conn()
+
+        if not conn_entry or not conn_entry.get("conn"):
+            self.send_response({"success": False, "is_cdb": False, "error": "Nenhuma conexão ativa.", "pdbs": []})
+            return
+
+        conn = conn_entry.get("conn")
+        cfg = conn_entry.get("config", {})
+
+        cdb_info = {
+            "is_cdb": False,
+            "con_id": None,
+            "con_name": None,
+            "pdbs": []
+        }
+
+        try:
+            with conn.cursor() as cur:
+                # 1. Verifica se a base é CDB
+                cur.execute("SELECT cdb FROM v$database")
+                crow = cur.fetchone()
+                if crow and str(crow[0]).strip().upper() == "YES":
+                    cdb_info["is_cdb"] = True
+
+                if cdb_info["is_cdb"]:
+                    # 2. Obtém container atual
+                    try:
+                        cur.execute("SELECT SYS_CONTEXT('USERENV', 'CON_NAME'), SYS_CONTEXT('USERENV', 'CON_ID') FROM dual")
+                        ctx = cur.fetchone()
+                        if ctx:
+                            cdb_info["con_name"] = str(ctx[0]).strip() if ctx[0] else None
+                            cdb_info["con_id"] = int(ctx[1]) if ctx[1] is not None else None
+                    except Exception:
+                        pass
+
+                    # Se já estiver dentro de um PDB (con_id > 2), esta sessão não é o CDB root!
+                    if cdb_info.get("con_id") and cdb_info["con_id"] > 2:
+                        cdb_info["is_cdb"] = False
+                        cdb_info["is_pdb_child"] = True
+                        cdb_info["pdb_name"] = cdb_info["con_name"]
+                    else:
+                        # 3. Lista PDBs abertos
+                        try:
+                            cur.execute("SELECT con_id, name, open_mode, restricted FROM v$pdbs ORDER BY con_id")
+                            for prow in cur.fetchall():
+                                cdb_info["pdbs"].append({
+                                    "con_id": prow[0],
+                                    "name": str(prow[1]),
+                                    "open_mode": str(prow[2]) if len(prow) > 2 and prow[2] else "READ WRITE",
+                                    "restricted": str(prow[3]) if len(prow) > 3 and prow[3] else "NO"
+                                })
+                        except Exception:
+                            try:
+                                cur.execute("SELECT pdb_name, status FROM all_pdbs ORDER BY pdb_name")
+                                for prow in cur.fetchall():
+                                    cdb_info["pdbs"].append({
+                                        "con_id": None,
+                                        "name": str(prow[0]),
+                                        "open_mode": str(prow[1]) if len(prow) > 1 and prow[1] else "READ WRITE",
+                                        "restricted": "NO"
+                                    })
+                            except Exception:
+                                pass
+
+            conn_entry["cdb"] = cdb_info
+            self.send_response({
+                "success": True,
+                "conn_id": conn_entry.get("id"),
+                "is_cdb": cdb_info["is_cdb"],
+                "cdb": cdb_info,
+                "pdbs": cdb_info["pdbs"]
+            })
+        except Exception as e:
+            self.send_response({"success": False, "is_cdb": False, "error": str(e), "pdbs": []})
+
+    def handle_open_pdb_child_session(self, payload):
+        """
+        Abre uma sessão filha no PDB solicitado:
+        - Cria uma conexão filha dedicada registrada no pool ACTIVE_CONNECTIONS
+        - Conecta com fallback automático (conexão direta por service_name ou ALTER SESSION SET CONTAINER)
+        - Atualiza a sessão ativa para a nova conexão filha no PDB
+        """
+        parent_id = payload.get("conn_id") or payload.get("parent_conn_id")
+        pdb_name = (payload.get("pdb_name") or payload.get("pdb") or "").strip()
+        switch_only = payload.get("switch_only", False)
+        pdb_user = (payload.get("user") or "").strip()
+        pdb_pwd = payload.get("password") or ""
+
+        if not pdb_name:
+            self.send_response({"success": False, "error": "Nome do PDB não informado."}, status=400)
+            return
+
+        parent_entry = None
+        if parent_id and parent_id in self.active_connections:
+            parent_entry = self.active_connections[parent_id]
+        else:
+            parent_entry = self.get_active_conn()
+            if parent_entry:
+                parent_id = parent_entry.get("id")
+
+        if not parent_entry or not parent_entry.get("conn"):
+            self.send_response({"success": False, "error": "Conexão pai (CDB) não encontrada ou inativa."}, status=404)
+            return
+
+        parent_cfg = parent_entry.get("config", {})
+
+        # Modo A: Alternar container na sessão atual usando ALTER SESSION
+        if switch_only:
+            try:
+                parent_conn = parent_entry["conn"]
+                with parent_conn.cursor() as cur:
+                    cur.execute(f'ALTER SESSION SET CONTAINER = "{pdb_name}"')
+                    cur.execute("SELECT SYS_CONTEXT('USERENV', 'CON_NAME'), SYS_CONTEXT('USERENV', 'CON_ID') FROM dual")
+                    crow = cur.fetchone()
+                    con_name = str(crow[0]) if crow and crow[0] else pdb_name
+                    con_id = int(crow[1]) if crow and crow[1] is not None else None
+
+                parent_entry["cdb"] = {
+                    "is_cdb": False,
+                    "is_pdb_child": True,
+                    "con_name": con_name,
+                    "con_id": con_id,
+                    "parent_cdb_id": parent_id
+                }
+                parent_cfg["service_name"] = con_name
+                parent_cfg["name"] = f"{parent_cfg.get('name', 'CDB')} (PDB: {con_name})"
+
+                self.send_response({
+                    "success": True,
+                    "mode": "SWITCH_CONTAINER",
+                    "conn_id": parent_id,
+                    "con_name": con_name,
+                    "con_id": con_id,
+                    "message": f"Sessão alternada para o container PDB '{con_name}' com sucesso."
+                })
+                return
+            except Exception as e:
+                self.send_response({"success": False, "error": f"Falha ao executar ALTER SESSION SET CONTAINER: {e}"}, status=500)
+                return
+
+        # Modo B: Criar uma Nova Sessão Filha Dedicada no PDB
+        clean_pdb = pdb_name.replace('"', '').replace("'", "").strip()
+        child_conn_id = f"{parent_id}-pdb-{clean_pdb.lower().replace('$', '_')}"
+        child_name = f"{parent_cfg.get('name', 'CDB')} ➔ PDB: {clean_pdb}"
+
+        user = pdb_user or parent_cfg.get("user")
+        pwd = pdb_pwd or getattr(parent_entry.get("conn"), "password", None) or ""
+        host = parent_cfg.get("host", "localhost")
+        port = int(parent_cfg.get("port", 1521))
+        role = parent_cfg.get("role", "NORMAL")
+        use_bridge = parent_cfg.get("use_bridge", False)
+        bridge_host = parent_cfg.get("bridge_host")
+        bridge_port = parent_cfg.get("bridge_port", 22)
+        tunnel_key = parent_entry.get("tunnel_key")
+        conn_mode = parent_entry.get("mode", "THICK")
+
+        import oracledb
+
+        t0 = time.time()
+        conn_kwargs = {
+            "user": user,
+            "host": host,
+            "port": port,
+            "service_name": clean_pdb,
+        }
+        if pwd:
+            conn_kwargs["password"] = pwd
+        if role and role.upper() == "SYSDBA":
+            conn_kwargs["mode"] = oracledb.AUTH_MODE_SYSDBA
+        elif role and role.upper() == "SYSOPER":
+            conn_kwargs["mode"] = oracledb.AUTH_MODE_SYSOPER
+
+        # Conectar ao PDB com fallback
+        new_conn = None
+        try:
+            new_conn = oracledb.connect(**conn_kwargs)
+        except Exception as direct_err:
+            try:
+                # Fallback: conecta ao serviço pai do CDB e faz switch para o container do PDB
+                conn_kwargs["service_name"] = parent_cfg.get("service_name")
+                new_conn = oracledb.connect(**conn_kwargs)
+                with new_conn.cursor() as cur:
+                    cur.execute(f'ALTER SESSION SET CONTAINER = "{clean_pdb}"')
+            except Exception as fallback_err:
+                self.send_response({
+                    "success": False,
+                    "error": f"Não foi possível abrir a sessão filha no PDB '{clean_pdb}': {direct_err} (Fallback CDB: {fallback_err})"
+                }, status=500)
+                return
+
+        elapsed_ms = round((time.time() - t0) * 1000, 1)
+
+        # Encapsula na ThreadSafeConnection de oracle_server
+        server_mod = sys.modules.get("oracle_server") or sys.modules.get("__main__")
+        ThreadSafeClass = getattr(server_mod, "ThreadSafeConnection", None)
+        wrapped_child = ThreadSafeClass(new_conn, conn_params=conn_kwargs, max_aux=2) if ThreadSafeClass else new_conn
+
+        with new_conn.cursor() as cur:
+            cur.execute("SELECT SYS_CONTEXT('USERENV', 'CON_NAME'), SYS_CONTEXT('USERENV', 'CON_ID') FROM dual")
+            crow = cur.fetchone()
+            con_name = str(crow[0]) if crow and crow[0] else clean_pdb
+            con_id = int(crow[1]) if crow and crow[1] is not None else None
+
+        child_entry = {
+            "id": child_conn_id,
+            "canonical_id": f"{user}@{host}:{port}/{clean_pdb}",
+            "profile_id": child_conn_id,
+            "conn": wrapped_child,
+            "config": {
+                "id": child_conn_id,
+                "name": child_name,
+                "user": user,
+                "host": host,
+                "port": port,
+                "service_name": clean_pdb,
+                "role": role,
+                "color": "#8b5cf6",
+                "use_bridge": use_bridge,
+                "bridge_host": bridge_host,
+                "bridge_port": bridge_port,
+                "use_thick": (conn_mode == "THICK"),
+                "is_cdb": False,
+                "is_pdb_child": True,
+                "parent_cdb_id": parent_id,
+                "pdb_name": clean_pdb
+            },
+            "status": "CONNECTED",
+            "connected_at": datetime.now().isoformat(),
+            "banner": parent_entry.get("banner"),
+            "os_info": parent_entry.get("os_info"),
+            "mode": conn_mode,
+            "tunnel_key": tunnel_key,
+            "cdb": {
+                "is_cdb": False,
+                "is_pdb_child": True,
+                "parent_cdb_id": parent_id,
+                "con_name": con_name,
+                "con_id": con_id,
+                "pdb_name": clean_pdb
+            }
+        }
+
+        self.active_connections[child_conn_id] = child_entry
+        if server_mod and hasattr(server_mod, "ACTIVE_CONN_ID"):
+            server_mod.ACTIVE_CONN_ID = child_conn_id
+
+        self.send_response({
+            "success": True,
+            "conn_id": child_conn_id,
+            "active_id": child_conn_id,
+            "name": child_name,
+            "pdb_name": clean_pdb,
+            "con_name": con_name,
+            "con_id": con_id,
+            "latency_ms": elapsed_ms,
+            "config": child_entry["config"],
+            "cdb": child_entry["cdb"],
+            "message": f"Sessão filha no PDB '{clean_pdb}' estabelecida com sucesso ({elapsed_ms} ms)!"
+        })
+

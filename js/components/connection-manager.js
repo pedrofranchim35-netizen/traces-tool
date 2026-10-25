@@ -933,12 +933,16 @@ class ConnectionManager {
 
       if (data.success) {
         c.lastConnected = new Date().toISOString();
+        if (data.cdb) {
+          c.cdb = data.cdb;
+          c.isCdb = Boolean(data.cdb.is_cdb);
+        }
         this.saveConnections();
 
         // Registra no mapa de conexões simultaneamente ativas
         const prevConnId = this.activeConn?.id;
         const isNewConn = !this.activeConnections.has(c.id);
-        this.activeConnections.set(c.id, { config: c, data: data });
+        this.activeConnections.set(c.id, { config: c, data: data, cdb: data.cdb });
         this.activeConn = c;
         if (prevConnId && prevConnId !== c.id && window.TracesApp.swapWorkspace) {
           if (isNewConn) window.TracesApp.dropWorkspace(c.id);
@@ -1165,15 +1169,27 @@ class ConnectionManager {
       const isActive = Boolean(this.activeConn && this.activeConn.id === connId);
       const envColor = c.color || '#16a34a';
       const bridgeBadge = (c.useBridge && c.bridgeHost) ? ' 🌉' : '';
-      const titleText = `${c.name || 'Oracle'}\nUsuário: ${c.user} (${c.role || 'NORMAL'})\nDestino: ${c.host}:${c.port}/${c.serviceName}${c.useBridge ? '\nPonte: ' + c.bridgeHost : ''}\nStatus: ${isActive ? 'BANCO ATIVO ATUAL (0ms switch)' : 'Conectado (Clique para alternar sem desconectar)'}`;
+      const isCdb = Boolean(entry.cdb?.is_cdb || entry.data?.cdb?.is_cdb || c.isCdb || c.cdb?.is_cdb);
+      const isPdbChild = Boolean(entry.cdb?.is_pdb_child || c.is_pdb_child || c.isPdbChild);
+      const pdbBadge = isPdbChild ? `<span class="toad-conn-bar-pdb-badge" title="Sessão conectada no Pluggable Database ${c.pdb_name || c.serviceName}">📦 PDB</span>` : '';
+      const cdbButton = isCdb ? `
+        <button class="toad-conn-bar-pdb-btn" 
+                onclick="event.stopPropagation(); window.TracesApp.connectionManager.openPdbChildSessionModal('${connId}');" 
+                title="Container Database (CDB) detectado. Clique para abrir uma Sessão Filha em um PDB">
+          <span>📦 PDB ▾</span>
+        </button>
+      ` : '';
+      const titleText = `${c.name || 'Oracle'}\nUsuário: ${c.user} (${c.role || 'NORMAL'})\nDestino: ${c.host}:${c.port}/${c.serviceName}${c.useBridge ? '\nPonte: ' + c.bridgeHost : ''}${isCdb ? '\n[Arquitetura: Oracle CDB Multitenant (Container Database)]' : ''}${isPdbChild ? '\n[Sessão Filha no PDB: ' + (c.pdb_name || c.serviceName) + ']' : ''}\nStatus: ${isActive ? 'BANCO ATIVO ATUAL (0ms switch)' : 'Conectado (Clique para alternar sem desconectar)'}`;
 
       html += `
-        <div class="toad-conn-bar-tab ${isActive ? 'active' : ''}" 
+        <div class="toad-conn-bar-tab ${isActive ? 'active' : ''} ${isCdb ? 'is-cdb' : ''}" 
              onclick="window.TracesApp.connectionManager.switchConnection('${connId}')"
              title="${titleText}">
           <span class="toad-conn-bar-indicator" style="background: ${envColor};"></span>
           <span style="font-weight: ${isActive ? '700' : '600'};">${c.user}@${c.serviceName || 'ORCL'}</span>
+          ${pdbBadge}
           <span class="toad-conn-bar-host">(${c.host}${bridgeBadge})</span>
+          ${cdbButton}
           <span class="toad-conn-bar-close" 
                 onclick="event.stopPropagation(); window.TracesApp.connectionManager.disconnect('${connId}');" 
                 title="Desconectar apenas este banco (${c.name})">✕</span>
@@ -1231,6 +1247,18 @@ class ConnectionManager {
     }
 
     this.selectorEl.innerHTML = html;
+
+    // Atualiza visibilidade do botão de Sessão Filha PDB na Toolbar
+    const activeEntry = this.activeConn ? this.activeConnections.get(this.activeConn.id) : null;
+    const isCurrentCdb = Boolean(activeEntry?.cdb?.is_cdb || activeEntry?.data?.cdb?.is_cdb || this.activeConn?.isCdb || this.activeConn?.cdb?.is_cdb);
+    const btnCdb = document.getElementById('btn-toolbar-cdb-pdb');
+    if (btnCdb) {
+      btnCdb.style.display = isCurrentCdb ? 'inline-flex' : 'none';
+      if (isCurrentCdb) {
+        const pdbs = activeEntry?.cdb?.pdbs || activeEntry?.data?.cdb?.pdbs || [];
+        btnCdb.title = `Banco Container (CDB) detectado com ${pdbs.length} PDB(s) disponível(is). Clique para abrir uma Sessão Filha em um PDB.`;
+      }
+    }
 
     this.selectorEl.onchange = (e) => {
       const selectedId = e.target.value;
@@ -1362,7 +1390,11 @@ class ConnectionManager {
             useBridge: item.use_bridge,
             bridgeHost: item.bridge_host
           };
-          this.activeConnections.set(item.id, { config: profile, data: item });
+          if (item.cdb) {
+            profile.cdb = item.cdb;
+            profile.isCdb = Boolean(item.cdb.is_cdb);
+          }
+          this.activeConnections.set(item.id, { config: profile, data: item, cdb: item.cdb });
           if (item.is_active || item.id === data.active_id) {
             this.activeConn = profile;
           }
@@ -1396,6 +1428,272 @@ class ConnectionManager {
     } catch (e) {
       // Offline / startup
       this.renderConnectionBar();
+    }
+  }
+
+  openCurrentPdbChildSessionModal() {
+    if (!this.activeConn) {
+      window.TracesApp?.notify('Nenhum banco conectado no momento.', 'warning');
+      return;
+    }
+    this.openPdbChildSessionModal(this.activeConn.id);
+  }
+
+  async openPdbChildSessionModal(connId) {
+    const entry = this.activeConnections.get(connId);
+    if (!entry) {
+      window.TracesApp?.notify('Conexão CDB não encontrada entre os bancos ativos.', 'error');
+      return;
+    }
+
+    const c = entry.config;
+    let cdbData = entry.cdb || entry.data?.cdb || { is_cdb: true, con_name: 'CDB$ROOT', con_id: 1, pdbs: [] };
+
+    // Remove existing modal if any
+    const existing = document.getElementById('toad-modal-cdb-pdb');
+    if (existing) existing.remove();
+
+    // Create modal element
+    const modal = document.createElement('div');
+    modal.id = 'toad-modal-cdb-pdb';
+    modal.className = 'modal-backdrop';
+    modal.style.display = 'flex';
+    modal.style.zIndex = '99999';
+
+    modal.innerHTML = `
+      <div class="modal-dialog" style="width: 650px; max-width: 95vw; background: #ffffff; border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid #94a3b8; overflow: hidden; display: flex; flex-direction: column;">
+        <!-- Header -->
+        <div style="background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%); padding: 10px 14px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">📦</span>
+            <span style="font-weight: 700; font-size: 13px; color: #0f172a;">Sessão Filha no PDB (Pluggable Database)</span>
+            <span style="background: #10b981; color: #fff; font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 3px;">CDB DETECTADO</span>
+          </div>
+          <button class="modal-close-btn" onclick="document.getElementById('toad-modal-cdb-pdb')?.remove();" style="border: none; background: transparent; font-size: 14px; cursor: pointer; color: #64748b;">✕</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 14px; font-size: 11px; display: flex; flex-direction: column; gap: 12px; max-height: 80vh; overflow-y: auto;">
+          <!-- CDB Context Info Banner -->
+          <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 10px; display: flex; align-items: flex-start; gap: 10px;">
+            <span style="font-size: 20px; line-height: 1;">🏛</span>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; color: #166534; font-size: 12px;">
+                Conexão Pai: ${c.name} (${c.user}@${c.serviceName || 'CDB'})
+              </div>
+              <div style="color: #15803d; font-size: 11px; margin-top: 2px;">
+                Container Ativo: <strong>${cdbData.con_name || 'CDB$ROOT'}</strong> (CON_ID: ${cdbData.con_id || 1}) | Host: <code>${c.host}:${c.port}</code>
+              </div>
+              <div style="color: #475569; font-size: 10.5px; margin-top: 4px;">
+                Selecione abaixo o Pluggable Database desejado para criar uma <strong>nova conexão/aba filha</strong> ou alternar o container atual. A sessão filha herdará automaticamente a autenticação e o túnel sem impactar a conexão CDB raiz.
+              </div>
+            </div>
+          </div>
+
+          <!-- PDBs List Container -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-weight: 700; color: #1e293b;">Pluggable Databases (PDBs) Detectados no Dicionário:</span>
+              <button class="btn" style="padding: 2px 7px; font-size: 10px;" onclick="window.TracesApp.connectionManager.refreshPdbList('${connId}')">🔄 Atualizar Lista</button>
+            </div>
+            
+            <div id="pdb-list-container" style="border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; max-height: 220px; overflow-y: auto;">
+              ${this.renderPdbListHtml(connId, cdbData.pdbs || [])}
+            </div>
+          </div>
+
+          <!-- Manual / Custom PDB Input -->
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
+            <div style="font-weight: 700; color: #1e293b; margin-bottom: 4px;">Ou informe o nome do PDB manualmente:</div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="text" id="manual-pdb-name" placeholder="Ex: FREEPDB1, ORCLPDB, PDB1..." style="flex: 1; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: var(--toad-font-code); font-size: 11px; text-transform: uppercase;">
+              <button class="btn btn-primary" style="padding: 5px 12px; font-weight: 700;" onclick="const val = document.getElementById('manual-pdb-name')?.value?.trim(); if(val) window.TracesApp.connectionManager.launchPdbChildSession('${connId}', val, false); else alert('Informe o nome do PDB.');">
+                ⚡ Abrir Sessão Filha
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background: #f8fafc; padding: 8px 14px; border-top: 1px solid #cbd5e1; display: flex; justify-content: flex-end; gap: 8px;">
+          <button class="btn" onclick="document.getElementById('toad-modal-cdb-pdb')?.remove();" style="padding: 4px 12px;">Fechar</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // If PDB list was empty or needs fresh check, fetch from backend
+    if (!cdbData.pdbs || cdbData.pdbs.length === 0) {
+      this.refreshPdbList(connId);
+    }
+  }
+
+  renderPdbListHtml(connId, pdbs) {
+    if (!pdbs || pdbs.length === 0) {
+      return `
+        <div style="padding: 16px; text-align: center; color: #64748b; font-style: italic;">
+          Nenhum PDB retornado automaticamente por v$pdbs. Digite o nome do PDB no campo abaixo.
+        </div>
+      `;
+    }
+
+    return `
+      <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
+        <thead>
+          <tr style="background: #f1f5f9; border-bottom: 1px solid #cbd5e1; font-weight: 700; color: #475569;">
+            <th style="padding: 6px 8px; width: 65px;">CON_ID</th>
+            <th style="padding: 6px 8px;">Nome do PDB</th>
+            <th style="padding: 6px 8px; width: 100px;">Status</th>
+            <th style="padding: 6px 8px; width: 75px;">Restrito</th>
+            <th style="padding: 6px 8px; text-align: right; width: 220px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pdbs.map(p => {
+            const isRw = (p.open_mode || '').toUpperCase().includes('WRITE');
+            const statusColor = isRw ? '#15803d' : '#b45309';
+            const statusBg = isRw ? '#dcfce7' : '#fef3c7';
+            return `
+              <tr style="border-bottom: 1px solid #f1f5f9;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                <td style="padding: 6px 8px; font-family: var(--toad-font-code); color: #64748b;">${p.con_id != null ? '#' + p.con_id : '-'}</td>
+                <td style="padding: 6px 8px; font-weight: 700; color: #0f172a; font-family: var(--toad-font-code);">
+                  📦 ${p.name}
+                </td>
+                <td style="padding: 6px 8px;">
+                  <span style="background: ${statusBg}; color: ${statusColor}; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 3px;">
+                    ${p.open_mode || 'OPEN'}
+                  </span>
+                </td>
+                <td style="padding: 6px 8px; color: ${p.restricted === 'YES' ? '#dc2626' : '#64748b'}; font-weight: ${p.restricted === 'YES' ? '700' : '400'};">
+                  ${p.restricted || 'NO'}
+                </td>
+                <td style="padding: 6px 8px; text-align: right;">
+                  <button class="btn btn-primary" style="padding: 2px 8px; font-size: 10px; font-weight: 700; margin-right: 4px;" onclick="window.TracesApp.connectionManager.launchPdbChildSession('${connId}', '${p.name}', false)" title="Abrir como uma nova aba de conexão independente para este PDB">
+                    ⚡ Nova Conexão
+                  </button>
+                  <button class="btn" style="padding: 2px 6px; font-size: 10px;" onclick="window.TracesApp.connectionManager.launchPdbChildSession('${connId}', '${p.name}', true)" title="Executar ALTER SESSION SET CONTAINER nesta mesma sessão">
+                    🔄 Alternar
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  async refreshPdbList(connId) {
+    const listEl = document.getElementById('pdb-list-container');
+    if (listEl) {
+      listEl.innerHTML = `<div style="padding: 14px; text-align: center; color: #0284c7;">⏳ Consultando v$pdbs no Oracle Database...</div>`;
+    }
+    try {
+      const resp = await fetch(`/api/cdb/pdbs?conn_id=${encodeURIComponent(connId)}`);
+      const data = await resp.json();
+      if (data.success && listEl) {
+        const entry = this.activeConnections.get(connId);
+        if (entry) {
+          if (!entry.cdb) entry.cdb = {};
+          entry.cdb.pdbs = data.pdbs || [];
+          entry.cdb.is_cdb = data.is_cdb;
+          entry.cdb.con_name = data.cdb?.con_name || entry.cdb.con_name;
+        }
+        listEl.innerHTML = this.renderPdbListHtml(connId, data.pdbs || []);
+      } else if (listEl) {
+        listEl.innerHTML = `<div style="padding: 12px; color: #dc2626; text-align: center;">✕ Erro: ${data.error || 'Falha ao consultar PDBs'}</div>`;
+      }
+    } catch (e) {
+      if (listEl) {
+        listEl.innerHTML = `<div style="padding: 12px; color: #dc2626; text-align: center;">✕ Falha de comunicação: ${e.message}</div>`;
+      }
+    }
+  }
+
+  async launchPdbChildSession(parentConnId, pdbName, switchOnly = false) {
+    const modal = document.getElementById('toad-modal-cdb-pdb');
+    const actionDesc = switchOnly ? `Alternando container para ${pdbName}...` : `Abrindo sessão filha no PDB ${pdbName}...`;
+    window.TracesApp?.notify(`⏳ ${actionDesc}`, 'info');
+
+    try {
+      const resp = await fetch('/api/cdb/open_child_session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conn_id: parentConnId,
+          pdb_name: pdbName,
+          switch_only: switchOnly
+        })
+      });
+      const data = await resp.json();
+
+      if (!data.success) {
+        window.TracesApp?.notify(`Falha ao abrir sessão no PDB: ${data.error}`, 'error');
+        alert(`Falha ao abrir sessão no PDB ${pdbName}:\n${data.error}`);
+        return;
+      }
+
+      if (switchOnly) {
+        const parentEntry = this.activeConnections.get(parentConnId);
+        if (parentEntry) {
+          parentEntry.cdb = data.cdb || { is_cdb: false, is_pdb_child: true, pdb_name: pdbName };
+          if (parentEntry.config) {
+            parentEntry.config.isCdb = false;
+            parentEntry.config.is_pdb_child = true;
+            parentEntry.config.pdb_name = pdbName;
+            parentEntry.config.serviceName = pdbName;
+          }
+        }
+        this.renderConnectionBar();
+        this.updateSelectorDropdown();
+        window.TracesApp?.notify(`Container alternado com sucesso para ${pdbName} (ALTER SESSION)!`, 'success');
+        modal?.remove();
+        return;
+      }
+
+      // Adiciona o novo perfil da sessão filha no ConnectionManager
+      const childConfig = data.config || {
+        id: data.conn_id,
+        name: data.name || `PDB: ${pdbName}`,
+        host: this.activeConn?.host || 'localhost',
+        port: this.activeConn?.port || 1521,
+        serviceName: pdbName,
+        user: this.activeConn?.user || 'SYSTEM',
+        role: this.activeConn?.role || 'NORMAL',
+        color: '#8b5cf6',
+        isCdb: false,
+        isPdbChild: true,
+        pdbName: pdbName,
+        parentCdbId: parentConnId
+      };
+
+      if (!this.connections.some(c => c.id === childConfig.id)) {
+        this.connections.push(childConfig);
+      }
+
+      this.activeConnections.set(childConfig.id, {
+        config: childConfig,
+        data: data,
+        cdb: data.cdb || { is_cdb: false, is_pdb_child: true, pdb_name: pdbName, parent_cdb_id: parentConnId }
+      });
+
+      this.activeConn = childConfig;
+      this.renderConnectionBar();
+      this.updateSelectorDropdown();
+
+      // Alterna workspace para a nova conexão filha
+      if (window.TracesApp?.swapWorkspace) {
+        window.TracesApp.swapWorkspace(parentConnId, childConfig.id);
+      }
+      if (window.TracesApp?.openWindow) {
+        window.TracesApp.openWindow('editor');
+      }
+
+      modal?.remove();
+      window.TracesApp?.notify(`🟢 Sessão filha no PDB '${pdbName}' conectada com sucesso! (${data.latency_ms || 0} ms)`, 'success');
+    } catch (err) {
+      window.TracesApp?.notify(`Erro ao abrir sessão filha no PDB: ${err.message}`, 'error');
     }
   }
 

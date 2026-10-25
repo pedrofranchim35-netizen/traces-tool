@@ -849,6 +849,77 @@ def detect_oracle_os(cur):
     return os_info
 
 
+def detect_oracle_cdb(cur):
+    """
+    Detects if the database connection is an Oracle Container Database (CDB) root.
+    Returns a dictionary with is_cdb (boolean), con_id, con_name, and available pdbs list.
+    """
+    cdb_info = {
+        "is_cdb": False,
+        "con_id": None,
+        "con_name": None,
+        "pdbs": []
+    }
+    if not cur:
+        return cdb_info
+
+    try:
+        cur.execute("SELECT cdb FROM v$database")
+        row = cur.fetchone()
+        if row and str(row[0]).strip().upper() == "YES":
+            cdb_info["is_cdb"] = True
+    except Exception:
+        # Non-CDB or Oracle 11g or older where v$database.cdb does not exist
+        return cdb_info
+
+    if not cdb_info["is_cdb"]:
+        return cdb_info
+
+    try:
+        cur.execute("SELECT SYS_CONTEXT('USERENV', 'CON_NAME'), SYS_CONTEXT('USERENV', 'CON_ID') FROM dual")
+        crow = cur.fetchone()
+        if crow:
+            cdb_info["con_name"] = str(crow[0]).strip() if crow[0] else None
+            try:
+                cdb_info["con_id"] = int(crow[1]) if crow[1] is not None else None
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # If already connected inside a PDB (CON_ID > 2 or con_name != CDB$ROOT), it is not the CDB root!
+    if cdb_info.get("con_id") and cdb_info["con_id"] > 2:
+        cdb_info["is_cdb"] = False
+        cdb_info["is_pdb_child"] = True
+        cdb_info["pdb_name"] = cdb_info["con_name"]
+        return cdb_info
+
+    try:
+        cur.execute("SELECT con_id, name, open_mode, restricted FROM v$pdbs ORDER BY con_id")
+        for prow in cur.fetchall():
+            cdb_info["pdbs"].append({
+                "con_id": prow[0],
+                "name": str(prow[1]),
+                "open_mode": str(prow[2]) if len(prow) > 2 and prow[2] else "READ WRITE",
+                "restricted": str(prow[3]) if len(prow) > 3 and prow[3] else "NO"
+            })
+    except Exception:
+        try:
+            cur.execute("SELECT pdb_name, status FROM all_pdbs ORDER BY pdb_name")
+            for prow in cur.fetchall():
+                cdb_info["pdbs"].append({
+                    "con_id": None,
+                    "name": str(prow[0]),
+                    "open_mode": str(prow[1]) if len(prow) > 1 and prow[1] else "READ WRITE",
+                    "restricted": "NO"
+                })
+        except Exception:
+            pass
+
+    return cdb_info
+
+
+
 class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_ROOT, **kwargs)
@@ -978,7 +1049,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     "connected_at": c.get("connected_at"),
                     "is_active": (cid == ACTIVE_CONN_ID),
                     "use_bridge": cfg.get("use_bridge"),
-                    "bridge_host": cfg.get("bridge_host")
+                    "bridge_host": cfg.get("bridge_host"),
+                    "cdb": c.get("cdb")
                 })
         self.send_api_response({
             "success": True,
@@ -1213,6 +1285,10 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             srv = self.get_extended_services()
             if srv: srv.handle_get_ai_config()
             else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/cdb/pdbs":
+            srv = self.get_extended_services()
+            if srv: srv.handle_get_cdb_pdbs(parsed.query)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
         elif parsed.path.startswith("/api/pro/"):
             if toad_pro:
                 query_params = urllib.parse.parse_qs(parsed.query)
@@ -1313,6 +1389,10 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == "/api/health360":
             srv = self.get_extended_services()
             if srv: srv.handle_health360(payload)
+            else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
+        elif parsed.path == "/api/cdb/open_child_session":
+            srv = self.get_extended_services()
+            if srv: srv.handle_open_pdb_child_session(payload)
             else: self.send_api_response({"success": False, "error": "Serviço indisponível"}, status=500)
         elif parsed.path.startswith("/api/pro/"):
             if toad_pro:
@@ -1804,6 +1884,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             with connection.cursor() as cur:
                 os_info = detect_oracle_os(cur)
                 banner = os_info.get("banner") or "Oracle Database"
+                cdb_info = detect_oracle_cdb(cur)
 
             wrapped_conn = ThreadSafeConnection(connection, conn_params=conn_params, max_aux=2)
             cache_invalidate()
@@ -1824,12 +1905,14 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                     "use_bridge": bool(use_bridge and bridge_host),
                     "bridge_host": bridge_host if use_bridge else None,
                     "bridge_port": bridge_port if use_bridge else None,
-                    "use_thick": (conn_mode == "THICK")
+                    "use_thick": (conn_mode == "THICK"),
+                    "is_cdb": cdb_info.get("is_cdb", False)
                 },
                 "status": "CONNECTED",
                 "connected_at": datetime.now().isoformat(),
                 "banner": banner,
                 "os_info": os_info,
+                "cdb": cdb_info,
                 "mode": conn_mode,
                 "tunnel_key": tunnel_key
             }
@@ -1838,7 +1921,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
             ACTIVE_CONN_ID = conn_id
             sync_legacy_active_connection()
 
-            print(f"[Bridge] Conexão com Oracle '{conn_name}' estabelecida ({elapsed_ms} ms) [{conn_mode}] - SO: {os_info['os_name']} ({os_info['platform_name']}) - {banner}")
+            cdb_log = f" [CDB ROOT: {cdb_info['con_name']} - {len(cdb_info['pdbs'])} PDBs]" if cdb_info.get("is_cdb") else ""
+            print(f"[Bridge] Conexão com Oracle '{conn_name}' estabelecida ({elapsed_ms} ms) [{conn_mode}]{cdb_log} - SO: {os_info['os_name']} ({os_info['platform_name']}) - {banner}")
 
             # Monta lista de conexões ativas
             active_list = []
@@ -1858,7 +1942,8 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                         "mode": c.get("mode"),
                         "is_active": (cid == ACTIVE_CONN_ID),
                         "use_bridge": cfg.get("use_bridge"),
-                        "bridge_host": cfg.get("bridge_host")
+                        "bridge_host": cfg.get("bridge_host"),
+                        "cdb": c.get("cdb")
                     })
 
             self.send_api_response({
@@ -1870,6 +1955,7 @@ class ToadBridgeHandler(http.server.SimpleHTTPRequestHandler):
                 "message": f"Successfully connected to Oracle Database in {elapsed_ms} ms",
                 "version": banner,
                 "os": os_info,
+                "cdb": cdb_info,
                 "latency_ms": elapsed_ms,
                 "mode": conn_mode,
                 "bridge": {

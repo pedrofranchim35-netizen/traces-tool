@@ -90,6 +90,12 @@
           <option value="" selected>-- Desconectado (Clique em ⚡ Conectar) --</option>
         </select>
 
+        <!-- CDB Pluggable Database Child Session Button (Exibido EXCLUSIVAMENTE se a conexão ativa for um CDB) -->
+        <button class="toad-btn btn-cdb-pdb" id="btn-toolbar-cdb-pdb" style="display: none; background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; font-weight: 700; margin-left: 4px;" onclick="window.TracesApp.connectionManager.openCurrentPdbChildSessionModal()" title="Banco Container (CDB) Detectado! Clique para abrir uma Sessão Filha em um PDB">
+          <span class="toad-btn-icon" style="color: #059669;">📦</span>
+          <span>Abrir no PDB ▾</span>
+        </button>
+
         <div class="toad-separator"></div>
 
         <!-- Commit & Rollback (Disabled when disconnected) -->

@@ -350,6 +350,43 @@
   border-color: #0284c7;
 }
 
+.toad-conn-bar-pdb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 6px;
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  border-radius: 3px;
+  color: #047857;
+  font-size: 9.5px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.toad-conn-bar-pdb-btn:hover {
+  background: #10b981;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.35);
+}
+
+.toad-conn-bar-pdb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  background: #f3e8ff;
+  border: 1px solid #c084fc;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #7e22ce;
+}
+
 /* --------------------------------------------------------------------------
    TOAD MDI WINDOW TABS (DIRECTLY UNDER TOOLBAR)
    -------------------------------------------------------------------------- */
